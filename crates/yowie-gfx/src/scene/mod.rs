@@ -53,19 +53,32 @@
 //!   compute work before the HDR pass and their draws after the blended
 //!   meshes, beside the lines, with the frame bind group bound. Probe
 //!   captures leave them out.
+//! - **Large-scene classes** (terrain, water, billboards and impostors,
+//!   dithered cross-fades) draw with their own pipelines inside the same
+//!   passes; `large.rs` describes the calls that hook them in. Water and
+//!   blended billboards join the order-independent transparency pass when
+//!   the scene uses it. Probe captures leave the classes out too.
 
+mod billboard;
+mod billboard_render;
 mod bounds;
 mod camera;
 mod classes;
 mod cluster;
 mod decals;
 mod environment;
+mod fade;
 mod features;
 mod frame_data;
 mod ibl;
+mod impostor;
+mod label;
+mod large;
+mod large_pipelines;
 mod layers;
 mod layouts;
 mod light;
+mod lod;
 mod material;
 mod mesh;
 mod model;
@@ -86,14 +99,20 @@ mod statics;
 mod stencil;
 mod submit;
 mod surface_shader;
+mod terrain;
 mod textures;
 mod transmission;
 mod transparency;
 mod upload;
 mod vertex;
+mod water;
 
 #[cfg(test)]
 mod gpu_tests;
+#[cfg(test)]
+mod gpu_tests_air;
+#[cfg(test)]
+mod gpu_tests_large;
 #[cfg(test)]
 mod gpu_tests_masks;
 #[cfg(test)]
@@ -101,17 +120,21 @@ mod gpu_tests_materials;
 #[cfg(test)]
 mod gpu_tests_models;
 
+pub use billboard::{Billboard, BillboardStyle, Facing};
 pub use bounds::{Aabb, Frustum, Ray};
 pub use camera::{Camera3D, Projection};
 pub use cluster::MAX_LIGHTS;
 pub use decals::{Decal, MAX_DECALS};
 pub use environment::{Environment, EnvironmentOptions};
+pub use impostor::{Impostor, ImpostorOptions, MAX_IMPOSTOR_VIEWS};
+pub use label::LabelStyle;
 pub use layers::{
     Anisotropy, Clearcoat, EXT_ANISOTROPY, EXT_CLEARCOAT, EXT_FUR, EXT_IRIDESCENCE, EXT_OUTLINE,
     EXT_SHEEN, EXT_SPECULAR, EXT_SUBSURFACE, EXT_TRANSMISSION, EXT_XRAY, Fur, Iridescence, Outline,
     Sheen, Specular, Transmission,
 };
 pub use light::{DirectionalLight, PointLight, SpotLight};
+pub use lod::{Lod, LodState};
 pub use material::{AlphaMode, Material, MaterialGpu, TextureTransform, UvSets};
 pub use mesh::{Mesh, RayHit};
 pub use model::{Model, ModelInstance, ModelPart};
@@ -126,8 +149,13 @@ pub use statics::StaticGroup;
 pub use stencil::{Stencil, StencilOp, StencilTest};
 pub use submit::{DrawId, Placement, Scene, ScenePick, pick};
 pub use surface_shader::SurfaceShader;
+pub use terrain::{
+    Brush, BrushMode, HeightMap, LayerRule, SplatRules, Terrain, TerrainDrawOptions, TerrainLayer,
+    TerrainOptions,
+};
 pub use transparency::Transparency;
 pub use vertex::{MeshData, Vertex3D};
+pub use water::{Water, WaterOptions};
 
 pub(crate) use render::SceneRenderer;
 

@@ -196,6 +196,7 @@ fn encode_shadows(
         pass.set_scissor_rect(x, y, s, s);
         calls += r.draw_batches(shared, &mut pass, at, batches, &mut state);
     }
+    calls += r.draw_large_shadows(&mut pass, at.1, p);
     calls
 }
 
@@ -256,6 +257,10 @@ pub(crate) fn encode_scene(
         pass.set_vertex_buffer(1, instances.slice(..));
     };
     let mut pass = begin_hdr_pass(encoder, &color, &depth_stencil, true);
+    pass.set_bind_group(0, &frame_group, &[]);
+    // Terrain, cut-out billboards and dithered fades set their own
+    // pipelines, group 1 and vertex buffers.
+    calls += r.draw_large_opaque(&mut pass, slot);
     bind(&mut pass);
     let mut state = PassState::default();
     calls += r.draw_batches(shared, &mut pass, at, &p.opaque, &mut state);
@@ -299,7 +304,11 @@ pub(crate) fn encode_scene(
         calls += r.draw_batches(shared, &mut pass, at, &p.transmit, &mut state);
     }
     calls += r.draw_batches(shared, &mut pass, at, &p.xray, &mut state);
-    if !p.oit.is_empty()
+    // Water and blended billboards join the accumulation when the scene
+    // uses order-independent transparency, and draw after the sorted
+    // blended meshes otherwise.
+    let large_oit = r.large_oit(slot);
+    if (!p.oit.is_empty() || large_oit)
         && let (Some(oit), Some(composite)) = (
             r.slot(slot).features.oit.as_ref(),
             r.features.composite().cloned(),
@@ -312,6 +321,9 @@ pub(crate) fn encode_scene(
             bind(&mut accum);
             let mut s = PassState::default();
             calls += r.draw_batches(shared, &mut accum, at, &p.oit, &mut s);
+            if large_oit {
+                calls += r.draw_large_blend(&mut accum, slot, true);
+            }
         }
         pass = begin_hdr_pass(encoder, &color, &depth_stencil, false);
         pass.set_pipeline(&composite);
@@ -323,6 +335,9 @@ pub(crate) fn encode_scene(
         state = PassState::default();
     }
     calls += r.draw_batches(shared, &mut pass, at, &p.blend, &mut state);
+    if !large_oit {
+        calls += r.draw_large_blend(&mut pass, slot, false);
+    }
     // GPU particles and other extensions draw over the blended meshes with
     // the frame bind group bound; they set their own pipelines.
     let ctx = crate::Draw3D {

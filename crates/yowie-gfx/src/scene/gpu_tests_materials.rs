@@ -223,6 +223,48 @@ fn order_independent_transparency_ignores_submission_order() {
 }
 
 #[test]
+fn water_joins_order_independent_transparency_by_depth() {
+    let Some(mut gfx) = headless(uvec2(SIZE, SIZE)) else {
+        return;
+    };
+    let quad = mesh(&gfx, &MeshData::plane(2.0, 1));
+    let floor = mesh(&gfx, &MeshData::plane(8.0, 1));
+    let water = Water::new(
+        &gfx,
+        WaterOptions {
+            size: yowie_core::Vec2::splat(8.0),
+            waves: 0.0,
+            foam: 0.0,
+            ..WaterOptions::default()
+        },
+    );
+    // From straight above: a red pane at height `y` over water at 0 and
+    // a white floor at -2.
+    let cam = Camera3D::orthographic(Vec3::new(0.0, 3.0, 0.01), Vec3::ZERO, 3.0);
+    let mut draw = |y: f32| {
+        gfx.scene(&cam, |s| {
+            dark(s);
+            s.set_ambient(Color::WHITE);
+            s.draw(&floor, &unlit(Color::WHITE), Vec3::new(0.0, -2.0, 0.0));
+            let pane = Material {
+                alpha_mode: AlphaMode::Blend,
+                ..unlit(Color::rgba(1.0, 0.0, 0.0, 0.7))
+            };
+            s.draw(&quad, &pane, Vec3::new(0.0, y, 0.0));
+            s.draw_water(&water);
+        });
+        render(&mut gfx)
+    };
+    let above = rgb(&draw(1.0), SIZE / 2, SIZE / 2);
+    let below = rgb(&draw(-1.0), SIZE / 2, SIZE / 2);
+    // The water accumulates with the pane, so the nearer one weighs more.
+    assert!(
+        above[0] > below[0] + 30.0,
+        "pane above {above:?}, below {below:?}"
+    );
+}
+
+#[test]
 fn decal_colours_only_inside_its_box() {
     let Some(mut gfx) = headless(uvec2(SIZE, SIZE)) else {
         return;

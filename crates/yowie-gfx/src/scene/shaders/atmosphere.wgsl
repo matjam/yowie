@@ -51,9 +51,20 @@ fn atmosphere_scatter(d: vec3<f32>, dist: f32, steps: i32, sun_steps: i32) -> Sc
     if t1 <= t0 {
         return out;
     }
-    let ground = ray_sphere(origin, d, radius);
-    if ground.y > 0.0 && ground.x > 0.0 {
-        t1 = min(t1, ground.x);
+    // The ground is found from the camera's altitude directly, with the
+    // root written as c / (sqrt(h) - b): at a planet's radius, the usual
+    // dot(origin, origin) - radius^2 and -b - sqrt(h) round a camera on
+    // the ground to a tiny positive distance at random, which cut
+    // downward rays short in scattered pixels.
+    let alt = frame.beta_m.z;
+    let gb = (radius + alt) * dot(frame.sky_up.xyz, d);
+    let gc = alt * (2.0 * radius + alt);
+    let gh = gb * gb - gc;
+    if gb < 0.0 && gh >= 0.0 {
+        let ground = gc / (sqrt(gh) - gb);
+        if ground > 0.0 {
+            t1 = min(t1, ground);
+        }
     }
     t1 = min(t1, t0 + dist);
     if t1 <= t0 {

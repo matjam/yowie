@@ -75,6 +75,9 @@ pub(crate) struct SceneRenderer {
     pub(super) generation: u64,
     /// Transmission, transparency, decal and surface shader state.
     pub(super) features: Features,
+    /// Terrain, water, billboard and impostor pipelines and buffers,
+    /// created with the first scene that draws one (`large.rs`).
+    pub(super) large: Option<Box<super::large::LargeRenderer>>,
 }
 
 fn black_cube(device: &wgpu::Device) -> wgpu::TextureView {
@@ -162,6 +165,7 @@ impl SceneRenderer {
             prepared: Prepared::default(),
             frame: 0,
             generation: 0,
+            large: None,
         }
     }
 
@@ -353,6 +357,11 @@ impl SceneRenderer {
         fill_frame(&self.records[ri], v, &mut prepared.frame);
         let env = self.choose_env(shared, encoder, ri, slot, &mut prepared.frame);
         let grid = self.write_probes(shared, encoder, ri, slot, v.capture);
+        if matches!(slot, SlotId::Scene(_)) {
+            // Before the features: blended water and billboards decide
+            // whether the slot needs transparency targets.
+            self.prepare_large(shared, ri, &prepared, stats);
+        }
         self.prepare_features(shared, ri, slot, &mut prepared);
         self.upload(shared, ri, slot, &prepared);
         let any_shadows = !prepared.shadows.is_empty();

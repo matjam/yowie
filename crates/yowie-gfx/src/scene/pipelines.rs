@@ -27,6 +27,12 @@ pub(crate) const OIT_ACCUM_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rg
 /// The format of the revealage target.
 pub(crate) const OIT_REVEAL_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::R16Float;
 
+/// The engine's mesh program with the identity surface program: what the
+/// built-in mesh pipelines and the large-scene classes compile.
+pub(crate) fn engine_source(cube_array: bool) -> String {
+    mesh_source(DEFAULT_HOOK, cube_array)
+}
+
 /// The engine's mesh program followed by `hook`, the source defining
 /// `fn material`. `cube_array` picks how the reflection probe cubes are
 /// bound (see `probes::cube_arrays`). The engine part ends with a newline,
@@ -136,7 +142,7 @@ impl ScenePipelines {
     /// probe cubes are bound (see `probes::cube_arrays`).
     pub(crate) fn new(device: &wgpu::Device, cube_array: bool) -> Self {
         let sky_src = [COMMON, ATMOSPHERE, SKY].join("\n");
-        let mesh_src = mesh_source(DEFAULT_HOOK, cube_array);
+        let mesh_src = engine_source(cube_array);
         Self {
             mesh_module: trusted_module(device, "yowie mesh", &mesh_src),
             sky_module: trusted_module(device, "yowie sky", &sky_src),
@@ -320,9 +326,42 @@ fn entry_points(key: MeshKey) -> (&'static str, Option<&'static str>) {
     (vs, fs)
 }
 
+/// The two colour targets of the order-independent transparency
+/// accumulation pass: weighted colour added up, revealage multiplied down.
+pub(crate) fn oit_targets() -> [Option<wgpu::ColorTargetState>; 2] {
+    use wgpu::{BlendComponent, BlendFactor as F, BlendOperation as Op};
+    let add = BlendComponent {
+        src_factor: F::One,
+        dst_factor: F::One,
+        operation: Op::Add,
+    };
+    let reveal = BlendComponent {
+        src_factor: F::Zero,
+        dst_factor: F::OneMinusSrc,
+        operation: Op::Add,
+    };
+    [
+        Some(wgpu::ColorTargetState {
+            format: OIT_ACCUM_FORMAT,
+            blend: Some(wgpu::BlendState {
+                color: add,
+                alpha: add,
+            }),
+            write_mask: wgpu::ColorWrites::ALL,
+        }),
+        Some(wgpu::ColorTargetState {
+            format: OIT_REVEAL_FORMAT,
+            blend: Some(wgpu::BlendState {
+                color: reveal,
+                alpha: reveal,
+            }),
+            write_mask: wgpu::ColorWrites::ALL,
+        }),
+    ]
+}
+
 /// The colour targets of a mesh pass.
 fn color_targets(pass: MeshPass) -> Vec<Option<wgpu::ColorTargetState>> {
-    use wgpu::{BlendComponent, BlendFactor as F, BlendOperation as Op};
     let hdr = |blend| {
         Some(wgpu::ColorTargetState {
             format: HDR_FORMAT,
@@ -336,36 +375,7 @@ fn color_targets(pass: MeshPass) -> Vec<Option<wgpu::ColorTargetState>> {
         MeshPass::Blend | MeshPass::Transmit | MeshPass::Outline | MeshPass::XRay => {
             vec![hdr(Some(PREMULTIPLIED))]
         }
-        MeshPass::Oit => {
-            let add = BlendComponent {
-                src_factor: F::One,
-                dst_factor: F::One,
-                operation: Op::Add,
-            };
-            let reveal = BlendComponent {
-                src_factor: F::Zero,
-                dst_factor: F::OneMinusSrc,
-                operation: Op::Add,
-            };
-            vec![
-                Some(wgpu::ColorTargetState {
-                    format: OIT_ACCUM_FORMAT,
-                    blend: Some(wgpu::BlendState {
-                        color: add,
-                        alpha: add,
-                    }),
-                    write_mask: wgpu::ColorWrites::ALL,
-                }),
-                Some(wgpu::ColorTargetState {
-                    format: OIT_REVEAL_FORMAT,
-                    blend: Some(wgpu::BlendState {
-                        color: reveal,
-                        alpha: reveal,
-                    }),
-                    write_mask: wgpu::ColorWrites::ALL,
-                }),
-            ]
-        }
+        MeshPass::Oit => oit_targets().to_vec(),
     }
 }
 

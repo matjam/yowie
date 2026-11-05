@@ -113,8 +113,11 @@ impl Graphics {
         let mut rec = renderer.take_record();
         rec.reset(list, *camera, view_size);
         rec.time = time;
+        rec.large.time = time;
         let r = f(&mut Scene { rec: &mut rec });
+        let labels = std::mem::take(&mut rec.large.labels);
         renderer.push_record(rec);
+        super::label::draw_labels(self, camera, view_size, labels);
         r
     }
 }

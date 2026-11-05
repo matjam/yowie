@@ -18,17 +18,21 @@ struct OitOut {
 // each fragment adds its premultiplied colour times a weight that falls
 // with distance, and multiplies the revealage by one minus its alpha. The
 // weight is a tenth of the paper's equation 7, which keeps the 16-bit
-// accumulation clear of overflow.
+// accumulation clear of overflow. `rgb` is linear colour, `a` coverage
+// and `z` the view depth. Water and billboards (`large.wgsl`) write
+// through this too.
+fn oit_out(rgb: vec3<f32>, a: f32, z: f32) -> OitOut {
+    let w = a * clamp(1.0 / (1e-5 + pow(z / 5.0, 2.0) + pow(z / 200.0, 6.0)), 1e-3, 300.0);
+    var o: OitOut;
+    o.accum = vec4<f32>(rgb * a, a) * w;
+    o.reveal = a;
+    return o;
+}
+
 @fragment
 fn fs_oit(in: VertexOut, @builtin(front_facing) front: bool) -> OitOut {
     let c = lit(in, front);
-    let a = clamp(c.a, 0.0, 1.0);
-    let z = in.view_depth;
-    let w = a * clamp(1.0 / (1e-5 + pow(z / 5.0, 2.0) + pow(z / 200.0, 6.0)), 1e-3, 300.0);
-    var o: OitOut;
-    o.accum = vec4<f32>(c.rgb * a, a) * w;
-    o.reveal = a;
-    return o;
+    return oit_out(c.rgb, clamp(c.a, 0.0, 1.0), in.view_depth);
 }
 
 // A transmissive surface: its own reflection and diffuse light, plus what

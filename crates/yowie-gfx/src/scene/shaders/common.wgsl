@@ -33,6 +33,7 @@ struct Frame {
     sky_zenith: vec4<f32>,
     // w is the air (1 minus vacuum).
     sky_horizon: vec4<f32>,
+    // w multiplies the distance aerial perspective integrates over.
     sky_ground: vec4<f32>,
     // Linear sun disc radiance; w is its angular radius.
     sun_disc: vec4<f32>,

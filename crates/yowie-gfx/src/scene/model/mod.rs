@@ -6,6 +6,7 @@ mod draw;
 mod extensions;
 mod instance;
 mod load;
+mod parts;
 mod textures;
 
 use std::collections::HashMap;

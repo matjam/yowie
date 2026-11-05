@@ -162,7 +162,7 @@ impl SceneRenderer {
                 ));
             }
         }
-        if !p.oit.is_empty() {
+        if !p.oit.is_empty() || self.large_oit(slot_id) {
             if self.features.composite.is_none() {
                 self.features.composite = Some(composite_pipeline(device, &self.layouts));
             }
