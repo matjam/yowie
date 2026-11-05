@@ -27,6 +27,9 @@ fn object(v: &Value) -> Object {
         visible: flag(v, "visible", true),
         shape: shape(v),
         properties: properties(v),
+        template: Some(string(v, "template"))
+            .filter(|t| !t.is_empty())
+            .map(str::to_string),
     }
 }
 

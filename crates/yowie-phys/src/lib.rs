@@ -38,6 +38,8 @@ mod error;
 mod event;
 #[cfg(feature = "gfx")]
 mod gfx_debug;
+#[cfg(feature = "gfx")]
+mod gfx_soft;
 mod ids;
 mod joint;
 mod stepper;

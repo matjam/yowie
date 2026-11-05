@@ -34,9 +34,11 @@
 //!   the scene through these same passes into cube faces
 //!   (`SceneRenderer::render_view` with a capture slot) and are read by
 //!   `ambient_specular` and `ambient_diffuse` in `probes/probes.wgsl`.
-//! - **GPU particles** draw in the HDR pass after the blended meshes, in
-//!   `passes.rs` (`encode_scene`) beside the lines, with the frame bind
-//!   group bound.
+//! - **GPU particles** and other extensions queue a [`GpuDraw`](crate::GpuDraw)
+//!   with [`Scene::draw_gpu`]; `passes.rs` (`encode_scene`) runs their
+//!   compute work before the HDR pass and their draws after the blended
+//!   meshes, beside the lines, with the frame bind group bound. Probe
+//!   captures leave them out.
 //! - **Order-independent transparency** replaces the sorted blended
 //!   batches (`Prepared::blend`, built in `prepare.rs`, drawn in
 //!   `passes.rs`) with an accumulation pass and a composite before the
@@ -100,6 +102,9 @@ pub use submit::{DrawId, Placement, Scene, ScenePick, pick};
 pub use vertex::{MeshData, Vertex3D};
 
 pub(crate) use render::SceneRenderer;
+
+/// Scenes recorded for one output.
+pub(crate) type SceneRecordList = Vec<record::SceneRecord>;
 pub(crate) use resolve::resolve_output;
 
 impl crate::Graphics {

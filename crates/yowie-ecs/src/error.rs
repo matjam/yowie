@@ -34,6 +34,23 @@ pub enum Error {
         /// How many unregistered component types it carries.
         count: usize,
     },
+    /// Systems of one stage constrain each other in a loop, so no order
+    /// satisfies them. Lists the systems in the loop and any that wait on
+    /// it.
+    #[error("system ordering has a cycle among {}", .systems.join(", "))]
+    OrderCycle {
+        /// The names of the systems that could not be placed.
+        systems: Vec<String>,
+    },
+    /// A system is ordered before or after a name that no system or set
+    /// has.
+    #[error("system {system:?} is ordered against {target:?}, which names no system or set")]
+    UnknownOrderTarget {
+        /// The system holding the constraint.
+        system: String,
+        /// The name it refers to.
+        target: String,
+    },
     /// A component value failed to encode or decode.
     #[error("component {name:?}: {source}")]
     Component {

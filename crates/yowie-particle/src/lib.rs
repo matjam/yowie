@@ -27,8 +27,12 @@
 //! ```
 //!
 //! [`presets`] has a fire, smoke, sparks, rain and confetti to start from.
-//! The GPU-instanced path comes later and will share [`Emitter`] and the
-//! birth code of the CPU system.
+//!
+//! [`GpuSystem`] runs the same [`Emitter`] on the GPU with compute shaders
+//! and one instanced draw, for tens of thousands to hundreds of thousands
+//! of particles in 2D or in a 3D scene. [`Particles`] wraps either one, so
+//! a game can switch an effect between [`Backend::Cpu`] and
+//! [`Backend::Gpu`] without changing the code that drives it.
 
 #![warn(missing_docs)]
 
@@ -36,13 +40,18 @@ mod curve;
 mod draw;
 mod emitter;
 mod error;
+mod gpu;
+mod particles;
 pub mod presets;
+mod schedule;
 mod spawn;
 mod system;
 
 pub use curve::{ColorKey, Curve, Range, gradient_at};
 pub use emitter::{Attractor, Blend, Burst, Emitter, Shape};
 pub use error::{ParticleError, Result};
+pub use gpu::{GpuSystem, gpu_supported};
+pub use particles::{Backend, Particles};
 pub use spawn::Particle;
 pub use system::System;
 

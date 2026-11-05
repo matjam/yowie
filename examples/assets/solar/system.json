@@ -1,0 +1,107 @@
+{
+  "version": 1,
+  "name": "solar system",
+  "properties": { "belt": 400, "belt_seed": 11 },
+  "entities": [
+    {
+      "name": "Sun",
+      "components": {
+        "solar.body": { "radius": 1.4, "color": [1.0, 0.78, 0.35], "emissive": 3.0 },
+        "solar.spin": { "speed": 0.2 },
+        "Transform": { "translation": [0.0, 0.0, 0.0], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [1.0, 1.0, 1.0] }
+      }
+    },
+    {
+      "name": "Ember",
+      "parent": 1,
+      "components": {
+        "solar.body": { "radius": 0.35, "color": [0.85, 0.47, 0.3] },
+        "solar.orbit": { "radius": 3.2, "speed": 0.9, "angle": 5.57 },
+        "solar.spin": { "speed": 1.0 },
+        "Transform": { "translation": [0.0, 0.0, 0.0], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [1.0, 1.0, 1.0] }
+      }
+    },
+    {
+      "name": "Verdis",
+      "parent": 1,
+      "components": {
+        "solar.body": { "radius": 0.55, "color": [0.37, 0.67, 0.43] },
+        "solar.orbit": { "radius": 5.4, "speed": 0.55, "angle": 2.27 },
+        "solar.spin": { "speed": 1.0 },
+        "Transform": { "translation": [0.0, 0.0, 0.0], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [1.0, 1.0, 1.0] }
+      }
+    },
+    {
+      "name": "Verdis I",
+      "parent": 3,
+      "prefab": "moon",
+      "components": { "solar.orbit": { "radius": 1.15, "speed": 2.0, "angle": 2.71 } }
+    },
+    {
+      "name": "Halcyon",
+      "parent": 1,
+      "components": {
+        "solar.body": { "radius": 0.8, "color": [0.46, 0.6, 0.9] },
+        "solar.orbit": { "radius": 8.2, "speed": 0.32, "angle": 2.39 },
+        "solar.spin": { "speed": 1.0 },
+        "Transform": { "translation": [0.0, 0.0, 0.0], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [1.0, 1.0, 1.0] }
+      }
+    },
+    {
+      "name": "Halcyon I",
+      "parent": 5,
+      "prefab": "moon",
+      "components": { "solar.orbit": { "radius": 1.4, "speed": 2.0, "angle": 3.64 } }
+    },
+    {
+      "name": "Halcyon II",
+      "parent": 5,
+      "prefab": "moon",
+      "components": { "solar.orbit": { "radius": 1.9, "speed": 3.0, "angle": 5.33 } }
+    },
+    {
+      "name": "Umber",
+      "parent": 1,
+      "components": {
+        "solar.body": { "radius": 0.45, "color": [0.72, 0.55, 0.4] },
+        "solar.orbit": { "radius": 11.0, "speed": 0.2, "angle": 4.24 },
+        "solar.spin": { "speed": 1.0 },
+        "Transform": { "translation": [0.0, 0.0, 0.0], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [1.0, 1.0, 1.0] }
+      }
+    },
+    {
+      "name": "Umber I",
+      "parent": 8,
+      "prefab": "moon",
+      "components": { "solar.orbit": { "radius": 1.05, "speed": 2.0, "angle": 6.08 } }
+    },
+    {
+      "name": "Gale",
+      "parent": 1,
+      "components": {
+        "solar.body": { "radius": 1.0, "color": [0.88, 0.76, 0.58] },
+        "solar.orbit": { "radius": 19.0, "speed": 0.12, "angle": 0.9 },
+        "solar.spin": { "speed": 1.4 },
+        "Transform": { "translation": [0.0, 0.0, 0.0], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [1.0, 1.0, 1.0] }
+      }
+    },
+    {
+      "name": "Gale I",
+      "parent": 10,
+      "prefab": "moon",
+      "components": { "solar.orbit": { "radius": 1.6, "speed": 2.2, "angle": 0.4 } }
+    },
+    {
+      "name": "Gale II",
+      "parent": 10,
+      "prefab": "moon",
+      "components": { "solar.orbit": { "radius": 2.1, "speed": 1.6, "angle": 2.6 } }
+    },
+    {
+      "name": "Gale III",
+      "parent": 10,
+      "prefab": "moon",
+      "components": { "solar.orbit": { "radius": 2.7, "speed": 1.1, "angle": 4.7 } }
+    }
+  ]
+}
