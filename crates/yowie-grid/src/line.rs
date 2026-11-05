@@ -28,7 +28,7 @@ pub fn line(a: IVec2, b: IVec2) -> Vec<IVec2> {
 /// Returns every cell the straight segment from the centre of `a` to the
 /// centre of `b` touches, both ends included, in order from `a`.
 ///
-/// Unlike [`line`], a segment that crosses a corner between four cells
+/// Unlike [`line`](fn@line), a segment that crosses a corner between four cells
 /// includes both cells beside the corner as well as the diagonal one, so
 /// it is the right test for "can a projectile or a sight line pass".
 pub fn supercover_line(a: IVec2, b: IVec2) -> Vec<IVec2> {

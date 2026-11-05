@@ -14,5 +14,5 @@ pub enum Error {
     Invalid(String),
 }
 
-/// A result whose error is [`Error`].
+/// A result whose error is [`Error`](enum@Error).
 pub type Result<T> = std::result::Result<T, Error>;

@@ -92,7 +92,7 @@ impl Time {
         self.scale
     }
 
-    /// Sets the time scale, clamped to `0..=`[`MAX_TIME_SCALE`]. A scale of
+    /// Sets the time scale, clamped to `0.0..=64.0`. A scale of
     /// 0 stops game time like [`set_paused`](Time::set_paused) but keeps
     /// the pause flag as it is. NaN is ignored.
     pub fn set_scale(&mut self, scale: f32) {
