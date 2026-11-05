@@ -51,18 +51,14 @@ Dependency versions live once in the root `Cargo.toml` under
   never do.
 - No TODO comments; open questions go in the commit message or the report.
 
-## Windows check from macOS
+## Platforms
 
-`yowie-net` uses rustls with the ring provider, whose build script compiles
-C and needs the MSVC headers, which a Mac does not have. Check everything
-else for Windows with:
-
-```
-cargo check --target x86_64-pc-windows-msvc --workspace --exclude yowie-net --exclude yowie
-cargo check --target x86_64-pc-windows-msvc -p yowie --no-default-features --features audio,phys,ui,console,particle,tiled
-```
-
-CI on `windows-latest` builds the whole workspace, ring included.
+Development happens on macOS, and only macOS is built and tested locally.
+Do not cross-compile or cross-check Windows or Linux. Write the code so they
+work: portable code, platform-specific code behind `cfg`, required system
+packages documented. Do not change dependencies or design to make a local
+cross-check pass. Windows and Linux are tested on those platforms later
+(CI runs on all three).
 
 ## Examples
 
