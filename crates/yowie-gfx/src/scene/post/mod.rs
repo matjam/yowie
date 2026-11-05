@@ -29,6 +29,8 @@ mod exposure;
 mod frame2d;
 #[cfg(test)]
 mod gpu_tests;
+#[cfg(test)]
+mod gpu_tests_large;
 mod lut;
 mod pipelines;
 mod scene_chain;

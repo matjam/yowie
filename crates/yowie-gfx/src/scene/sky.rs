@@ -31,6 +31,11 @@ pub struct Atmosphere {
     pub mie_forward: f32,
     /// The sunlight the scattering divides up; zero means 22.
     pub intensity: f32,
+    /// Multiplies the distance through the air between the camera and a
+    /// surface (aerial perspective), so a small scene can fade into the
+    /// sky's colour like distant mountains without thickening the sky
+    /// itself; zero means 1.
+    pub aerial: f32,
 }
 
 impl Atmosphere {
@@ -45,6 +50,15 @@ impl Atmosphere {
     /// The same atmosphere seen from `altitude` above the ground.
     pub fn at_altitude(self, altitude: f32) -> Self {
         Self { altitude, ..self }
+    }
+
+    /// The same atmosphere with the distance to surfaces multiplied by
+    /// `scale` for aerial perspective; see [`aerial`](Self::aerial).
+    pub fn with_aerial(self, scale: f32) -> Self {
+        Self {
+            aerial: scale,
+            ..self
+        }
     }
 
     pub(crate) fn resolved(&self) -> Atmosphere {
@@ -64,6 +78,9 @@ impl Atmosphere {
         }
         if a.intensity <= 0.0 {
             a.intensity = 22.0;
+        }
+        if a.aerial <= 0.0 {
+            a.aerial = 1.0;
         }
         a.altitude = a.altitude.max(0.0);
         a
@@ -193,6 +210,7 @@ impl Sky {
             f.atmos = [a.planet_radius, a.height, a.height / 7.5, a.height / 50.0];
             f.beta_r = a.rayleigh.extend(a.intensity).to_array();
             f.beta_m = [a.mie, a.mie_forward, a.altitude, 1.0];
+            f.sky_ground[3] = a.aerial;
         }
     }
 }
@@ -201,7 +219,9 @@ impl Sky {
 /// (when `end` is beyond `start`); exponential fog thickens with
 /// `density`; the denser wins. With `height_falloff` above zero the fog is
 /// full at and below `height` and thins above it along +Y, for mist in a
-/// valley. The sky is not fogged.
+/// valley: exponential fog then adds up the density along each view ray,
+/// so a camera on a hill looks down into the mist and through clear air
+/// over it. The sky is not fogged.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Fog {
     /// The fog's colour, sRGB.
@@ -250,6 +270,13 @@ impl Fog {
             density,
             ..Self::default()
         }
+    }
+
+    /// Valley mist: exponential fog of `density` per world unit at and
+    /// below world height `height`, thinning above it by a factor of e
+    /// every `1 / falloff` units.
+    pub fn valley(color: Color, density: f32, height: f32, falloff: f32) -> Self {
+        Self::exponential(color, density).with_height(height, falloff)
     }
 
     /// The same fog confined below `height`, thinning above it by

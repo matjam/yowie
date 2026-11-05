@@ -240,6 +240,22 @@ fn shade(s: Surface, frag: vec4<f32>, view_depth: f32) -> vec3<f32> {
     return color + shade_ambient(s) + s.emissive;
 }
 
+// The air a ray of length dist from height y0 to height y1 passes
+// through, in units of the fog's full density: full at and below height
+// h, thinning by e every 1 / k above it.
+fn height_fog_depth(y0: f32, y1: f32, dist: f32, h: f32, k: f32) -> f32 {
+    let a = min(y0, y1);
+    let b = max(y0, y1);
+    if b - a < 1e-3 {
+        return dist * min(exp(-(a - h) * k), 1.0);
+    }
+    var sum = clamp(h, a, b) - a;
+    if b > h {
+        sum += (exp(-(max(a, h) - h) * k) - exp(-(b - h) * k)) / k;
+    }
+    return dist * sum / (b - a);
+}
+
 // Distance and height fog, then the atmosphere between the eye and the
 // surface.
 fn apply_fog(color: vec3<f32>, world: vec3<f32>) -> vec3<f32> {
@@ -250,16 +266,20 @@ fn apply_fog(color: vec3<f32>, world: vec3<f32>) -> vec3<f32> {
     var f = 0.0;
     if fp.y > fp.x {
         f = clamp((dist - fp.x) / (fp.y - fp.x), 0.0, 1.0);
+        if fp.w > 0.0 {
+            f *= clamp(exp(-(world.y - fp.z) * fp.w), 0.0, 1.0);
+        }
     }
     if frame.fog_color.w > 0.0 {
-        f = max(f, 1.0 - exp(-frame.fog_color.w * dist));
-    }
-    if fp.w > 0.0 {
-        f *= clamp(exp(-(world.y - fp.z) * fp.w), 0.0, 1.0);
+        var depth = dist;
+        if fp.w > 0.0 {
+            depth = height_fog_depth(frame.camera.y, world.y, dist, fp.z, fp.w);
+        }
+        f = max(f, 1.0 - exp(-frame.fog_color.w * depth));
     }
     c = mix(c, frame.fog_color.rgb, f);
     if frame.beta_m.w > 0.5 && dist > 0.0 {
-        let sc = atmosphere_scatter(to / dist, dist, 4, 2);
+        let sc = atmosphere_scatter(to / dist, dist * frame.sky_ground.w, 4, 2);
         c = c * sc.transmittance + sc.radiance * frame.sky_horizon.w;
     }
     return c;
@@ -304,11 +324,10 @@ fn oct_encode(n: vec3<f32>) -> vec2<f32> {
     return (1.0 - abs(p.yx)) * select(vec2<f32>(-1.0), vec2<f32>(1.0), p >= vec2<f32>(0.0));
 }
 
-fn lit_post(in: VertexOut, front: bool) -> PostOut {
-    let s = surface(in, front);
-    let total = shade(s, in.clip, in.view_depth);
+// The outputs of surface `s`, shaded to `total` before fog, at `world`.
+fn post_out(s: Surface, total: vec3<f32>, world: vec3<f32>) -> PostOut {
     var out: PostOut;
-    out.color = vec4<f32>(apply_fog(total, in.world), s.alpha);
+    out.color = vec4<f32>(apply_fog(total, world), s.alpha);
     let weights = vec3<f32>(0.2126, 0.7152, 0.0722);
     var ambient = 0.0;
     var spec = vec3<f32>(0.0);
@@ -320,6 +339,11 @@ fn lit_post(in: VertexOut, front: bool) -> PostOut {
     out.surface = vec4<f32>(oct_encode(s.normal), s.roughness, ambient);
     out.specular = vec4<f32>(spec, 1.0);
     return out;
+}
+
+fn lit_post(in: VertexOut, front: bool) -> PostOut {
+    let s = surface(in, front);
+    return post_out(s, shade(s, in.clip, in.view_depth), in.world);
 }
 
 @fragment

@@ -115,7 +115,7 @@ fn encode_shadows(
     r: &mut SceneRenderer,
     shared: &Shared,
     encoder: &mut wgpu::CommandEncoder,
-    ri: usize,
+    (ri, slot): (usize, SlotId),
     p: &Prepared,
     group: &wgpu::BindGroup,
     instances: &wgpu::Buffer,
@@ -151,6 +151,7 @@ fn encode_shadows(
         pass.set_scissor_rect(x, y, s, s);
         calls += r.draw_batches(shared, &mut pass, ri, format, batches, &mut state);
     }
+    calls += r.draw_large_shadows(&mut pass, slot, p);
     calls
 }
 
@@ -176,7 +177,7 @@ pub(crate) fn encode_scene(
     let format = r.slot(slot).format();
     let mut calls = 0;
     if !p.shadows.is_empty() {
-        calls += encode_shadows(r, shared, encoder, ri, p, &shadow_group, &instances);
+        calls += encode_shadows(r, shared, encoder, (ri, slot), p, &shadow_group, &instances);
     }
     let statics = r.statics_early(shared, encoder, ri, slot, &frame_group, &p.frame);
     let lines = r.slot(slot).lines.buffer.clone();
@@ -230,6 +231,7 @@ pub(crate) fn encode_scene(
         pass.write_timestamp(&s.set, s.begin);
     }
     pass.set_bind_group(0, &frame_group, &[]);
+    calls += r.draw_large_opaque(&mut pass, slot);
     pass.set_vertex_buffer(1, instances.slice(..));
     let mut state = PassState::default();
     calls += r.draw_batches(shared, &mut pass, ri, format, &p.opaque, &mut state);
@@ -274,6 +276,7 @@ pub(crate) fn encode_scene(
         state = PassState::default();
     }
     calls += r.draw_batches(shared, &mut pass, ri, format, &p.blend, &mut state);
+    calls += r.draw_large_blend(&mut pass, slot);
     // GPU particles and other extensions draw over the blended meshes with
     // the frame bind group bound; they set their own pipelines.
     let extra_targets = format.color_targets(None, false).split_off(1);

@@ -75,6 +75,9 @@ pub(crate) struct SceneRenderer {
     pub(super) generation: u64,
     /// The multisample counts above 1 the scene targets support.
     sample_counts: Vec<u32>,
+    /// Terrain, water, billboard and impostor pipelines and buffers,
+    /// created with the first scene that draws one (`large.rs`).
+    pub(super) large: Option<Box<super::large::LargeRenderer>>,
 }
 
 fn black_cube(device: &wgpu::Device) -> wgpu::TextureView {
@@ -162,6 +165,7 @@ impl SceneRenderer {
             frame: 0,
             generation: 0,
             sample_counts: sample_counts(&shared.gpu.adapter, device),
+            large: None,
         }
     }
 
@@ -364,6 +368,9 @@ impl SceneRenderer {
             self.atlas = Some(ShadowAtlas::new(device));
         }
         self.bind_groups(shared, ri, slot, env, grid, any_shadows);
+        if matches!(slot, SlotId::Scene(_)) {
+            self.prepare_large(shared, ri, &prepared, stats);
+        }
         let calls = super::passes::encode_scene(self, shared, encoder, ri, slot, &prepared, stats);
         stats.culled_3d += prepared.culled;
         stats.lights += prepared.lights.len() as u32;

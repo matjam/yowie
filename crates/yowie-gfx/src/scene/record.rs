@@ -114,6 +114,8 @@ pub(crate) struct SceneRecord {
     /// The output's clear colour, taken over from its draw list by the
     /// first scene of each output when the frame renders.
     pub(crate) output_clear: Option<Color>,
+    /// Terrain, water, billboards, impostors and labels.
+    pub(crate) large: super::large::LargeRecord,
     /// Reflection probes the scene shows, in the order added.
     pub(crate) probes: Vec<super::probes::ProbeUse>,
     /// The light probe grid lighting the scene.
@@ -157,6 +159,7 @@ impl SceneRecord {
         self.customs.clear();
         self.background_color = [0.0; 4];
         self.output_clear = None;
+        self.large.clear();
         self.probes.clear();
         self.light_grid = None;
         self.probe_hidden.clear();
