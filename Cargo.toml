@@ -52,6 +52,15 @@ yowie-particle = { workspace = true, optional = true }
 yowie-tiled = { workspace = true, optional = true }
 thiserror.workspace = true
 log.workspace = true
+winit.workspace = true
+gilrs.workspace = true
+arboard.workspace = true
+env_logger.workspace = true
+pollster.workspace = true
+image.workspace = true
+
+[dev-dependencies]
+image.workspace = true
 
 [workspace.dependencies]
 # Workspace crates
@@ -78,7 +87,8 @@ yowie-net = { path = "crates/yowie-net", version = "0.1.0" }
 
 # Platform, GPU and maths
 winit = "0.30.13"
-wgpu = "30.0.1"
+# Vulkan, Metal and DX12 only; WGSL is compiled by naga inside wgpu.
+wgpu = { version = "30.0.1", default-features = false, features = ["std", "parking_lot", "dx12", "metal", "vulkan", "wgsl"] }
 glam = { version = "0.34.2", features = ["serde", "bytemuck"] }
 bytemuck = { version = "1.25.2", features = ["derive"] }
 raw-window-handle = "0.6.2"
@@ -93,7 +103,8 @@ ktx2 = "0.5.0"
 intel_tex_2 = "0.5.0"
 texture2ddecoder = "0.1.2"
 gltf = "1.4.1"
-cosmic-text = "0.19.0"
+# No fontconfig: Yowie loads only the fonts a game gives it.
+cosmic-text = { version = "0.19.0", default-features = false, features = ["std", "swash"] }
 swash = "0.2.10"
 hyphenation = "0.8.4"
 lyon = "1.0.19"
