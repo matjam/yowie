@@ -6,5 +6,21 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[[bin]]
+name = "yowie-pack"
+path = "src/bin/yowie-pack.rs"
+
 [dependencies]
 yowie-core.workspace = true
+thiserror.workspace = true
+log.workspace = true
+notify.workspace = true
+zstd.workspace = true
+flate2.workspace = true
+crossbeam-channel.workspace = true
+rayon.workspace = true
+parking_lot.workspace = true
+clap.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
