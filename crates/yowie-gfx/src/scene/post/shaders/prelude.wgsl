@@ -10,7 +10,7 @@ struct Post {
     tone: vec4<f32>,
     // Bloom strength, threshold, knee, ghosts.
     bloom: vec4<f32>,
-    // Occlusion strength, radius in world units, bloom mip count, 0.
+    // Occlusion strength, radius in world units, 0, 0.
     occlusion: vec4<f32>,
     // The white balance matrix's columns.
     balance0: vec4<f32>,
@@ -96,4 +96,45 @@ fn view_distance(uv: vec2<f32>, d: f32) -> f32 {
 // Interleaved gradient noise (Jimenez): a per-pixel value in 0..1.
 fn ign(p: vec2<f32>) -> f32 {
     return fract(52.9829189 * fract(0.06711056 * p.x + 0.00583715 * p.y));
+}
+
+const PI: f32 = 3.14159265;
+
+// Clip-space x and y to texture coordinates.
+fn ndc_to_uv(ndc: vec2<f32>) -> vec2<f32> {
+    return vec2<f32>(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5);
+}
+
+// The unit vector an octahedral pair encodes (the surface image's xy).
+fn oct_decode(e: vec2<f32>) -> vec3<f32> {
+    var n = vec3<f32>(e, 1.0 - abs(e.x) - abs(e.y));
+    let t = max(-n.z, 0.0);
+    n.x += select(t, -t, n.x >= 0.0);
+    n.y += select(t, -t, n.y >= 0.0);
+    return normalize(n);
+}
+
+// A world-space direction in view space.
+fn to_view(d: vec3<f32>) -> vec3<f32> {
+    return (post.view * vec4<f32>(d, 0.0)).xyz;
+}
+
+// Whether the projection is orthographic.
+fn ortho() -> bool {
+    return post.proj[3][3] > 0.5;
+}
+
+// The direction from a view-space point to the eye.
+fn to_eye(p: vec3<f32>) -> vec3<f32> {
+    if ortho() {
+        return vec3<f32>(0.0, 0.0, 1.0);
+    }
+    return normalize(-p);
+}
+
+// Where the point at `uv` and stored depth `d` was on screen last frame,
+// following the camera alone.
+fn reproject(uv: vec2<f32>, d: f32) -> vec2<f32> {
+    let prev = post.reproject * vec4<f32>(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0, d, 1.0);
+    return ndc_to_uv(prev.xy / prev.w);
 }

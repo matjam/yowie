@@ -160,6 +160,7 @@ impl Graphics {
             self.begin_frame();
             return Ok(self.stats);
         };
+        self.shared.timer.lock().begin_frame(self.shared.device());
         let mut order = std::mem::take(&mut self.encode_order);
         order.push(0);
         let clear_color = self.clear_color();
@@ -264,6 +265,10 @@ impl Graphics {
                 let rendered =
                     scenes.render_list(shared, &mut encoder, *li, &list.mapping, &mut stats);
                 let clear = scenes.output_clear(*li);
+                let span = shared.span(crate::gpu_timer::Timed::Post);
+                if let Some(s) = &span {
+                    s.mark(&mut encoder, true);
+                }
                 stats.draw_calls_3d += post.run_scenes(
                     scenes,
                     shared,
@@ -274,6 +279,9 @@ impl Graphics {
                     clear,
                     self.time,
                 );
+                if let Some(s) = &span {
+                    s.mark(&mut encoder, false);
+                }
             }
             // Pass 3, the 2D overlay, which also carries UI and console
             // drawing on their layers.
@@ -296,6 +304,10 @@ impl Graphics {
             };
             stats.draw_calls += pass2d.encode(&mut encoder, scene_view, scene_format, clear, below);
             if let (Some(settings), Some(post)) = (&list.post, self.post.as_deref_mut()) {
+                let span = shared.span(crate::gpu_timer::Timed::Post);
+                if let Some(s) = &span {
+                    s.mark(&mut encoder, true);
+                }
                 stats.draw_calls_3d += post.run_frame(
                     shared.device(),
                     shared.queue(),
@@ -306,6 +318,9 @@ impl Graphics {
                     format,
                     self.time,
                 );
+                if let Some(s) = &span {
+                    s.mark(&mut encoder, false);
+                }
                 stats.draw_calls += pass2d.encode(&mut encoder, view, format, None, above);
             }
         }
@@ -324,13 +339,16 @@ impl Graphics {
         } else {
             None
         };
+        shared.timer.lock().resolve(&mut encoder);
         shared.queue().submit([encoder.finish()]);
+        shared.timer.lock().after_submit();
         if let Some(st) = frame.surface_texture {
             shared.queue().present(st);
         }
         if let Some(p) = pending {
             self.capture = Some(p.and_then(|p| p.finish(self.shared.device(), false)));
         }
+        stats.gpu = self.shared.timer.lock().latest();
         self.stats = stats;
         self.frame_number += 1;
         self.begin_frame();
@@ -387,6 +405,7 @@ impl Pass2D<'_> {
                 }
             }
         }
+        let span = self.shared.span(crate::gpu_timer::Timed::Overlay);
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("yowie 2d"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -399,7 +418,7 @@ impl Pass2D<'_> {
                 },
             })],
             depth_stencil_attachment: None,
-            timestamp_writes: None,
+            timestamp_writes: span.as_ref().map(crate::gpu_timer::Span::whole),
             occlusion_query_set: None,
             multiview_mask: None,
         });

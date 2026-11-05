@@ -63,6 +63,7 @@ mod shadow;
 mod sky;
 mod slot;
 mod submit;
+mod targets;
 mod textures;
 mod upload;
 mod vertex;

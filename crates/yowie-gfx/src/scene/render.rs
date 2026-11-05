@@ -12,6 +12,7 @@ use super::prepare::{Prepared, View, prepare};
 use super::record::SceneRecord;
 use super::shadow::ShadowAtlas;
 use super::slot::SceneSlot;
+use super::targets::{Outputs, SceneFormat, pick_samples, sample_counts};
 use super::textures::MaterialTextures;
 use crate::batch::{DrawList, ListTarget};
 use crate::graphics::FrameStats;
@@ -62,6 +63,8 @@ pub(crate) struct SceneRenderer {
     frame: u64,
     /// Bumped whenever a slot buffer is replaced, so bind groups rebuild.
     pub(super) generation: u64,
+    /// The multisample counts above 1 the scene targets support.
+    sample_counts: Vec<u32>,
 }
 
 fn black_cube(device: &wgpu::Device) -> wgpu::TextureView {
@@ -142,6 +145,7 @@ impl SceneRenderer {
             prepared: Prepared::default(),
             frame: 0,
             generation: 0,
+            sample_counts: sample_counts(&shared.gpu.adapter, device),
         }
     }
 
@@ -257,14 +261,16 @@ impl SceneRenderer {
             return None;
         }
         let size = UVec2::new(vp.w as u32, vp.h as u32);
-        let v = View::new(&rec.camera, size.as_vec2());
+        let steady = View::new(&rec.camera, size.as_vec2());
         let mut prepared = std::mem::take(&mut self.prepared);
-        prepare(rec, &v, &mut prepared);
+        prepare(rec, &steady, &mut prepared);
+        let (cut, jitter) = (rec.cut, rec.post.temporal_aa);
+        let v = self.slots[ri].set_camera(&steady, cut, jitter);
+        let rec = &self.records[ri];
         fill_frame(rec, &v, &mut prepared.frame);
         let env = self.choose_env(shared, encoder, ri, &mut prepared.frame);
-        self.slots[ri].ensure_targets(device, size);
-        let cut = self.records[ri].cut;
-        self.slots[ri].set_camera(&v, cut);
+        let format = self.scene_format(ri);
+        self.slots[ri].ensure_targets(device, size, format);
         self.upload(shared, ri, &prepared);
         let any_shadows = !prepared.shadows.is_empty();
         if any_shadows && self.atlas.is_none() {
@@ -299,6 +305,24 @@ impl SceneRenderer {
         stats.shadow_instances += prepared.shadow_instances;
         self.prepared = prepared;
         Some(vp)
+    }
+
+    /// The attachment layout scene `ri`'s post settings ask for: the
+    /// images its effects read, and its sample count lowered to what the
+    /// device supports.
+    fn scene_format(&self, ri: usize) -> SceneFormat {
+        let post = &self.records[ri].post;
+        let outputs = if post.wants_reflections() {
+            Outputs::Specular
+        } else if post.wants_occlusion() {
+            Outputs::Surface
+        } else {
+            Outputs::Color
+        };
+        SceneFormat {
+            samples: pick_samples(&self.sample_counts, post.samples),
+            outputs,
+        }
     }
 
     /// Picks the maps the scene lights with and records a sky bake when

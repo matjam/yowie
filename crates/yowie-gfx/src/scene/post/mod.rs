@@ -2,16 +2,21 @@
 //! a 2D frame) to the output.
 //!
 //! A scene's chain runs, in this order and only the steps its
-//! [`PostSettings`] turn on: the depth resolve of a multisampled scene,
-//! the motion of moved meshes, the depth pyramid, reflections and
-//! ambient occlusion, temporal anti-aliasing, motion blur, depth of field,
-//! automatic exposure, bloom, light shafts, then the composite (exposure,
-//! tone curve, grade and lens effects) into the scene's viewport, and
-//! FXAA after it. Each full-size step reads the image holding the picture
-//! and writes a spare one ([`targets::Src`]), so nothing is copied. With
-//! the default settings the chain is the composite alone, which is the
-//! resolve the renderer had before post-processing: exposure, the tone
-//! curve and composition over the background.
+//! [`PostSettings`] turn on (`steps.rs`): the depth copy (resolving
+//! multisampled depth) and its nearest-depth pyramid, ambient occlusion,
+//! reflections, both applied to the picture, light shafts, the motion of
+//! moved meshes, temporal anti-aliasing, motion blur, depth of field and
+//! automatic exposure; then bloom and the composite (exposure, tone
+//! curve, grade and lens effects) into the scene's viewport, and FXAA
+//! after it (`chain.rs`). Each full-size step reads the image holding the
+//! picture and writes a spare one, so nothing is copied. With the default
+//! settings the chain is the composite alone, which is the resolve the
+//! renderer had before post-processing: exposure, the tone curve and
+//! composition over the background.
+//!
+//! Images are made the first time a setting asks for them and kept at the
+//! scene's size; bind groups and pipelines are cached, so a frame records
+//! passes and nothing else.
 //!
 //! A 2D frame ([`Graphics::set_frame_post`](crate::Graphics::set_frame_post))
 //! draws its scenes and the game's 2D layers below
@@ -20,14 +25,19 @@
 //! interface layers on top.
 
 mod chain;
+mod exposure;
 mod frame2d;
+#[cfg(test)]
+mod gpu_tests;
 mod lut;
 mod pipelines;
 mod scene_chain;
 mod settings;
+mod steps;
 mod targets;
 mod tonemap;
 mod uniform;
+mod velocity;
 
 pub use lut::Lut;
 pub use settings::PostSettings;
@@ -139,11 +149,18 @@ pub(crate) struct PostRenderer {
     dummies: Dummies,
     /// The 2D frame post state of each output, by output key.
     pub(crate) frames: FramePost,
+    velocity: Option<velocity::VelocityPipeline>,
+    exposure: Option<exposure::ExposurePipelines>,
+    /// The device runs the auto exposure compute passes.
+    compute: bool,
 }
 
 impl PostRenderer {
     pub(crate) fn new(device: &wgpu::Device, queue: &wgpu::Queue) -> Self {
         Self {
+            velocity: None,
+            exposure: None,
+            compute: exposure::supported(device),
             pipes: PostPipelines::new(device),
             linear: device.create_sampler(&wgpu::SamplerDescriptor {
                 label: Some("yowie post linear"),

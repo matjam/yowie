@@ -1,5 +1,6 @@
 //! The finishing steps every chain ends with, for scenes and 2D frames
-//! alike: bloom, the composite and FXAA.
+//! alike: bloom, the composite and FXAA, and the helpers every step
+//! uses (inputs, bind group caching).
 
 use yowie_core::Rect;
 
@@ -19,9 +20,9 @@ pub(crate) struct Input<'a> {
 /// stand-in that changes nothing.
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct Extras<'a> {
+    /// The occlusion image, shown in place of the picture when asked.
     pub(crate) ao: Option<Input<'a>>,
     pub(crate) rays: Option<Input<'a>>,
-    pub(crate) surface: Option<Input<'a>>,
     pub(crate) exposure: Option<(&'a wgpu::Buffer, u64)>,
 }
 
@@ -133,11 +134,7 @@ impl PostRenderer {
                 pick(extras.ao, 1),
                 pick(extras.rays, 2),
             ]),
-            mix(&[
-                lut.map_or(3, |l| l.id()),
-                exposure.1,
-                pick(extras.surface, 4),
-            ]),
+            mix(&[lut.map_or(3, |l| l.id()), exposure.1]),
         ];
         let layout = self.pipes.group(Program::Composite).clone();
         let group = cached(t, key, |_| {
@@ -151,7 +148,6 @@ impl PostRenderer {
                     tex(3, extras.rays.map_or(&d.black, |i| i.view)),
                     tex(4, lut.map_or(&d.lut, |l| l.view())),
                     buf(5, exposure.0),
-                    tex(6, extras.surface.map_or(&d.black, |i| i.view)),
                 ],
             })
         });

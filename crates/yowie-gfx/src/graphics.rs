@@ -63,6 +63,11 @@ pub struct FrameStats {
     pub lights_dropped: u32,
     /// Instances drawn into shadow maps.
     pub shadow_instances: u32,
+    /// GPU time per group of passes of a recent frame (two or three frames
+    /// back, read without waiting), while
+    /// [`Graphics::set_gpu_timing`] is on and the GPU has timestamp
+    /// queries; `None` otherwise.
+    pub gpu: Option<crate::GpuTimes>,
 }
 
 /// The renderer for one window or headless image.
@@ -277,6 +282,21 @@ impl Graphics {
     /// What the last frame cost.
     pub fn stats(&self) -> FrameStats {
         self.stats
+    }
+
+    /// Turns GPU timing of the frame's passes on or off; off by default.
+    /// While on, [`FrameStats::gpu`] reports the time of the shadow,
+    /// opaque, blended, post-processing and 2D passes. On GPUs that cannot
+    /// write timestamps inside a pass (Apple GPUs) the scene pass is split
+    /// in two to time its halves, which costs a little bandwidth.
+    pub fn set_gpu_timing(&mut self, on: bool) {
+        self.shared.timer.lock().set_on(on);
+    }
+
+    /// Whether this GPU can time passes ([`set_gpu_timing`](Self::set_gpu_timing)
+    /// does nothing where it cannot).
+    pub fn gpu_timing_supported(&self) -> bool {
+        self.shared.timer.lock().supported()
     }
 
     /// How the screen's view maps into the output.

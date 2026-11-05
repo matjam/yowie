@@ -6,6 +6,7 @@ use super::prepare::{Batch, Prepared};
 use super::render::SceneRenderer;
 use super::shadow::atlas_rect;
 use super::slot::SceneSlot;
+use crate::gpu_timer::{Span, Timed};
 use crate::shared::Shared;
 
 /// What the current pass has bound.
@@ -29,10 +30,13 @@ impl SceneRenderer {
         state: &mut PassState,
     ) -> u32 {
         let rec = &self.records[ri];
+        let format = self.slots[ri].format();
         let mut calls = 0;
         for b in batches {
             if state.pipeline != Some(b.key) {
-                let p = self.pipelines.mesh(shared.device(), &self.layouts, b.key);
+                let p = self
+                    .pipelines
+                    .mesh(shared.device(), &self.layouts, b.key, format);
                 pass.set_pipeline(&p);
                 state.pipeline = Some(b.key);
             }
@@ -68,38 +72,31 @@ impl SceneRenderer {
         calls
     }
 
-    fn fixed(&mut self, shared: &Shared, which: FixedPipeline) -> wgpu::RenderPipeline {
-        self.pipelines.fixed(shared.device(), &self.layouts, which)
+    fn fixed(&mut self, shared: &Shared, ri: usize, which: FixedPipeline) -> wgpu::RenderPipeline {
+        let format = self.slots[ri].format();
+        self.pipelines
+            .fixed(shared.device(), &self.layouts, which, format)
     }
 }
 
-/// Begins the HDR scene pass of a slot, clearing colour to transparent and
-/// depth to the far plane (0, reversed).
+/// Begins an HDR scene pass of a slot into the attachments its post
+/// settings asked for (`targets.rs`). The `first` pass clears colour to
+/// transparent and depth to the far plane (0, reversed); a pass that
+/// continues one loads them. `keep` keeps multisampled colour for a pass
+/// that follows.
 fn begin_hdr_pass<'e>(
     encoder: &'e mut wgpu::CommandEncoder,
     slot: &SceneSlot,
+    first: bool,
+    keep: bool,
+    timestamps: Option<wgpu::RenderPassTimestampWrites<'_>>,
 ) -> Option<wgpu::RenderPass<'e>> {
     let t = slot.targets.as_ref()?;
     Some(encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
         label: Some("yowie scene"),
-        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-            view: &t.color,
-            depth_slice: None,
-            resolve_target: None,
-            ops: wgpu::Operations {
-                load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
-                store: wgpu::StoreOp::Store,
-            },
-        })],
-        depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-            view: &t.depth,
-            depth_ops: Some(wgpu::Operations {
-                load: wgpu::LoadOp::Clear(0.0),
-                store: wgpu::StoreOp::Store,
-            }),
-            stencil_ops: None,
-        }),
-        timestamp_writes: None,
+        color_attachments: &t.color_attachments(first, keep),
+        depth_stencil_attachment: Some(t.depth_attachment(first)),
+        timestamp_writes: timestamps,
         occlusion_query_set: None,
         multiview_mask: None,
     }))
@@ -119,6 +116,7 @@ fn encode_shadows(
     let Some(atlas) = r.atlas_target().cloned() else {
         return 0;
     };
+    let span = shared.span(Timed::Shadows);
     let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
         label: Some("yowie shadows"),
         color_attachments: &[],
@@ -130,7 +128,7 @@ fn encode_shadows(
             }),
             stencil_ops: None,
         }),
-        timestamp_writes: None,
+        timestamp_writes: span.as_ref().map(Span::whole),
         occlusion_query_set: None,
         multiview_mask: None,
     });
@@ -167,12 +165,21 @@ pub(crate) fn encode_scene(
     let rec = &r.records[ri];
     let (n_lines, n_top) = (rec.lines.len() as u32, rec.lines_on_top.len() as u32);
     let sky = p.frame.env[3] > 0.5 && (rec.sky.is_some() || rec.environment.is_some());
-    let sky_pipe = sky.then(|| r.fixed(shared, FixedPipeline::Sky));
-    let lines_pipe = (n_lines > 0).then(|| r.fixed(shared, FixedPipeline::Lines));
-    let top_pipe = (n_top > 0).then(|| r.fixed(shared, FixedPipeline::LinesOnTop));
-    let Some(mut pass) = begin_hdr_pass(encoder, &r.slots[ri]) else {
+    let sky_pipe = sky.then(|| r.fixed(shared, ri, FixedPipeline::Sky));
+    let lines_pipe = (n_lines > 0).then(|| r.fixed(shared, ri, FixedPipeline::Lines));
+    let top_pipe = (n_top > 0).then(|| r.fixed(shared, ri, FixedPipeline::LinesOnTop));
+    // Timed frames measure the opaque and blended halves apart: with
+    // timestamps inside passes in one pass, otherwise in two.
+    let (opaque_span, blend_span) = (shared.span(Timed::Opaque), shared.span(Timed::Blended));
+    let inside = shared.timer.lock().inside_passes;
+    let split = blend_span.is_some() && !inside;
+    let first_writes = opaque_span.as_ref().filter(|_| split).map(Span::whole);
+    let Some(mut pass) = begin_hdr_pass(encoder, &r.slots[ri], true, split, first_writes) else {
         return calls;
     };
+    if let Some(s) = opaque_span.as_ref().filter(|_| inside) {
+        pass.write_timestamp(&s.set, s.begin);
+    }
     pass.set_bind_group(0, &frame_group, &[]);
     pass.set_vertex_buffer(1, instances.slice(..));
     let mut state = PassState::default();
@@ -182,6 +189,21 @@ pub(crate) fn encode_scene(
         pass.draw(0..3, 0..1);
         state.pipeline = None;
         calls += 1;
+    }
+    if inside && let (Some(o), Some(b)) = (&opaque_span, &blend_span) {
+        pass.write_timestamp(&o.set, o.end);
+        pass.write_timestamp(&b.set, b.begin);
+    }
+    if split {
+        drop(pass);
+        let writes = blend_span.as_ref().map(Span::whole);
+        let Some(next) = begin_hdr_pass(encoder, &r.slots[ri], false, false, writes) else {
+            return calls;
+        };
+        pass = next;
+        pass.set_bind_group(0, &frame_group, &[]);
+        pass.set_vertex_buffer(1, instances.slice(..));
+        state = PassState::default();
     }
     calls += r.draw_batches(shared, &mut pass, ri, &p.blend, &mut state);
     if let Some(lp) = &lines_pipe {
@@ -195,6 +217,9 @@ pub(crate) fn encode_scene(
         pass.set_vertex_buffer(0, lines.slice(..));
         pass.draw(n_lines..n_lines + n_top, 0..1);
         calls += 1;
+    }
+    if let Some(b) = blend_span.as_ref().filter(|_| inside) {
+        pass.write_timestamp(&b.set, b.end);
     }
     calls
 }

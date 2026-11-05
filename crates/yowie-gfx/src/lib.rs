@@ -68,6 +68,7 @@ mod engine_shaders;
 mod error;
 mod frame;
 mod geometry;
+mod gpu_timer;
 mod graphics;
 mod half;
 mod image_data;
@@ -129,6 +130,7 @@ pub use camera::Camera2D;
 pub use device::{adapter_available, default_adapter_info};
 pub use error::{GfxError, Result};
 pub use geometry::Vertex;
+pub use gpu_timer::GpuTimes;
 pub use graphics::{FrameStats, Graphics, GraphicsSettings};
 pub use image_data::ImageData;
 pub use nine_slice::NineSlice;
@@ -137,6 +139,7 @@ pub use path::{
     TexturePaint,
 };
 pub use render_texture::{RenderTexture, RenderTextureOptions};
+pub use scene::{Lut, PostSettings};
 pub use shader::Shader;
 pub use sprite::Sprite;
 pub use text::{

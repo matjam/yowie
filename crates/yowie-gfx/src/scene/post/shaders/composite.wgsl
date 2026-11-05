@@ -1,5 +1,5 @@
 // The composite: lens distortion and chromatic aberration on the way in,
-// exposure, ambient occlusion, bloom, light shafts and lens ghosts, the
+// exposure (manual times auto), bloom, light shafts and lens ghosts, the
 // white balance, the tone curve, the grade (saturation, contrast, lift,
 // gamma, gain, lookup table), grain and vignette, then composition over
 // the background colour. Each stage runs only when its flag is set, so
@@ -13,7 +13,6 @@
 @group(1) @binding(3) var rays_tex: texture_2d<f32>;
 @group(1) @binding(4) var lut_tex: texture_3d<f32>;
 @group(1) @binding(5) var<storage, read> exposure_state: array<f32>;
-@group(1) @binding(6) var surface_tex: texture_2d<f32>;
 
 fn srgb_encode(c: vec3<f32>) -> vec3<f32> {
     let lo = c * 12.92;
@@ -102,22 +101,27 @@ fn fs_composite(in: FullOut) -> @location(0) vec4<f32> {
         }
         c = c * e;
     }
-    if (flags & FLAG_AO) != 0u {
-        // Occlusion darkens the share of the pixel that is ambient and
-        // image-based light, which the scene pass wrote.
-        let ambient = textureSampleLevel(surface_tex, linear_clamp, uv, 0.0).w;
-        let o = mix(1.0, textureSampleLevel(ao_tex, linear_clamp, uv, 0.0).r, post.occlusion.x);
-        c *= 1.0 - ambient * (1.0 - o);
-    }
+    // Bloom, ghosts and shafts are light in front of the picture: they add
+    // to what the picture covers and, tone-mapped on their own, to the
+    // background where it does not.
+    var glow = vec3<f32>(0.0);
     if (flags & FLAG_BLOOM) != 0u {
-        var glow = textureSampleLevel(bloom_tex, linear_clamp, uv, 0.0).rgb * post.bloom.x;
+        glow = textureSampleLevel(bloom_tex, linear_clamp, uv, 0.0).rgb * post.bloom.x;
         if post.bloom.w > 0.0 {
             glow += ghosts(uv) * post.bloom.w;
         }
-        c += glow / max(a, 1e-4);
     }
     if (flags & FLAG_RAYS) != 0u {
-        c += textureSampleLevel(rays_tex, linear_clamp, uv, 0.0).rgb;
+        glow += textureSampleLevel(rays_tex, linear_clamp, uv, 0.0).rgb;
+    }
+    c += glow;
+    var uncovered = vec3<f32>(0.0);
+    if a < 1.0 && any(glow > vec3<f32>(0.0)) {
+        if flat {
+            uncovered = clamp(glow, vec3<f32>(0.0), vec3<f32>(1.0));
+        } else {
+            uncovered = tonemap(glow, u32(post.tone.y));
+        }
     }
     if (flags & FLAG_GRADE) != 0u {
         c = max(mat3x3<f32>(post.balance0.xyz, post.balance1.xyz, post.balance2.xyz) * c, vec3<f32>(0.0));
@@ -139,5 +143,5 @@ fn fs_composite(in: FullOut) -> @location(0) vec4<f32> {
     }
     let rgb = c * a;
     let bg = post.background;
-    return vec4<f32>(rgb + bg.rgb * (1.0 - a), a + bg.a * (1.0 - a));
+    return vec4<f32>(rgb + (bg.rgb + uncovered) * (1.0 - a), a + bg.a * (1.0 - a));
 }

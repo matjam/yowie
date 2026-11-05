@@ -105,15 +105,47 @@ impl BloomChain {
     }
 }
 
-/// Which full-size HDR image holds the picture between passes.
+/// The images a scene's chain makes when an effect first asks for them.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub(crate) enum Src {
-    /// The scene's own colour target (or the 2D frame's).
-    Scene,
-    /// One of the chain's two spare images.
-    Ping(usize),
-    /// One of the temporal pass's two history images.
-    History(usize),
+pub(crate) enum Kind {
+    /// The two spare HDR images the chain passes the picture between.
+    Ping(u8),
+    /// The temporal pass's two history images, alternating each frame.
+    History(u8),
+    /// Depth as R32Float, with the nearest-depth mips reflections trace.
+    Depth,
+    /// Ambient occlusion and its blur's middle step.
+    Occlusion(u8),
+    /// The reflection trace: reflected colour, fade in alpha.
+    Reflection,
+    /// Motion of moved objects: this frame's minus last frame's texture
+    /// coordinates, 1 in alpha where an object wrote it.
+    Velocity,
+    /// Depth of field's half-size gather.
+    Focus,
+    /// The light shafts at half size.
+    Rays,
+}
+
+impl Kind {
+    fn spec(self, size: UVec2) -> (UVec2, wgpu::TextureFormat, u32) {
+        let half = (size / 2).max(UVec2::ONE);
+        match self {
+            Kind::Ping(_) | Kind::History(_) | Kind::Reflection | Kind::Velocity => (size, HDR, 1),
+            Kind::Depth => (size, DEPTH, depth_mips(size)),
+            Kind::Occlusion(_) => (size, wgpu::TextureFormat::R8Unorm, 1),
+            Kind::Focus | Kind::Rays => (half, HDR, 1),
+        }
+    }
+}
+
+/// Format of the chain's copy of the scene depth.
+pub(crate) const DEPTH: wgpu::TextureFormat = wgpu::TextureFormat::R32Float;
+
+/// Mips of the depth copy: down to about four pixels, at most eight.
+pub(crate) fn depth_mips(size: UVec2) -> u32 {
+    let long = size.x.max(size.y).max(1);
+    (32 - long.leading_zeros()).saturating_sub(2).clamp(1, 8)
 }
 
 /// Everything one scene or 2D frame keeps for its post chain.
@@ -122,10 +154,22 @@ pub(crate) struct PostTargets {
     pub(crate) size: UVec2,
     pub(crate) uniform: wgpu::Buffer,
     pub(crate) common: wgpu::BindGroup,
-    pub(crate) ping: [Option<Image>; 2],
-    pub(crate) history: [Option<Image>; 2],
+    pub(crate) images: HashMap<Kind, Image>,
     pub(crate) bloom: Option<BloomChain>,
     pub(crate) ldr: Option<Image>,
+    /// Auto exposure's state (exposure, adapted luminance, whether it
+    /// has a value, then the luminance histogram) and its id.
+    pub(crate) exposure: Option<(wgpu::Buffer, u64)>,
+    /// The moved draws' placements for the velocity pass.
+    pub(crate) velocity_instances: Option<wgpu::Buffer>,
+    /// Views of each mip of the depth image, made with it.
+    pub(crate) depth_mips: Vec<(wgpu::TextureView, u64)>,
+    /// Which history image the next temporal pass writes.
+    pub(crate) history_next: u8,
+    /// The other history image holds last frame's resolved picture.
+    pub(crate) history_valid: bool,
+    /// The game time of the last frame, for auto exposure's adaptation.
+    pub(crate) last_time: Option<f32>,
     /// Bind groups by pass and inputs; cleared when an input changes.
     pub(crate) groups: HashMap<[u64; 4], wgpu::BindGroup>,
 }
@@ -161,10 +205,15 @@ impl PostTargets {
             size,
             uniform,
             common,
-            ping: [None, None],
-            history: [None, None],
+            images: HashMap::new(),
             bloom: None,
             ldr: None,
+            exposure: None,
+            velocity_instances: None,
+            depth_mips: Vec::new(),
+            history_next: 0,
+            history_valid: false,
+            last_time: None,
             groups: HashMap::new(),
         }
     }
@@ -176,11 +225,47 @@ impl PostTargets {
             return;
         }
         self.size = size;
-        self.ping = [None, None];
-        self.history = [None, None];
+        self.images.clear();
+        self.depth_mips.clear();
+        self.history_valid = false;
         self.bloom = None;
         self.ldr = None;
         self.groups.clear();
+    }
+
+    /// The image of `kind`, made the first time it is asked for.
+    pub(crate) fn image(&mut self, device: &wgpu::Device, kind: Kind) -> &Image {
+        let size = self.size;
+        self.images.entry(kind).or_insert_with(|| {
+            let (size, format, mips) = kind.spec(size);
+            Image::new(
+                device,
+                "yowie post image",
+                size,
+                format,
+                mips,
+                wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+            )
+        })
+    }
+
+    /// The view and id of the image of `kind`, made when missing.
+    pub(crate) fn view(&mut self, device: &wgpu::Device, kind: Kind) -> (wgpu::TextureView, u64) {
+        let i = self.image(device, kind);
+        (i.view.clone(), i.id)
+    }
+
+    /// Views of every mip of the depth image, each with its own id.
+    pub(crate) fn depth_mips(&mut self, device: &wgpu::Device) -> Vec<(wgpu::TextureView, u64)> {
+        if self.depth_mips.is_empty() {
+            let i = self.image(device, Kind::Depth);
+            let levels = i.texture.mip_level_count();
+            let mips: Vec<_> = (0..levels)
+                .map(|l| (i.mip(l), super::chain::mix(&[i.id, u64::from(l)])))
+                .collect();
+            self.depth_mips = mips;
+        }
+        self.depth_mips.clone()
     }
 
     pub(crate) fn bloom(&mut self, device: &wgpu::Device) -> &BloomChain {
@@ -193,19 +278,5 @@ impl PostTargets {
         let size = self.size;
         self.ldr
             .get_or_insert_with(|| Image::target(device, "yowie post ldr", size, LDR))
-    }
-
-    /// Makes spare image `i`.
-    pub(crate) fn ensure_ping(&mut self, device: &wgpu::Device, i: usize) {
-        let size = self.size;
-        self.ping[i].get_or_insert_with(|| Image::target(device, "yowie post image", size, HDR));
-    }
-
-    /// Makes both history images.
-    pub(crate) fn ensure_history(&mut self, device: &wgpu::Device) {
-        let size = self.size;
-        for h in &mut self.history {
-            h.get_or_insert_with(|| Image::target(device, "yowie history", size, HDR));
-        }
     }
 }

@@ -95,9 +95,6 @@ impl PostUniform {
         if settings.lens() {
             flags |= FLAG_LENS;
         }
-        if settings.auto_exposure {
-            flags |= FLAG_AUTO_EXPOSURE;
-        }
         let balance = settings.white_balance();
         let threshold = settings.bloom_threshold.max(0.0);
         Self {
@@ -141,8 +138,28 @@ impl PostUniform {
                 settings.grain.max(0.0),
             ],
             size: [size.x, size.y, 1.0 / size.x, 1.0 / size.y],
-            rays: [[0.0; 4]; 3],
-            dof: [0.0; 4],
+            rays: [
+                [
+                    0.5,
+                    0.5,
+                    settings.god_rays.max(0.0),
+                    settings.god_ray_decay.clamp(0.0, 1.0),
+                ],
+                [
+                    settings.god_ray_samples.clamp(2, 256) as f32,
+                    settings.god_ray_density.max(0.0),
+                    1.0 / settings.god_ray_samples.clamp(2, 256) as f32,
+                    0.0,
+                ],
+                [1.0, 1.0, 1.0, 0.0],
+            ],
+            dof: [
+                settings.focus_distance.max(0.0),
+                settings.focus_range_or_default().max(1e-4),
+                // The gather runs at half size.
+                settings.bokeh_radius.max(0.0) * 0.5,
+                settings.bokeh_samples.clamp(1, 256) as f32,
+            ],
             temporal: [
                 settings.motion_blur.max(0.0),
                 settings.motion_samples.max(2) as f32,
@@ -177,6 +194,14 @@ impl PostUniform {
         self.reproject = (previous * inv).to_cols_array_2d();
         self.exposure[2] = cam.jitter.x;
         self.exposure[3] = cam.jitter.y;
+    }
+
+    /// Points the light shafts at the sun, at `uv` on screen, with the
+    /// light's linear colour.
+    pub(crate) fn set_sun(&mut self, uv: Vec2, color: Vec3) {
+        self.rays[0][0] = uv.x;
+        self.rays[0][1] = uv.y;
+        self.rays[2] = v4(color, 0.0);
     }
 
     pub(crate) fn flags(&self) -> u32 {

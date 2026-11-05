@@ -18,6 +18,18 @@ const TONEMAP: &str = include_str!("shaders/tonemap.wgsl");
 const COMPOSITE: &str = include_str!("shaders/composite.wgsl");
 const BLOOM: &str = include_str!("shaders/bloom.wgsl");
 const FXAA: &str = include_str!("shaders/fxaa.wgsl");
+const DEPTH_COPY: &str = include_str!("shaders/depth_copy.wgsl");
+const DEPTH_COPY_MS: &str = include_str!("shaders/depth_copy_ms.wgsl");
+const DEPTH_MIP: &str = include_str!("shaders/depth_mip.wgsl");
+const GTAO: &str = include_str!("shaders/gtao.wgsl");
+const AO_BLUR: &str = include_str!("shaders/ao_blur.wgsl");
+const SSR: &str = include_str!("shaders/ssr.wgsl");
+const APPLY: &str = include_str!("shaders/apply.wgsl");
+const TAA: &str = include_str!("shaders/taa.wgsl");
+const MOTION: &str = include_str!("shaders/motion.wgsl");
+const FOCUS: &str = include_str!("shaders/focus.wgsl");
+const FOCUS_COMBINE: &str = include_str!("shaders/focus_combine.wgsl");
+const RAYS: &str = include_str!("shaders/rays.wgsl");
 
 /// What a binding of a pass's group 1 holds.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -34,8 +46,6 @@ pub(crate) enum Slot {
     DepthMs,
     /// A read-only storage buffer.
     Storage,
-    /// A read-write storage buffer.
-    StorageRw,
 }
 
 fn entry(binding: u32, slot: Slot, visibility: S) -> Entry {
@@ -56,10 +66,8 @@ fn entry(binding: u32, slot: Slot, visibility: S) -> Entry {
             view_dimension: wgpu::TextureViewDimension::D2,
             multisampled: slot == Slot::DepthMs,
         },
-        Slot::Storage | Slot::StorageRw => BindingType::Buffer {
-            ty: wgpu::BufferBindingType::Storage {
-                read_only: slot == Slot::Storage,
-            },
+        Slot::Storage => BindingType::Buffer {
+            ty: wgpu::BufferBindingType::Storage { read_only: true },
             has_dynamic_offset: false,
             min_binding_size: None,
         },
@@ -72,33 +80,86 @@ fn entry(binding: u32, slot: Slot, visibility: S) -> Entry {
     }
 }
 
-/// The group-1 shape of each post program.
+/// The group-1 shape of each post program; each has its own shader file
+/// after the prelude.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(crate) enum Program {
     Composite,
     Bloom,
     Fxaa,
+    DepthCopy,
+    DepthCopyMs,
+    DepthMip,
+    Gtao,
+    AoBlur,
+    Ssr,
+    Apply,
+    Taa,
+    Motion,
+    Focus,
+    FocusCombine,
+    Rays,
 }
 
 impl Program {
-    fn slots(self) -> &'static [Slot] {
+    pub(crate) fn slots(self) -> &'static [Slot] {
         use Slot::*;
         match self {
-            Program::Composite => &[Tex, Tex, Tex, Tex, Tex3d, Storage, Tex],
+            Program::Composite => &[Tex, Tex, Tex, Tex, Tex3d, Storage],
             Program::Bloom => &[Tex, Storage],
             Program::Fxaa => &[Tex],
+            Program::DepthCopy => &[Depth],
+            Program::DepthCopyMs => &[DepthMs],
+            Program::DepthMip | Program::Rays => &[TexLoad],
+            Program::Gtao => &[TexLoad, Tex],
+            Program::AoBlur => &[Tex, TexLoad],
+            Program::Ssr => &[TexLoad, Tex, Tex],
+            Program::Apply => &[Tex, Tex, Tex, Tex, Tex],
+            Program::Taa => &[Tex, Tex, TexLoad, Tex],
+            Program::Motion => &[Tex, TexLoad, Tex],
+            Program::Focus => &[Tex, TexLoad],
+            Program::FocusCombine => &[Tex, Tex, TexLoad],
         }
     }
 
     fn source(self) -> String {
-        match self {
-            Program::Composite => [PRELUDE, TONEMAP, COMPOSITE].join("\n"),
-            Program::Bloom => [PRELUDE, BLOOM].join("\n"),
-            Program::Fxaa => [PRELUDE, FXAA].join("\n"),
-        }
+        let body = match self {
+            Program::Composite => return [PRELUDE, TONEMAP, COMPOSITE].join("\n"),
+            Program::Bloom => BLOOM,
+            Program::Fxaa => FXAA,
+            Program::DepthCopy => DEPTH_COPY,
+            Program::DepthCopyMs => DEPTH_COPY_MS,
+            Program::DepthMip => DEPTH_MIP,
+            Program::Gtao => GTAO,
+            Program::AoBlur => AO_BLUR,
+            Program::Ssr => SSR,
+            Program::Apply => APPLY,
+            Program::Taa => TAA,
+            Program::Motion => MOTION,
+            Program::Focus => FOCUS,
+            Program::FocusCombine => FOCUS_COMBINE,
+            Program::Rays => RAYS,
+        };
+        [PRELUDE, body].join("\n")
     }
 
-    const ALL: [Program; 3] = [Program::Composite, Program::Bloom, Program::Fxaa];
+    const ALL: [Program; 15] = [
+        Program::Composite,
+        Program::Bloom,
+        Program::Fxaa,
+        Program::DepthCopy,
+        Program::DepthCopyMs,
+        Program::DepthMip,
+        Program::Gtao,
+        Program::AoBlur,
+        Program::Ssr,
+        Program::Apply,
+        Program::Taa,
+        Program::Motion,
+        Program::Focus,
+        Program::FocusCombine,
+        Program::Rays,
+    ];
 }
 
 /// How a pass's output combines with what its target holds.
