@@ -55,7 +55,7 @@ impl Game for Softbody {
             jelly: Mesh::new(g, &sim.jelly_data)?,
             sim,
             orbit,
-            window: Rect::new(24.0, 520.0, 300.0, 160.0),
+            window: Rect::new(24.0, 480.0, 300.0, 200.0),
             press: Vec2::ZERO,
             kick_at: kick_arg(),
         })

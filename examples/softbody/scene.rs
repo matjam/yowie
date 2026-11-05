@@ -69,10 +69,10 @@ impl SoftScene {
         let post = yowie::phys::ColliderDesc2D::new(Shape2D::circle(POST_RADIUS))
             .with_offset(Transform2D::from_position(post_centre()));
         world2.add_static_collider(&post)?;
-        // One step puts the static colliders into the query structures the
-        // soft solvers read.
-        world2.step(1.0 / 60.0);
-        world3.step(1.0 / 60.0);
+        // The soft solvers read the static colliders through the query
+        // structures, so bring those up to date.
+        world2.refresh_queries();
+        world3.refresh_queries();
 
         let (cloth, cloth_surface) = new_flag()?;
         let (jelly, jelly_surface) = new_jelly()?;
