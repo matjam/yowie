@@ -155,7 +155,8 @@ mod tests {
         let s = leg();
         let mut pose = s.rest_pose();
         let target = Vec3::new(0.4, 0.5, 0.6);
-        let reached = solve_two_bone(&s, &mut pose, [0, 1, 2], target, Vec3::new(0.0, 1.0, 3.0)).unwrap();
+        let reached =
+            solve_two_bone(&s, &mut pose, [0, 1, 2], target, Vec3::new(0.0, 1.0, 3.0)).unwrap();
         assert!(reached);
         assert!((foot(&s, &pose) - target).length() < 1e-3);
         // An out-of-reach target points the straightened leg at it.
@@ -172,7 +173,15 @@ mod tests {
         let s = leg();
         let mut pose = s.rest_pose();
         let target = Vec3::new(0.3, 0.8, 0.2);
-        let r = solve_chain(&s, &mut pose, &[0, 1, 2], target, ChainSolver::Fabrik, &ChainOptions::default()).unwrap();
+        let r = solve_chain(
+            &s,
+            &mut pose,
+            &[0, 1, 2],
+            target,
+            ChainSolver::Fabrik,
+            &ChainOptions::default(),
+        )
+        .unwrap();
         assert!(r.converged);
         assert!((foot(&s, &pose) - target).length() < 2e-3);
 
@@ -181,6 +190,16 @@ mod tests {
         let w = s.world_matrices(&pose);
         let facing = rotation(&w[0]) * Vec3::Y;
         assert!((facing - Vec3::X).length() < 1e-4);
-        assert!(solve_chain(&s, &mut pose, &[0, 2], target, ChainSolver::Ccd, &ChainOptions::default()).is_err());
+        assert!(
+            solve_chain(
+                &s,
+                &mut pose,
+                &[0, 2],
+                target,
+                ChainSolver::Ccd,
+                &ChainOptions::default()
+            )
+            .is_err()
+        );
     }
 }

@@ -64,7 +64,9 @@ pub fn two_bone(root: Vec3, mid: Vec3, end: Vec3, target: Vec3, pole: Vec3) -> T
     }
     let to_target = target - root;
     let dist = to_target.length();
-    let dir = to_target.try_normalize().unwrap_or_else(|| (end - root).normalize_or(Vec3::Y));
+    let dir = to_target
+        .try_normalize()
+        .unwrap_or_else(|| (end - root).normalize_or(Vec3::Y));
     let reached = dist >= (a - b).abs() && dist <= a + b;
     let d = dist.clamp((a - b).abs().max(1e-4), a + b);
     // The bend direction: the pole's offset from the root-target line.

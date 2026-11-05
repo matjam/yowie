@@ -65,7 +65,13 @@ impl Flipbook {
     }
 
     /// Adds a tag over frame positions `from..=to`.
-    pub fn with_tag(mut self, name: impl Into<String>, from: usize, to: usize, direction: TagDirection) -> Self {
+    pub fn with_tag(
+        mut self,
+        name: impl Into<String>,
+        from: usize,
+        to: usize,
+        direction: TagDirection,
+    ) -> Self {
         self.tags.push(Tag {
             name: name.into(),
             from,

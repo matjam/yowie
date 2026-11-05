@@ -141,7 +141,10 @@ impl<T: Animatable> Curve<T> {
         if time >= last.time {
             return Some(last.value.clone());
         }
-        let i = self.keys.partition_point(|k| k.time <= time).saturating_sub(1);
+        let i = self
+            .keys
+            .partition_point(|k| k.time <= time)
+            .saturating_sub(1);
         let (a, b) = (&self.keys[i], self.keys.get(i + 1)?);
         let dt = b.time - a.time;
         if dt <= 0.0 {

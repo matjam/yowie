@@ -151,7 +151,10 @@ mod tests {
     fn subtree_and_names_masks() {
         let s = arm();
         let sub = JointMask::subtree(&s, "elbow").unwrap();
-        assert_eq!((sub.weight(0), sub.weight(1), sub.weight(2)), (0.0, 1.0, 1.0));
+        assert_eq!(
+            (sub.weight(0), sub.weight(1), sub.weight(2)),
+            (0.0, 1.0, 1.0)
+        );
         let named = JointMask::from_names(&s, &["hand"]).unwrap();
         assert_eq!((named.weight(1), named.weight(2)), (0.0, 1.0));
         assert!(JointMask::subtree(&s, "tail").is_err());

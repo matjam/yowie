@@ -157,10 +157,16 @@ mod tests {
 
     fn sample_clip() -> Clip {
         Clip::new("walk")
-            .with_track("frame", Channel::Frame(Curve::step([(0.0, 0.0), (0.5, 1.0)])))
+            .with_track(
+                "frame",
+                Channel::Frame(Curve::step([(0.0, 0.0), (0.5, 1.0)])),
+            )
             .with_track(
                 "pos",
-                Channel::Vec2(Curve::linear([(0.0, Vec2::ZERO), (2.0, Vec2::new(4.0, 0.0))])),
+                Channel::Vec2(Curve::linear([
+                    (0.0, Vec2::ZERO),
+                    (2.0, Vec2::new(4.0, 0.0)),
+                ])),
             )
             .with_event(1.5, "b")
             .with_event(0.5, "a")
@@ -173,7 +179,9 @@ mod tests {
         clip.apply(1.0, &mut s);
         assert_eq!((s.frame, s.pos), (1, Vec2::new(2.0, 0.0)));
         let mut seen = Vec::new();
-        clip.apply(0.0, &mut |name: &str, _: &Value| seen.push(name.to_string()));
+        clip.apply(0.0, &mut |name: &str, _: &Value| {
+            seen.push(name.to_string())
+        });
         assert_eq!(seen, ["frame", "pos"]);
     }
 
@@ -195,7 +203,10 @@ mod tests {
             .sample_transform("hip", 0.5, Transform::IDENTITY)
             .unwrap();
         assert_eq!(t.translation, Vec3::new(0.0, 0.5, 0.0));
-        assert!(clip.sample_transform("none", 0.5, Transform::IDENTITY).is_none());
+        assert!(
+            clip.sample_transform("none", 0.5, Transform::IDENTITY)
+                .is_none()
+        );
     }
 
     #[test]

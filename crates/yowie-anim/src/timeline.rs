@@ -87,7 +87,10 @@ pub fn sweeps(mode: LoopMode, duration: f32, x0: f64, x1: f64, first: bool) -> V
         return Vec::new();
     }
     if matches!(mode, LoopMode::Once | LoopMode::Clamp) {
-        let (a, b) = (local_time(mode, duration, x0), local_time(mode, duration, x1));
+        let (a, b) = (
+            local_time(mode, duration, x0),
+            local_time(mode, duration, x1),
+        );
         if a == b && !first {
             return Vec::new();
         }
@@ -115,7 +118,11 @@ pub fn sweeps(mode: LoopMode, duration: f32, x0: f64, x1: f64, first: bool) -> V
     let ping = mode == LoopMode::PingPong;
     let at = |x: f64, h: i64| -> f32 {
         let off = x - h as f64 * d;
-        let t = if ping && h.rem_euclid(2) == 1 { d - off } else { off };
+        let t = if ping && h.rem_euclid(2) == 1 {
+            d - off
+        } else {
+            off
+        };
         t as f32
     };
     let laps: Vec<i64> = if forward {
@@ -170,7 +177,10 @@ mod tests {
             (LoopMode::PingPong, 4.5, 0.5),
         ];
         for (mode, x, want) in cases {
-            assert!((local_time(mode, 2.0, x) - want).abs() < 1e-6, "{mode:?} {x}");
+            assert!(
+                (local_time(mode, 2.0, x) - want).abs() < 1e-6,
+                "{mode:?} {x}"
+            );
         }
     }
 

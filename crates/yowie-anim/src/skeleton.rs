@@ -205,19 +205,27 @@ pub(crate) mod tests {
         pose.locals[0].translation += Vec3::X * 2.0;
         let m = s.joint_matrices(&pose);
         for joint in &m {
-            assert!((joint.transform_point3(Vec3::ZERO) - Vec3::new(2.0, 0.0, 0.0)).length() < 1e-5);
+            assert!(
+                (joint.transform_point3(Vec3::ZERO) - Vec3::new(2.0, 0.0, 0.0)).length() < 1e-5
+            );
         }
     }
 
     #[test]
     fn rejects_bad_hierarchy_and_duplicates() {
         let bad_parent = vec![Joint::new("a", Some(0), Transform::IDENTITY)];
-        assert!(matches!(Skeleton::new(bad_parent), Err(AnimError::InvalidSkeleton(_))));
+        assert!(matches!(
+            Skeleton::new(bad_parent),
+            Err(AnimError::InvalidSkeleton(_))
+        ));
         let dup = vec![
             Joint::new("a", None, Transform::IDENTITY),
             Joint::new("a", None, Transform::IDENTITY),
         ];
-        assert!(matches!(Skeleton::new(dup), Err(AnimError::InvalidSkeleton(_))));
+        assert!(matches!(
+            Skeleton::new(dup),
+            Err(AnimError::InvalidSkeleton(_))
+        ));
     }
 
     #[test]
@@ -233,7 +241,13 @@ pub(crate) mod tests {
             ])),
         );
         let pose = s.pose_from_clip(&clip, 1.0);
-        assert!(pose.locals[1].rotation.dot(Quat::from_rotation_z(1.0)).abs() > 0.9999);
+        assert!(
+            pose.locals[1]
+                .rotation
+                .dot(Quat::from_rotation_z(1.0))
+                .abs()
+                > 0.9999
+        );
         assert_eq!(pose.locals[0], s.joints()[0].rest);
     }
 }

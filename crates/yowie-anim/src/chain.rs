@@ -60,7 +60,10 @@ fn clamp_bend(prev: Vec3, dir: Vec3, limit: f32) -> Vec3 {
     if angle <= limit {
         return dir;
     }
-    let axis = prev.cross(dir).try_normalize().unwrap_or_else(|| any_perpendicular(prev));
+    let axis = prev
+        .cross(dir)
+        .try_normalize()
+        .unwrap_or_else(|| any_perpendicular(prev));
     Quat::from_axis_angle(axis, limit.max(0.0)) * prev
 }
 
@@ -88,12 +91,12 @@ pub fn fabrik(points: &mut [Vec3], target: Vec3, options: &ChainOptions) -> Chai
         return finish(points, target, options.tolerance, 0);
     }
     let mut iterations = 0;
-    while iterations < options.max_iterations
-        && points[n - 1].distance(target) > options.tolerance
+    while iterations < options.max_iterations && points[n - 1].distance(target) > options.tolerance
     {
         points[n - 1] = target;
         for i in (0..n - 1).rev() {
-            points[i] = points[i + 1] + (points[i] - points[i + 1]).normalize_or(Vec3::X) * lengths[i];
+            points[i] =
+                points[i + 1] + (points[i] - points[i + 1]).normalize_or(Vec3::X) * lengths[i];
         }
         points[0] = root;
         for i in 0..n - 1 {

@@ -65,9 +65,9 @@ fn between(clip: &Clip, root: &str, from: f32, to: f32) -> RootMotion {
 
 /// The root's movement over a list of clip-time sweeps.
 pub fn over_sweeps(clip: &Clip, root: &str, sweeps: &[Sweep]) -> RootMotion {
-    sweeps
-        .iter()
-        .fold(RootMotion::ZERO, |m, s| m.plus(between(clip, root, s.from, s.to)))
+    sweeps.iter().fold(RootMotion::ZERO, |m, s| {
+        m.plus(between(clip, root, s.from, s.to))
+    })
 }
 
 /// The root joint's movement while playback of `clip` goes from position
@@ -107,7 +107,10 @@ mod tests {
         Clip::new("walk")
             .with_track(
                 "root",
-                Channel::Translation(Curve::linear([(0.0, Vec3::ZERO), (2.0, Vec3::new(0.0, 0.0, 4.0))])),
+                Channel::Translation(Curve::linear([
+                    (0.0, Vec3::ZERO),
+                    (2.0, Vec3::new(0.0, 0.0, 4.0)),
+                ])),
             )
             .with_track(
                 "root",
@@ -134,7 +137,9 @@ mod tests {
     fn lock_root_holds_rest() {
         let rest = Transform::IDENTITY;
         let mut pose = Pose {
-            locals: vec![Transform::from_xyz(1.0, 2.0, 3.0).with_rotation(Quat::from_rotation_y(0.7))],
+            locals: vec![
+                Transform::from_xyz(1.0, 2.0, 3.0).with_rotation(Quat::from_rotation_y(0.7)),
+            ],
             morph: Default::default(),
         };
         lock_root(&mut pose, 0, &rest);

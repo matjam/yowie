@@ -290,7 +290,12 @@ mod tests {
     #[test]
     fn events_fire_across_loop_wrap() {
         let mut p = Player::new();
-        p.play(clip("walk", LoopMode::Loop, 1.0, &[(0.0, "start"), (0.2, "a"), (0.9, "b")]));
+        p.play(clip(
+            "walk",
+            LoopMode::Loop,
+            1.0,
+            &[(0.0, "start"), (0.2, "a"), (0.9, "b")],
+        ));
         p.advance(0.5);
         assert_eq!(markers(&mut p), ["start", "a"]);
         p.advance(0.8);
@@ -306,7 +311,12 @@ mod tests {
         p.advance(3.25);
         assert_eq!(markers(&mut p), ["step", "step", "step"]);
         // Once clips fire everything up to the end once, then finish.
-        p.play(clip("hit", LoopMode::Once, 1.0, &[(0.5, "mid"), (1.0, "end")]));
+        p.play(clip(
+            "hit",
+            LoopMode::Once,
+            1.0,
+            &[(0.5, "mid"), (1.0, "end")],
+        ));
         p.advance(10.0);
         assert_eq!(markers(&mut p), ["mid", "end"]);
         assert!(p.is_finished());
@@ -322,8 +332,14 @@ mod tests {
         assert!(p.events().is_empty());
         p.advance(0.6);
         p.advance(0.6);
-        assert_eq!(p.take_events(), [PlayerEvent::Finished { clip: "hit".into() }]);
-        assert!(value(&p).is_nan(), "a finished Once clip stops driving targets");
+        assert_eq!(
+            p.take_events(),
+            [PlayerEvent::Finished { clip: "hit".into() }]
+        );
+        assert!(
+            value(&p).is_nan(),
+            "a finished Once clip stops driving targets"
+        );
 
         p.play(clip("hold", LoopMode::Clamp, 1.0, &[]));
         p.advance(5.0);
@@ -368,8 +384,13 @@ mod tests {
         }
         // Mid-fade: both clips sit at the same time so the blend equals it.
         let mut p = Player::new();
-        p.play(Arc::new(Clip::new("a").with_track("x", Channel::Float(Curve::linear([(0.0, 0.0)])))));
-        p.crossfade(Arc::new(Clip::new("b").with_track("x", Channel::Float(Curve::linear([(0.0, 10.0)])))), 1.0);
+        p.play(Arc::new(
+            Clip::new("a").with_track("x", Channel::Float(Curve::linear([(0.0, 0.0)]))),
+        ));
+        p.crossfade(
+            Arc::new(Clip::new("b").with_track("x", Channel::Float(Curve::linear([(0.0, 10.0)])))),
+            1.0,
+        );
         p.advance(0.25);
         assert!((value(&p) - 2.5).abs() < 1e-5);
         assert_eq!(p.weights()[0].0, "b");

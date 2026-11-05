@@ -34,7 +34,10 @@ impl MorphWeights {
 
     /// The weight of the target called `name`.
     pub fn get(&self, name: &str) -> Option<f32> {
-        self.names.iter().position(|n| n == name).map(|i| self.weights[i])
+        self.names
+            .iter()
+            .position(|n| n == name)
+            .map(|i| self.weights[i])
     }
 
     /// Sets the weight of the target called `name`. Returns false when no
@@ -111,7 +114,11 @@ mod tests {
 
     #[test]
     fn weights_track_samples_per_target() {
-        let ch = weights_channel(&[0.0, 1.0], &[vec![0.0, 1.0], vec![1.0, 1.0]], Interp::Linear);
+        let ch = weights_channel(
+            &[0.0, 1.0],
+            &[vec![0.0, 1.0], vec![1.0, 1.0]],
+            Interp::Linear,
+        );
         let mut m = MorphWeights::new(vec!["a".into(), "b".into()]);
         m.apply(&ch.sample(0.5).unwrap());
         assert_eq!(m.weights(), [0.5, 1.0]);

@@ -45,7 +45,7 @@ impl Pose {
                 } else {
                     l.rotation
                 };
-                r = r + q * w;
+                r += q * w;
             }
             let rotation = if r.length_squared() > 1e-12 {
                 r.normalize()
@@ -107,11 +107,15 @@ impl Pose {
             let f = weight * mask.weight(j);
             let delta = r.rotation.inverse() * l.rotation;
             local.translation += (l.translation - r.translation) * f;
-            local.rotation = (local.rotation * Animatable::lerp(&Quat::IDENTITY, &delta, f)).normalize();
+            local.rotation =
+                (local.rotation * Animatable::lerp(&Quat::IDENTITY, &delta, f)).normalize();
             local.scale *= Vec3::ONE.lerp(l.scale / r.scale, f);
         }
         for (name, ws) in &layer.morph {
-            let own = self.morph.entry(name.clone()).or_insert_with(|| vec![0.0; ws.len()]);
+            let own = self
+                .morph
+                .entry(name.clone())
+                .or_insert_with(|| vec![0.0; ws.len()]);
             for (a, b) in own.iter_mut().zip(ws) {
                 *a += b * weight;
             }
@@ -125,7 +129,9 @@ mod tests {
 
     fn pose(x: f32, angle: f32) -> Pose {
         Pose {
-            locals: vec![Transform::from_xyz(x, 0.0, 0.0).with_rotation(Quat::from_rotation_z(angle))],
+            locals: vec![
+                Transform::from_xyz(x, 0.0, 0.0).with_rotation(Quat::from_rotation_z(angle)),
+            ],
             morph: BTreeMap::new(),
         }
     }

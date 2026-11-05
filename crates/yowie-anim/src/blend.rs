@@ -175,7 +175,10 @@ impl BlendNode {
             BlendNode::Clip(c) => add(out, c, scale),
             BlendNode::Space1D(s) => s.weights(params, scale, out),
             BlendNode::Space2D(s) => s.weights(params, scale, out),
-            BlendNode::Mix { parameter, children } => {
+            BlendNode::Mix {
+                parameter,
+                children,
+            } => {
                 // Reuse the 1D placement by mixing child indices.
                 let proxy = BlendSpace1D {
                     parameter: parameter.clone(),
@@ -191,7 +194,8 @@ impl BlendNode {
                 let mut shares = Vec::new();
                 proxy.weights(params, scale, &mut shares);
                 for s in shares {
-                    if let Some(child) = s.clip.parse::<usize>().ok().and_then(|i| children.get(i)) {
+                    if let Some(child) = s.clip.parse::<usize>().ok().and_then(|i| children.get(i))
+                    {
                         child.node.weights(params, s.weight, out);
                     }
                 }
@@ -300,7 +304,12 @@ mod tests {
         BlendSpace2D {
             x: "x".into(),
             y: "y".into(),
-            clips: vec![pt("a", 0.0, 0.0), pt("b", 1.0, 0.0), pt("c", 0.0, 1.0), pt("d", 1.0, 1.0)],
+            clips: vec![
+                pt("a", 0.0, 0.0),
+                pt("b", 1.0, 0.0),
+                pt("c", 0.0, 1.0),
+                pt("d", 1.0, 1.0),
+            ],
         }
     }
 
@@ -318,11 +327,20 @@ mod tests {
             clips: ["idle", "walk", "run"]
                 .iter()
                 .enumerate()
-                .map(|(i, c)| BlendPoint1D { clip: (*c).into(), at: i as f32 })
+                .map(|(i, c)| BlendPoint1D {
+                    clip: (*c).into(),
+                    at: i as f32,
+                })
                 .collect(),
         };
         // (speed, idle, walk, run)
-        let cases = [(-1.0, 1.0, 0.0, 0.0), (0.0, 1.0, 0.0, 0.0), (0.5, 0.5, 0.5, 0.0), (1.5, 0.0, 0.5, 0.5), (9.0, 0.0, 0.0, 1.0)];
+        let cases = [
+            (-1.0, 1.0, 0.0, 0.0),
+            (0.0, 1.0, 0.0, 0.0),
+            (0.5, 0.5, 0.5, 0.0),
+            (1.5, 0.0, 0.5, 0.5),
+            (9.0, 0.0, 0.0, 1.0),
+        ];
         for (v, i, w, r) in cases {
             let mut out = Vec::new();
             s.weights(&Params::from([("speed".to_string(), v)]), 1.0, &mut out);
@@ -348,7 +366,10 @@ mod tests {
             let out = eval2(&s, x, y);
             for (name, want) in [("a", a), ("b", b), ("c", c), ("d", d)] {
                 let got = weight_of(&out, name);
-                assert!((got - want).abs() < 1e-5, "({x},{y}) {name}: {got} != {want}");
+                assert!(
+                    (got - want).abs() < 1e-5,
+                    "({x},{y}) {name}: {got} != {want}"
+                );
             }
             assert!((out.iter().map(|c| c.weight).sum::<f32>() - 1.0).abs() < 1e-5);
         }
@@ -361,8 +382,14 @@ mod tests {
         let tree = BlendNode::Mix {
             parameter: "crouch".into(),
             children: vec![
-                BlendChild { at: 0.0, node: walk },
-                BlendChild { at: 1.0, node: crouch },
+                BlendChild {
+                    at: 0.0,
+                    node: walk,
+                },
+                BlendChild {
+                    at: 1.0,
+                    node: crouch,
+                },
             ],
         };
         let mut blend = Blend::new(tree.clone());
@@ -379,7 +406,10 @@ mod tests {
         use crate::curve::Curve;
         use crate::value::Channel;
         let clip = |name: &str, len: f32| {
-            Arc::new(Clip::new(name).with_track("j", Channel::Float(Curve::linear([(0.0, 0.0), (len, 1.0)]))))
+            Arc::new(
+                Clip::new(name)
+                    .with_track("j", Channel::Float(Curve::linear([(0.0, 0.0), (len, 1.0)]))),
+            )
         };
         let clips: ClipSet = [("slow", clip("slow", 2.0)), ("fast", clip("fast", 1.0))]
             .into_iter()
@@ -388,8 +418,14 @@ mod tests {
         let tree = BlendNode::Space1D(BlendSpace1D {
             parameter: "s".into(),
             clips: vec![
-                BlendPoint1D { clip: "slow".into(), at: 0.0 },
-                BlendPoint1D { clip: "fast".into(), at: 1.0 },
+                BlendPoint1D {
+                    clip: "slow".into(),
+                    at: 0.0,
+                },
+                BlendPoint1D {
+                    clip: "fast".into(),
+                    at: 1.0,
+                },
             ],
         });
         let mut blend = Blend::new(tree);
