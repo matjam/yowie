@@ -91,6 +91,40 @@ impl WangIndex {
     }
 }
 
+/// Converts a Wang set from the Tiled editor to the type and tiles
+/// [`Rules::wang`](super::Rules::wang) takes.
+///
+/// A corner set becomes [`WangType::Corners`], an edge set
+/// [`WangType::Edges`] and a mixed set [`WangType::Full`]. Each tile's
+/// frame is its id in its tileset, so the sheet must be cut like the
+/// tileset, and its weight is the set's colour probabilities multiplied.
+///
+/// ```
+/// use yowie_gfx::autotile::{WangType, wang_from_tiled};
+/// use yowie_tiled::{WangKind, WangSet};
+///
+/// let set = WangSet { kind: WangKind::Corner, ..WangSet::default() };
+/// let (kind, tiles) = wang_from_tiled(&set);
+/// assert_eq!((kind, tiles.len()), (WangType::Corners, 0));
+/// ```
+pub fn wang_from_tiled(set: &yowie_tiled::WangSet) -> (WangType, Vec<WangTile>) {
+    let kind = match set.kind {
+        yowie_tiled::WangKind::Corner => WangType::Corners,
+        yowie_tiled::WangKind::Edge => WangType::Edges,
+        yowie_tiled::WangKind::Mixed => WangType::Full,
+    };
+    let tiles = set
+        .tiles
+        .iter()
+        .map(|t| WangTile {
+            frame: t.tile_id,
+            colors: t.wang_id.map(|c| c as i32),
+            weight: f64::from(set.weight(t)),
+        })
+        .collect();
+    (kind, tiles)
+}
+
 /// The best-scoring tiles for a wanted colour vector when no tile matches
 /// exactly, in set order.
 pub(super) fn closest(tiles: &[WangTile], positions: &[Dir], want: &[i32; 8]) -> Vec<Weighted> {

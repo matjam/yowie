@@ -127,7 +127,7 @@ mod tests {
     use crate::gpu_tests::{assert_px, headless, render};
     use crate::tilemap::{Stagger, TileFlip};
     use crate::{Camera2D, SpriteSheet, Texture, TextureOptions};
-    use yowie_core::{Color, uvec2};
+    use yowie_core::uvec2;
 
     #[test]
     fn quads_anchor_to_the_cell_bottom_and_apply_flips() {
@@ -170,10 +170,8 @@ mod tests {
     fn checker(gfx: &Graphics) -> SpriteSheet {
         // Four 4x4 frames: red, green, blue, yellow.
         let mut px = Vec::new();
-        for row in 0..4 {
-            for frame in 0..4 {
-                let color = [[255, 0, 0], [0, 255, 0], [0, 0, 255], [255, 255, 0]][frame];
-                let _ = row;
+        for _row in 0..4 {
+            for color in [[255, 0, 0], [0, 255, 0], [0, 0, 255], [255, 255, 0]] {
                 for _ in 0..4 {
                     px.extend_from_slice(&[color[0], color[1], color[2], 255]);
                 }
@@ -198,8 +196,6 @@ mod tests {
         // Look at the map's cells 40..56 by 20..28.
         let cam = Camera2D::new(vec2(40.0 * 4.0 + 32.0, 20.0 * 4.0 + 16.0));
         gfx.with_camera(&cam, |g| map.draw(g));
-        let stats_before = gfx.stats();
-        let _ = stats_before;
         let img = render(&mut gfx);
         // The map has 10000 cells but a 64x32 view shows 16 by 8.
         assert!(gfx.stats().vertices <= 4 * (18 * 10), "{:?}", gfx.stats());
@@ -210,6 +206,41 @@ mod tests {
         assert_px(&img, 6, 2, [0, 255, 0, 255], 2);
         // Cell (43, 20) is frame 3, animated into frame 0: red.
         assert_px(&img, 14, 2, [255, 0, 0, 255], 2);
-        let _ = Color::WHITE;
+    }
+
+    #[test]
+    fn iso_and_hex_tiles_draw_where_the_layout_puts_them() {
+        let layouts = [
+            GridLayout::isometric(vec2(32.0, 16.0)),
+            GridLayout::hex_pointy(vec2(24.0, 28.0), Stagger::Odd),
+            GridLayout::hex_pointy(vec2(24.0, 28.0), Stagger::Even),
+            GridLayout::hex_flat(vec2(28.0, 24.0), Stagger::Odd),
+        ];
+        let colors = [[255, 0, 0], [0, 255, 0], [0, 0, 255], [255, 255, 0]];
+        for layout in layouts {
+            let Some(mut gfx) = headless(uvec2(320, 240)) else {
+                return;
+            };
+            let sheet = checker(&gfx);
+            let mut map = Tilemap::new(layout, uvec2(6, 6), sheet);
+            // Tiles half the cell size, bottom-anchored, never overlap.
+            map.tile_size = layout.cell * 0.5;
+            map.offset = vec2(160.0, 20.0);
+            let frame = |x: i32, y: i32| ((x * 3 + y * 5) % 4) as u32;
+            map.fill_with(|x, y| Tile::new(frame(x, y)));
+            gfx.begin_frame();
+            map.draw(&mut gfx);
+            let img = render(&mut gfx);
+            for y in 0..6 {
+                for x in 0..6 {
+                    let c = map.cell_center(ivec2(x, y));
+                    let probe = c + vec2(0.0, layout.cell.y * 0.25);
+                    let [r, g, b] = colors[frame(x, y) as usize];
+                    assert_px(&img, probe.x as u32, probe.y as u32, [r, g, b, 255], 2);
+                    // And the world position maps back to the same cell.
+                    assert_eq!(map.cell_at(c), Some(ivec2(x, y)), "{layout:?}");
+                }
+            }
+        }
     }
 }

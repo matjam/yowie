@@ -42,7 +42,7 @@ pub use blob::{blob_index, blob_masks, expand_blob};
 pub use layout::{Dir, Layout};
 pub use mapper::Mapper;
 pub use rules::Rules;
-pub use wang::{WangTile, WangType};
+pub use wang::{WangTile, WangType, wang_from_tiled};
 
 #[cfg(test)]
 mod tests;

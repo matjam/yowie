@@ -45,11 +45,19 @@ impl System {
     /// Makes a system for `emitter` and starts it: the emitter's `burst`
     /// is born at its position and its `prewarm` runs.
     pub fn new(emitter: Emitter) -> Self {
+        Self::at(emitter, Vec2::ZERO)
+    }
+
+    /// Like [`new`](Self::new) with the system at `position`, so the
+    /// starting burst and the prewarm are born there. A world-space
+    /// system whose position is set after `new` would have already
+    /// created those particles at the origin.
+    pub fn at(emitter: Emitter, position: Vec2) -> Self {
         let mut s = Self {
             live: Vec::with_capacity(emitter.max.min(1 << 16)),
             rng: Rng::new(emitter.seed),
             emitter,
-            position: Vec2::ZERO,
+            position,
             carry: 0.0,
             running: false,
             time: 0.0,

@@ -248,19 +248,19 @@ fn gravity_drag_and_attractors_move_particles() {
 }
 
 #[test]
-fn world_space_particles_stay_when_the_system_moves() {
-    let spawn_then_move = |world_space| {
-        let mut s = System::new(Emitter {
+fn world_space_particles_are_born_at_the_system_position() {
+    let born = |world_space| {
+        let e = Emitter {
             burst: 1,
             world_space,
             lifetime: Range::constant(5.0),
             ..base()
-        });
-        s.set_position(vec2(100.0, 0.0));
-        s.particles()[0].position
+        };
+        System::at(e, vec2(100.0, 50.0)).particles()[0].position
     };
+    assert_eq!(born(true), vec2(100.0, 50.0));
     // A local particle is stored relative to the system.
-    assert_eq!(spawn_then_move(false), vec2(0.0, 0.0));
+    assert_eq!(born(false), vec2(0.0, 0.0));
 }
 
 #[test]
