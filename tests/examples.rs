@@ -17,6 +17,8 @@ use image::RgbaImage;
 /// `--shot`.
 const GOLDEN: &[(&str, &[&str])] = &[
     ("clear", &[]),
+    ("inputs", &[]),
+    ("shaders", &["--seconds", "1"]),
     ("sprites", &["--seconds", "1"]),
     ("text", &[]),
 ];
