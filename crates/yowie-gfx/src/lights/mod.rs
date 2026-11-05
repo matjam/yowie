@@ -117,7 +117,10 @@ impl Graphics {
         self.lit.lights.clear();
         let n = lights.len().min(MAX_LIGHTS_2D);
         if n < lights.len() {
-            log::debug!("{} lights past the limit of {MAX_LIGHTS_2D}", lights.len() - n);
+            log::debug!(
+                "{} lights past the limit of {MAX_LIGHTS_2D}",
+                lights.len() - n
+            );
         }
         self.lit.lights.extend_from_slice(&lights[..n]);
     }
@@ -187,8 +190,7 @@ impl Graphics {
             });
         }
         let first = lit.indices.len() as u32;
-        lit.indices
-            .extend([0, 1, 2, 0, 2, 3].map(|i| i + base));
+        lit.indices.extend([0, 1, 2, 0, 2, 3].map(|i| i + base));
         let extends = lit.runs.last().is_some_and(|r| {
             r.list == list
                 && r.layer == layer

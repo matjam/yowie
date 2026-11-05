@@ -129,8 +129,8 @@ pub use tilemap::{
 };
 
 pub use blend::BlendMode;
-pub use custom::{Draw2D, Draw3D, GpuDraw, PrepareContext};
 pub use camera::Camera2D;
+pub use custom::{Draw2D, Draw3D, GpuDraw, PrepareContext};
 pub use device::{adapter_available, default_adapter_info};
 pub use error::{GfxError, Result};
 pub use geometry::Vertex;

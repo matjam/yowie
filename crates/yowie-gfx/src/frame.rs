@@ -340,13 +340,13 @@ impl Pass2D<'_> {
         }
         for call in calls {
             if call.state.shader == CUSTOM_SHADER {
-                self.tables.customs[call.state.texture as usize].0.prepare(
-                    &mut PrepareContext {
+                self.tables.customs[call.state.texture as usize]
+                    .0
+                    .prepare(&mut PrepareContext {
                         device: self.shared.device(),
                         queue: self.shared.queue(),
                         encoder,
-                    },
-                );
+                    });
             }
         }
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {

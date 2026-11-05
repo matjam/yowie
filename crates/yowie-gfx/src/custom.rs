@@ -16,6 +16,7 @@
 //! so a draw may set whatever it needs, including a different bind group
 //! at any index.
 
+use std::any::{Any, TypeId};
 use std::fmt;
 use std::sync::Arc;
 
@@ -102,6 +103,31 @@ impl fmt::Debug for CustomEntry {
 }
 
 impl Graphics {
+    /// What the adapter can do beyond the baseline: compute shaders,
+    /// indirect draws and vertex-stage storage buffers, which renderer
+    /// extensions check before choosing a GPU path.
+    pub fn downlevel_capabilities(&self) -> wgpu::DownlevelCapabilities {
+        self.shared.gpu.adapter.get_downlevel_capabilities()
+    }
+
+    /// The renderer extension resource of type `T` for this renderer,
+    /// built with `make` the first time and shared after. An extension
+    /// keeps its pipelines and layouts here so every effect it makes
+    /// reuses them, and they live exactly as long as the renderer.
+    pub fn extension<T: Any + Send + Sync>(&self, make: impl FnOnce(&wgpu::Device) -> T) -> Arc<T> {
+        let mut map = self.extensions.lock();
+        let id = TypeId::of::<T>();
+        if let Some(found) = map
+            .get(&id)
+            .and_then(|e| Arc::clone(e).downcast::<T>().ok())
+        {
+            return found;
+        }
+        let made = Arc::new(make(self.device()));
+        map.insert(id, made.clone());
+        made
+    }
+
     /// Queues `draw` into the 2D pass at the current layer and sort key,
     /// with the current camera and clip. The transform stack and blend
     /// mode do not apply: the extension chooses its own blending.

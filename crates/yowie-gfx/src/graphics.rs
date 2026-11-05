@@ -1,5 +1,7 @@
 //! The drawing context: device, output, and the frame being recorded.
 
+use std::sync::Arc;
+
 use image::RgbaImage;
 use yowie_core::{Color, Rect, UVec2, Vec2};
 
@@ -99,6 +101,9 @@ pub struct Graphics {
     /// The 3D renderer, created by the first scene.
     pub(crate) scenes: Option<Box<crate::scene::SceneRenderer>>,
     pub(crate) lit: crate::lights::LitState,
+    pub(crate) extensions: parking_lot::Mutex<
+        std::collections::HashMap<std::any::TypeId, Arc<dyn std::any::Any + Send + Sync>>,
+    >,
 }
 
 impl std::fmt::Debug for Graphics {
@@ -189,6 +194,7 @@ impl Graphics {
             frame_number: 0,
             scenes: None,
             lit: Default::default(),
+            extensions: Default::default(),
         };
         gfx.begin_frame();
         Ok(gfx)

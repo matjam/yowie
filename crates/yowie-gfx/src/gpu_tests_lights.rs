@@ -3,7 +3,7 @@
 use yowie_core::{Color, Rect, uvec2, vec2};
 
 use crate::gpu_tests::{headless, render};
-use crate::{Graphics, Light2D, Sprite, Spot2D, Texture, TextureOptions};
+use crate::{Graphics, Light2D, Spot2D, Sprite, Texture, TextureOptions};
 
 const W: u32 = 128;
 const H: u32 = 64;
@@ -16,11 +16,7 @@ fn grey(gfx: &Graphics) -> Texture {
 }
 
 /// Renders a lit grey floor under `lights` and `occluders`.
-fn lit_floor(
-    gfx: &mut Graphics,
-    lights: &[Light2D],
-    walls: &[Rect],
-) -> image::RgbaImage {
+fn lit_floor(gfx: &mut Graphics, lights: &[Light2D], walls: &[Rect]) -> image::RgbaImage {
     gfx.begin_frame();
     let floor = grey(gfx);
     gfx.set_lights_2d(Color::BLACK, lights);
@@ -104,7 +100,11 @@ fn lit_and_unlit_sprites_mix_in_one_frame() {
     gfx.begin_frame();
     let floor = grey(&gfx);
     gfx.set_lights_2d(Color::BLACK, &[]);
-    gfx.draw_lit(&floor, None, &Sprite::at(vec2(0.0, 0.0)).size(vec2(64.0, 64.0)));
+    gfx.draw_lit(
+        &floor,
+        None,
+        &Sprite::at(vec2(0.0, 0.0)).size(vec2(64.0, 64.0)),
+    );
     gfx.draw_sprite(&floor, &Sprite::at(vec2(64.0, 0.0)).size(vec2(64.0, 64.0)));
     let img = render(&mut gfx);
     assert_eq!(red(&img, 20, 20), 0, "lit sprite under no light is black");
