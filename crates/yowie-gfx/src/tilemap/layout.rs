@@ -26,6 +26,35 @@ pub enum GridKind {
     HexPointy(Stagger),
     /// Flat-top hexagons in staggered columns; shifted columns move down.
     HexFlat(Stagger),
+    /// Diamonds in staggered rows, half a cell height apart; shifted rows
+    /// move right. Tiled's staggered isometric map with the Y stagger
+    /// axis.
+    DiamondRows(Stagger),
+    /// Diamonds in staggered columns, half a cell width apart; shifted
+    /// columns move down. Tiled's staggered isometric map with the X
+    /// stagger axis.
+    DiamondCols(Stagger),
+}
+
+impl GridKind {
+    /// Whether the cells are diamonds in staggered rows or columns.
+    fn is_diamond(self) -> bool {
+        matches!(self, GridKind::DiamondRows(_) | GridKind::DiamondCols(_))
+    }
+
+    /// Whether the stagger runs along columns, so the shifted cells move
+    /// down instead of right.
+    pub fn staggers_columns(self) -> bool {
+        self.column_stagger().is_some()
+    }
+
+    /// Which columns are shifted, for the kinds with staggered columns.
+    pub(crate) fn column_stagger(self) -> Option<Stagger> {
+        match self {
+            GridKind::HexFlat(s) | GridKind::DiamondCols(s) => Some(s),
+            _ => None,
+        }
+    }
 }
 
 /// A grid of cells with its geometry, in world units with +Y down.
@@ -75,6 +104,18 @@ impl GridLayout {
         Self::new(GridKind::HexFlat(stagger), cell)
     }
 
+    /// Diamonds in staggered rows (Tiled's staggered isometric map with
+    /// the Y stagger axis).
+    pub fn diamond_rows(cell: Vec2, stagger: Stagger) -> Self {
+        Self::new(GridKind::DiamondRows(stagger), cell)
+    }
+
+    /// Diamonds in staggered columns (Tiled's staggered isometric map with
+    /// the X stagger axis).
+    pub fn diamond_cols(cell: Vec2, stagger: Stagger) -> Self {
+        Self::new(GridKind::DiamondCols(stagger), cell)
+    }
+
     /// A grid of `kind` with default hexagon sides.
     pub fn new(kind: GridKind, cell: Vec2) -> Self {
         Self {
@@ -90,6 +131,9 @@ impl GridLayout {
     }
 
     fn side(&self) -> f32 {
+        if self.kind.is_diamond() {
+            return 0.0;
+        }
         if self.hex_side > 0.0 {
             return self.hex_side;
         }
@@ -102,13 +146,15 @@ impl GridLayout {
     /// Distance between row centres of a pointy grid or column centres of
     /// a flat one.
     fn step(&self) -> f32 {
-        match self.kind {
-            GridKind::HexFlat(_) => (self.cell.x + self.side()) * 0.5,
-            _ => (self.cell.y + self.side()) * 0.5,
+        if self.kind.staggers_columns() {
+            (self.cell.x + self.side()) * 0.5
+        } else {
+            (self.cell.y + self.side()) * 0.5
         }
     }
 
-    fn shifted(stagger: Stagger, index: i32) -> bool {
+    /// Whether the row or column `index` is shifted by half a cell.
+    pub(crate) fn shifted(stagger: Stagger, index: i32) -> bool {
         let odd = index.rem_euclid(2) == 1;
         odd == (stagger == Stagger::Odd)
     }
@@ -120,11 +166,11 @@ impl GridLayout {
         match self.kind {
             GridKind::Square => vec2((x + 0.5) * c.x, (y + 0.5) * c.y),
             GridKind::Isometric => vec2((x - y) * c.x * 0.5, (x + y + 1.0) * c.y * 0.5),
-            GridKind::HexPointy(s) => {
+            GridKind::HexPointy(s) | GridKind::DiamondRows(s) => {
                 let shift = if Self::shifted(s, cell.y) { 0.5 } else { 0.0 };
                 vec2((x + 0.5 + shift) * c.x, c.y * 0.5 + y * self.step())
             }
-            GridKind::HexFlat(s) => {
+            GridKind::HexFlat(s) | GridKind::DiamondCols(s) => {
                 let shift = if Self::shifted(s, cell.x) { 0.5 } else { 0.0 };
                 vec2(c.x * 0.5 + x * self.step(), (y + 0.5 + shift) * c.y)
             }
@@ -150,12 +196,12 @@ impl GridLayout {
                     ((v - u) * 0.5).round() as i32,
                 )
             }
-            GridKind::HexPointy(_) => {
+            GridKind::HexPointy(_) | GridKind::DiamondRows(_) => {
                 let row = ((p.y - c.y * 0.5) / self.step()).round() as i32;
                 let col = (p.x / c.x).floor() as i32;
                 self.nearest(p, ivec2(col, row))
             }
-            GridKind::HexFlat(_) => {
+            GridKind::HexFlat(_) | GridKind::DiamondCols(_) => {
                 let col = ((p.x - c.x * 0.5) / self.step()).round() as i32;
                 let row = (p.y / c.y).floor() as i32;
                 self.nearest(p, ivec2(col, row))
@@ -166,16 +212,25 @@ impl GridLayout {
     /// The candidate near `guess` whose centre is closest to `p`, with
     /// distances measured so that a lattice of staggered cells is regular.
     fn nearest(&self, p: Vec2, guess: IVec2) -> IVec2 {
+        let diamond = self.kind.is_diamond();
         let scale = match self.kind {
             GridKind::HexFlat(_) => vec2((self.cell.y * 0.866_025_4) / self.step(), 1.0),
             _ => vec2(1.0, (self.cell.x * 0.866_025_4) / self.step()),
         };
+        // A diamond holds the points whose offset from its centre is
+        // below 1 in half-cell units, summed over both axes.
+        let half = self.cell * 0.5;
         let mut best = guess;
         let mut best_d = f32::MAX;
-        for dy in -1..=1 {
-            for dx in -1..=1 {
+        for dy in -2..=2 {
+            for dx in -2..=2 {
                 let cell = guess + ivec2(dx, dy);
-                let d = ((self.cell_center(cell) - p) * scale).length_squared();
+                let off = self.cell_center(cell) - p;
+                let d = if diamond {
+                    (off.x.abs() / half.x) + (off.y.abs() / half.y)
+                } else {
+                    (off * scale).length_squared()
+                };
                 if d < best_d {
                     best_d = d;
                     best = cell;
@@ -197,7 +252,7 @@ impl GridLayout {
                 m + vec2(hw, hh),
                 m + vec2(-hw, hh),
             ],
-            GridKind::Isometric => vec![
+            GridKind::Isometric | GridKind::DiamondRows(_) | GridKind::DiamondCols(_) => vec![
                 m + vec2(0.0, -hh),
                 m + vec2(hw, 0.0),
                 m + vec2(0.0, hh),
@@ -280,18 +335,21 @@ impl GridLayout {
                     ivec2(hi.x.ceil() as i32 + 1, hi.y.ceil() as i32 + 1),
                 )
             }
-            GridKind::HexPointy(_) => {
+            GridKind::HexPointy(_) | GridKind::DiamondRows(_) => {
+                // A diamond is two row steps tall.
+                let pad = if self.kind.is_diamond() { 2 } else { 1 };
                 let row = |y: f32| ((y - c.y * 0.5) / self.step()).floor() as i32;
                 (
-                    ivec2((a.x / c.x).floor() as i32 - 1, row(a.y) - 1),
-                    ivec2(((a.x + a.w) / c.x).floor() as i32 + 1, row(a.y + a.h) + 1),
+                    ivec2((a.x / c.x).floor() as i32 - 1, row(a.y) - pad),
+                    ivec2(((a.x + a.w) / c.x).floor() as i32 + 1, row(a.y + a.h) + pad),
                 )
             }
-            GridKind::HexFlat(_) => {
+            GridKind::HexFlat(_) | GridKind::DiamondCols(_) => {
+                let pad = if self.kind.is_diamond() { 2 } else { 1 };
                 let col = |x: f32| ((x - c.x * 0.5) / self.step()).floor() as i32;
                 (
-                    ivec2(col(a.x) - 1, (a.y / c.y).floor() as i32 - 1),
-                    ivec2(col(a.x + a.w) + 1, ((a.y + a.h) / c.y).floor() as i32 + 1),
+                    ivec2(col(a.x) - pad, (a.y / c.y).floor() as i32 - 1),
+                    ivec2(col(a.x + a.w) + pad, ((a.y + a.h) / c.y).floor() as i32 + 1),
                 )
             }
         };
@@ -305,10 +363,20 @@ impl GridLayout {
         match self.kind {
             GridKind::Square => autotile::Layout::Square,
             GridKind::Isometric => autotile::Layout::IsoDiamond,
-            GridKind::HexPointy(Stagger::Odd) => autotile::Layout::HexRowsOdd,
-            GridKind::HexPointy(Stagger::Even) => autotile::Layout::HexRowsEven,
-            GridKind::HexFlat(Stagger::Odd) => autotile::Layout::HexColsOdd,
-            GridKind::HexFlat(Stagger::Even) => autotile::Layout::HexColsEven,
+            // Staggered diamonds use the six nearest neighbours like
+            // hexagons; the cells two rows or columns away do not count.
+            GridKind::HexPointy(Stagger::Odd) | GridKind::DiamondRows(Stagger::Odd) => {
+                autotile::Layout::HexRowsOdd
+            }
+            GridKind::HexPointy(Stagger::Even) | GridKind::DiamondRows(Stagger::Even) => {
+                autotile::Layout::HexRowsEven
+            }
+            GridKind::HexFlat(Stagger::Odd) | GridKind::DiamondCols(Stagger::Odd) => {
+                autotile::Layout::HexColsOdd
+            }
+            GridKind::HexFlat(Stagger::Even) | GridKind::DiamondCols(Stagger::Even) => {
+                autotile::Layout::HexColsEven
+            }
         }
     }
 }
@@ -327,6 +395,10 @@ mod tests {
             GridLayout::hex_flat(vec2(60.0, 52.0), Stagger::Odd),
             GridLayout::hex_flat(vec2(60.0, 52.0), Stagger::Even),
             GridLayout::hex_pointy(vec2(40.0, 48.0), Stagger::Odd).with_hex_side(20.0),
+            GridLayout::diamond_rows(vec2(64.0, 32.0), Stagger::Odd),
+            GridLayout::diamond_rows(vec2(64.0, 32.0), Stagger::Even),
+            GridLayout::diamond_cols(vec2(64.0, 32.0), Stagger::Odd),
+            GridLayout::diamond_cols(vec2(64.0, 32.0), Stagger::Even),
         ]
     }
 
@@ -347,7 +419,9 @@ mod tests {
         for l in layouts() {
             // An inscribed radius every kind of cell contains.
             let r = match l.kind {
-                GridKind::Isometric => l.cell.y * 0.4,
+                GridKind::Isometric | GridKind::DiamondRows(_) | GridKind::DiamondCols(_) => {
+                    l.cell.y * 0.4
+                }
                 GridKind::Square => l.cell.min_element() * 0.45,
                 GridKind::HexPointy(_) => l.cell.x * 0.45,
                 GridKind::HexFlat(_) => l.cell.y * 0.45,

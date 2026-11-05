@@ -117,8 +117,11 @@ pub struct Object {
     pub visible: bool,
     /// What the object is.
     pub shape: Shape,
-    /// Custom properties.
+    /// Custom properties, the template's merged with the object's own.
     pub properties: Properties,
+    /// The template file the object was made from, as the map names it.
+    /// The fields above already include what the template gave.
+    pub template: Option<String>,
 }
 
 impl Object {

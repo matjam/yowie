@@ -113,6 +113,8 @@ mod camera_rig;
 mod color_matrix;
 mod sheet;
 mod tiled_level;
+#[cfg(test)]
+mod tiled_level_tests;
 mod tilemap;
 
 pub use aseprite::{AseSlice, AseSliceKey, AseTag, AsepriteData, AsepriteSheet};
