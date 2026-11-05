@@ -79,8 +79,10 @@ fn an_instance_inherits_the_template_and_keeps_its_overrides() {
 
 #[test]
 fn the_template_gid_moves_to_the_maps_numbering() {
-    let doc = tmx(r#"<object id="1" template="templates/crate.tx" x="0" y="0"/>
-      <object id="2" template="templates/crate.tx" gid="6" x="0" y="0"/>"#);
+    let doc = tmx(
+        r#"<object id="1" template="templates/crate.tx" x="0" y="0"/>
+      <object id="2" template="templates/crate.tx" gid="6" x="0" y="0"/>"#,
+    );
     let map = Map::parse(doc.as_bytes(), resolver).expect("parses");
     // The template says tile 3 of a tileset starting at 1, the map keeps
     // that tileset from 5, so the tile is 7 there; an own gid wins.

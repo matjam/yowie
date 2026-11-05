@@ -56,10 +56,8 @@ pub(crate) fn sort(nodes: &[Node<'_>]) -> Result<Vec<usize>, Vec<usize>> {
             }
         }
     }
-    let mut ready: BinaryHeap<Reverse<usize>> = (0..n)
-        .filter(|i| waiting[*i] == 0)
-        .map(Reverse)
-        .collect();
+    let mut ready: BinaryHeap<Reverse<usize>> =
+        (0..n).filter(|i| waiting[*i] == 0).map(Reverse).collect();
     let mut order = Vec::with_capacity(n);
     while let Some(Reverse(i)) = ready.pop() {
         order.push(i);

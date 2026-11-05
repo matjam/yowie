@@ -29,6 +29,7 @@ const GOLDEN: &[(&str, &[&str])] = &[
     ("roguelike", &["--autoplay", "--seconds", "0.5"]),
     ("shaders", &["--seconds", "1"]),
     ("sprites", &["--seconds", "1"]),
+    ("tetris", &["--autoplay", "--seconds", "12"]),
     ("text", &[]),
     ("tiled", &["--seconds", "2"]),
     ("tiles", &["--seconds", "4"]),

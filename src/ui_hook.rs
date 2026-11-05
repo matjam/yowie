@@ -42,9 +42,11 @@ pub(crate) fn sync_time_scale(ctx: &mut Context) {
 /// Registers the `time.scale` variable and the `timescale` command.
 #[cfg(feature = "console")]
 fn register_time(ctx: &mut Context) {
-    let var = ctx
-        .console
-        .float("time.scale", 1.0, "game speed; 1 is normal, 0 stops game time");
+    let var = ctx.console.float(
+        "time.scale",
+        1.0,
+        "game speed; 1 is normal, 0 stops game time",
+    );
     let handle = var.clone();
     ctx.console.register(
         "timescale",

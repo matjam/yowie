@@ -303,7 +303,10 @@ fn stage_order(slots: &[Slot]) -> Result<Vec<usize>> {
         })
         .collect();
     order::sort(&nodes).map_err(|stuck| Error::OrderCycle {
-        systems: stuck.into_iter().map(|i| nodes[i].name.to_owned()).collect(),
+        systems: stuck
+            .into_iter()
+            .map(|i| nodes[i].name.to_owned())
+            .collect(),
     })
 }
 
@@ -440,10 +443,7 @@ mod tests {
     fn unknown_targets_are_reported() {
         let mut s = Schedule::new();
         s.add_system(Stage::Update, "a", |_| {});
-        s.add(
-            Stage::Update,
-            System::new("b", |_| {}).before("missing"),
-        );
+        s.add(Stage::Update, System::new("b", |_| {}).before("missing"));
         assert!(matches!(
             s.validate(),
             Err(Error::UnknownOrderTarget { target, .. }) if target == "missing"

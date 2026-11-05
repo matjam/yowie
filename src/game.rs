@@ -101,12 +101,7 @@ pub trait Game: Sized + 'static {
     ///
     /// Pointer events carry that window's own view units; keyboard events
     /// from every window also reach [`Context::input`].
-    fn window_event(
-        &mut self,
-        ctx: &mut Context,
-        window: WindowId,
-        event: &Event,
-    ) -> GameResult {
+    fn window_event(&mut self, ctx: &mut Context, window: WindowId, event: &Event) -> GameResult {
         if window == WindowId::MAIN {
             self.event(ctx, event)
         } else {
