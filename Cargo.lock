@@ -5047,7 +5047,10 @@ dependencies = [
 name = "yowie-ui"
 version = "0.1.0"
 dependencies = [
+ "log",
  "yowie-core",
+ "yowie-gfx",
+ "yowie-input",
 ]
 
 [[package]]
