@@ -7,22 +7,18 @@
 //! | `yowie-bundle` | [`bundle`], [`icns`] |
 //! | `yowie-play` | [`play`] |
 //!
-//! To read a KTX2 texture in a renderer, call [`container::Ktx2File::parse`]
-//! or [`container::Ktx2File::open`]. The result holds the Vulkan format, the
-//! size and the bytes of each mip level, ready to upload.
+//! The KTX2 reader and writer live in `yowie-ktx2`, shared with the
+//! renderer, and are re-exported here as [`container`] and [`format`].
 #![warn(missing_docs)]
 
 pub mod bundle;
 mod compress;
-pub mod container;
 pub mod encode;
 mod error;
-pub mod format;
 pub mod icns;
 pub mod info;
 pub mod mips;
 pub mod play;
 
-pub use container::Ktx2File;
 pub use error::{Error, Result};
-pub use format::BlockFormat;
+pub use yowie_ktx2::{BlockFormat, Ktx2File, container, format};
