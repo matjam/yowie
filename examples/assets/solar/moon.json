@@ -1,0 +1,13 @@
+{
+  "components": {
+    "solar.body": {
+      "radius": 0.14,
+      "color": [0.77, 0.77, 0.82]
+    },
+    "Transform": {
+      "translation": [0.0, 0.0, 0.0],
+      "rotation": [0.0, 0.0, 0.0, 1.0],
+      "scale": [1.0, 1.0, 1.0]
+    }
+  }
+}

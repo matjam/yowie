@@ -115,6 +115,7 @@ pub struct Context {
     pub(crate) cursor: Cursor,
     pub(crate) always_on_top: bool,
     pub(crate) services: Services,
+    pub(crate) windows: crate::windows::Registry,
 }
 
 impl std::fmt::Debug for Context {
@@ -165,6 +166,10 @@ impl Context {
                 #[cfg(feature = "audio")]
                 backend,
             ),
+            windows: crate::windows::Registry {
+                main_focused: true,
+                ..Default::default()
+            },
         })
     }
 

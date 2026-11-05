@@ -117,6 +117,8 @@ pub(crate) struct SceneRecord {
     pub(crate) user_blocks: Vec<Vec<u8>>,
     /// Each material's uniform block in `user_blocks`, or `u32::MAX`.
     pub(crate) material_blocks: Vec<u32>,
+    /// Custom GPU draws queued with `Scene::draw_gpu`.
+    pub(crate) customs: Vec<crate::custom::CustomEntry>,
     /// The colour behind the scene in its viewport, premultiplied linear;
     /// set when the frame renders.
     pub(crate) background_color: [f32; 4],
@@ -156,6 +158,7 @@ impl SceneRecord {
         self.decals.clear();
         self.user_blocks.clear();
         self.material_blocks.clear();
+        self.customs.clear();
         self.background_color = [0.0; 4];
         self.output_clear = None;
     }

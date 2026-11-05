@@ -76,6 +76,7 @@ mod error;
 mod events;
 mod hierarchy;
 mod instantiate;
+mod order;
 mod prefab;
 mod registry;
 mod resources;

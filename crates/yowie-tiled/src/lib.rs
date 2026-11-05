@@ -15,7 +15,11 @@
 //!   ([`Map::walk_layers`] applies a group's state to its children);
 //! - embedded and external tilesets, tile animations, collision shapes,
 //!   [`WangSet`]s and legacy [`Terrain`]s;
-//! - typed custom properties ([`Properties`]).
+//! - typed custom properties ([`Properties`]);
+//! - object templates (TX and TJ files), resolved while the map loads:
+//!   an object that names a template has the template's fields, its own
+//!   fields win, properties merge by name, and a tile object's gid is moved
+//!   into the map's numbering ([`Object::template`] keeps the file name).
 //!
 //! Orthogonal, isometric, staggered and hexagonal maps parse the same way;
 //! see [`Orientation`] for the layout fields.

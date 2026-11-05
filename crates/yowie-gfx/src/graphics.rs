@@ -1,5 +1,7 @@
 //! The drawing context: device, output, and the frame being recorded.
 
+use std::sync::Arc;
+
 use image::RgbaImage;
 use yowie_core::{Color, Rect, UVec2, Vec2};
 
@@ -75,10 +77,10 @@ pub struct FrameStats {
 pub struct Graphics {
     pub(crate) shared: Shared,
     pub(crate) output: Output,
-    view_settings: ViewSettings,
-    scale_factor: f32,
-    mapping: ViewMapping,
-    clear_color: Color,
+    pub(crate) view_settings: ViewSettings,
+    pub(crate) scale_factor: f32,
+    pub(crate) mapping: ViewMapping,
+    pub(crate) clear_color: Color,
     pub(crate) time: f32,
     pub(crate) lists: Vec<DrawList>,
     pub(crate) list_stack: Vec<usize>,
@@ -98,6 +100,12 @@ pub struct Graphics {
     pub(crate) frame_number: u64,
     /// The 3D renderer, created by the first scene.
     pub(crate) scenes: Option<Box<crate::scene::SceneRenderer>>,
+    /// Extra window outputs.
+    pub(crate) extras: crate::windows::ExtraOutputs,
+    pub(crate) lit: crate::lights::LitState,
+    pub(crate) extensions: parking_lot::Mutex<
+        std::collections::HashMap<std::any::TypeId, Arc<dyn std::any::Any + Send + Sync>>,
+    >,
 }
 
 impl std::fmt::Debug for Graphics {
@@ -187,6 +195,9 @@ impl Graphics {
             stats: FrameStats::default(),
             frame_number: 0,
             scenes: None,
+            extras: Default::default(),
+            lit: Default::default(),
+            extensions: Default::default(),
         };
         gfx.begin_frame();
         Ok(gfx)
@@ -240,6 +251,7 @@ impl Graphics {
         if let Some(scenes) = &mut self.scenes {
             scenes.begin_frame();
         }
+        self.lit.begin_frame();
         self.cursor = Cursor::default();
         let m = self.mapping;
         let bars = m.letterboxed();

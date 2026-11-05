@@ -86,6 +86,19 @@ impl Tilemap {
                     visit(ivec2(x, s - x));
                 }
             }
+        } else if let Some(stagger) = self.layout.kind.column_stagger() {
+            // Shifted columns sit half a cell lower, so within a row of
+            // cells the plain columns come first and the shifted ones
+            // after them: that is back to front by screen height.
+            for y in lo.y..=hi.y {
+                for shifted in [false, true] {
+                    for x in lo.x..=hi.x {
+                        if GridLayout::shifted(stagger, x) == shifted {
+                            visit(ivec2(x, y));
+                        }
+                    }
+                }
+            }
         } else {
             for y in lo.y..=hi.y {
                 for x in lo.x..=hi.x {

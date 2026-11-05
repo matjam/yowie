@@ -177,6 +177,13 @@ impl Scene<'_> {
         self.rec.tonemap = tonemap;
     }
 
+    /// Queues custom GPU work in the scene's HDR pass, after the blended
+    /// meshes and before the debug lines; see [`GpuDraw`](crate::GpuDraw).
+    /// GPU particles draw this way.
+    pub fn draw_gpu(&mut self, draw: std::sync::Arc<dyn crate::GpuDraw>) {
+        self.rec.customs.push(crate::custom::CustomEntry(draw));
+    }
+
     /// Adds a point light. A scene keeps up to
     /// [`MAX_LIGHTS`](super::MAX_LIGHTS) point and spot lights, the first
     /// added first; shadows go to the first

@@ -47,12 +47,12 @@ impl BlendMode {
     ];
 
     /// Whether the engine premultiplies the tint by its alpha.
-    pub(crate) fn premultiplies_tint(self) -> bool {
+    pub fn premultiplies_tint(self) -> bool {
         self != BlendMode::PremultipliedAlpha
     }
 
     /// The fixed-function blend state for this mode.
-    pub(crate) fn state(self) -> BlendState {
+    pub fn state(self) -> BlendState {
         let c = |src_factor, dst_factor, operation| BlendComponent {
             src_factor,
             dst_factor,
