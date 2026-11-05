@@ -1,11 +1,14 @@
 //! Fragment shaders written by the game: a wave over a checkerboard, a
 //! dissolve with a burning edge, a light that follows world position, and
 //! the error a broken shader reports. Below them, every blend mode over the
-//! same backdrop. R reloads the wave shader from its source; Escape quits.
+//! same backdrop, and a 3D surface shader: flowing lava on a sphere and a
+//! floor, which the engine lights with the scene's sun and sky. R reloads
+//! the wave and lava shaders from their sources; Escape quits.
 
+use yowie::gfx::scene::{Camera3D, DirectionalLight, Material, Mesh, MeshData, Sky, SurfaceShader};
 use yowie::gfx::{BlendMode, Font, Shader, Sprite, TextStyle, Texture, TextureOptions, Wrap};
 use yowie::input::Key;
-use yowie::{Color, Config, Context, Game, GameResult, Rect, Vec2, vec2};
+use yowie::{Color, Config, Context, Game, GameResult, Mat4, Rect, Vec2, Vec3, vec2};
 
 /// Bends the texture coordinate along a sine wave. `params.x` is the
 /// amplitude and `params.y` the frequency.
@@ -67,6 +70,42 @@ fn fragment(input: SpriteInput) -> vec4<f32> {
 }
 ";
 
+/// A 3D surface program: two octaves of value noise flowing through world
+/// space split the surface into glowing melt and dark rough crust.
+/// `lava.flow.x` is the flow speed.
+const LAVA: &str = "
+struct Lava { flow: vec4<f32> };
+@group(3) @binding(0) var<uniform> lava: Lava;
+
+fn lava_hash(p: vec2<f32>) -> f32 {
+    return fract(sin(dot(p, vec2<f32>(127.1, 311.7))) * 43758.5453);
+}
+
+fn lava_noise(p: vec2<f32>) -> f32 {
+    let i = floor(p);
+    let f = fract(p);
+    let u = f * f * (3.0 - 2.0 * f);
+    let a = mix(lava_hash(i), lava_hash(i + vec2<f32>(1.0, 0.0)), u.x);
+    let b = mix(lava_hash(i + vec2<f32>(0.0, 1.0)), lava_hash(i + vec2<f32>(1.0, 1.0)), u.x);
+    return mix(a, b, u.y);
+}
+
+fn material(input: Surface) -> Surface {
+    var s = input;
+    let t = scene_time() * lava.flow.x;
+    let w = s.world;
+    let p = vec2<f32>(w.x + w.y * 0.6, w.z - w.y * 0.8) * 2.2 + vec2<f32>(t, t * 0.4);
+    let n = lava_noise(p) * 0.65 + lava_noise(p * 2.3 + vec2<f32>(t, 0.0)) * 0.35;
+    let crust = smoothstep(0.42, 0.58, n);
+    s.base = mix(vec3<f32>(0.9, 0.25, 0.03), vec3<f32>(0.06, 0.05, 0.05), crust);
+    s.roughness = mix(0.35, 0.95, crust);
+    s.metallic = 0.0;
+    let pulse = 0.75 + 0.25 * sin(scene_time() * 3.0 + n * 6.0);
+    s.emissive = vec3<f32>(2.2, 0.55, 0.08) * (1.0 - crust) * pulse;
+    return s;
+}
+";
+
 /// A typo on line 3: `colour` is not a field of `SpriteInput`.
 const BROKEN: &str = "
 fn fragment(input: SpriteInput) -> vec4<f32> {
@@ -81,6 +120,10 @@ struct Shaders {
     dissolve: Shader,
     spotlight: Shader,
     error: String,
+    lava: SurfaceShader,
+    sphere: Mesh,
+    torus: Mesh,
+    floor: Mesh,
 }
 
 fn checker_pixels(size: u32, cell: u32) -> Vec<u8> {
@@ -123,6 +166,12 @@ impl Game for Shaders {
                 .gfx
                 .compile_shader_with_uniforms(SPOTLIGHT, &[0.0f32, 0.0, 120.0, 0.0])?,
             error,
+            lava: ctx
+                .gfx
+                .compile_surface_shader_with_uniforms(LAVA, &[0.35f32, 0.0, 0.0, 0.0])?,
+            sphere: Mesh::new(&ctx.gfx, &MeshData::sphere(1.0, 32, 64))?,
+            torus: Mesh::new(&ctx.gfx, &MeshData::torus(0.9, 0.35, 32, 64))?,
+            floor: Mesh::new(&ctx.gfx, &MeshData::plane(24.0, 1))?,
         })
     }
 
@@ -132,6 +181,7 @@ impl Game for Shaders {
         }
         if ctx.input.key_pressed(Key::R) {
             self.wave.reload_source(&ctx.gfx, WAVE)?;
+            self.lava.reload_source(&ctx.gfx, LAVA)?;
         }
         Ok(())
     }
@@ -189,14 +239,67 @@ impl Game for Shaders {
                 &label,
             );
         }
+        self.draw_lava(ctx, &label);
         Ok(())
+    }
+}
+
+impl Shaders {
+    /// The surface shader on a turning sphere and torus over a floor, in a
+    /// viewport.
+    fn draw_lava(&self, ctx: &mut Context, label: &TextStyle) {
+        let t = ctx.time.elapsed() as f32;
+        let g = &mut ctx.gfx;
+        g.draw_text(
+            &self.font,
+            "surface shader (3D): lava lit by the scene's sun and sky",
+            vec2(30.0, 470.0),
+            label,
+        );
+        let cam = Camera3D {
+            viewport: Some(Rect::new(30.0, 492.0, 900.0, 136.0)),
+            ..Camera3D::perspective(Vec3::new(0.0, 2.4, 7.0), Vec3::new(0.0, 0.1, 0.0), 0.45)
+        };
+        let lava = Material {
+            shader: Some(self.lava.clone()),
+            ..Material::default()
+        };
+        g.scene(&cam, |s| {
+            s.set_sun(DirectionalLight::new(
+                Vec3::new(-0.5, -1.0, -0.4),
+                Color::rgb8(255, 235, 215),
+                1.5,
+            ));
+            s.set_sky(Sky {
+                zenith: Color::rgb8(30, 30, 45),
+                horizon: Color::rgb8(90, 60, 55),
+                ground: Color::rgb8(25, 20, 20),
+                sun_size: 0.0,
+                ..Sky::default()
+            });
+            s.draw(&self.floor, &lava, Vec3::new(0.0, -0.8, 0.0));
+            let turn = yowie::Quat::from_rotation_y(t * 0.4);
+            s.draw(
+                &self.sphere,
+                &lava,
+                Mat4::from_rotation_translation(turn, Vec3::new(-2.2, 0.2, 0.0)),
+            );
+            s.draw(
+                &self.torus,
+                &lava,
+                Mat4::from_rotation_translation(
+                    turn * yowie::Quat::from_rotation_x(1.1),
+                    Vec3::new(2.2, 0.2, 0.0),
+                ),
+            );
+        });
     }
 }
 
 fn main() -> Result<(), yowie::Error> {
     let config = Config {
         clear_color: Color::rgb8(18, 20, 28),
-        ..Config::new("Yowie shaders").with_size(960, 540)
+        ..Config::new("Yowie shaders").with_size(960, 640)
     };
     yowie::run::<Shaders>(config)
 }
