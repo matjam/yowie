@@ -363,3 +363,52 @@ fn debug_draw_emits_lines() {
     world.debug_draw(&mut c);
     assert!(c.0 > 20);
 }
+
+#[test]
+fn joint_motor_can_be_changed_while_running() {
+    let mut world = World3D::new(Vec3::ZERO);
+    let anchor = world.add_body(&BodyDesc3D::fixed());
+    let wheel = world.add_body(&BodyDesc3D::dynamic());
+    world
+        .add_collider(wheel, &ColliderDesc3D::new(Shape3D::sphere(0.5)))
+        .unwrap();
+    let joint = JointDesc3D::hinge(Vec3::Z).with_motor(Motor::velocity(1.0, 1.0e4));
+    let id = world.add_joint(anchor, wheel, &joint).unwrap();
+    run(&mut world, 60);
+    assert!((world.angular_velocity(wheel).unwrap().z - 1.0).abs() < 0.2);
+    world
+        .set_joint_motor(id, Motor::velocity(-3.0, 1.0e4))
+        .unwrap();
+    run(&mut world, 90);
+    let w = world.angular_velocity(wheel).unwrap();
+    assert!((w.z + 3.0).abs() < 0.3, "angular velocity {w:?}");
+}
+
+#[test]
+fn debug_contacts_draw_extra_lines() {
+    struct Count(usize);
+    impl crate::DebugDraw for Count {
+        fn line(&mut self, _: Vec3, _: Vec3, _: yowie_core::Color) {
+            self.0 += 1;
+        }
+        fn point(&mut self, _: Vec3, _: yowie_core::Color) {}
+    }
+    let mut world = World3D::default();
+    ground(&mut world);
+    let b = world.add_body(&BodyDesc3D::dynamic().at(Vec3::new(0.0, 0.5, 0.0)));
+    world
+        .add_collider(b, &ColliderDesc3D::new(Shape3D::cuboid(Vec3::splat(0.5))))
+        .unwrap();
+    run(&mut world, 30);
+    let mut off = Count(0);
+    world.debug_draw(&mut off);
+    world.set_debug_contacts(true);
+    let mut on = Count(0);
+    world.debug_draw(&mut on);
+    assert!(
+        on.0 > off.0,
+        "{} lines with contacts, {} without",
+        on.0,
+        off.0
+    );
+}

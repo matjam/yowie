@@ -305,3 +305,23 @@ fn interpolation_blends_previous_and_current_pose() {
     let mid = world.interpolated_transform(id, 0.5).unwrap().position.x;
     assert!((mid - now / 2.0).abs() < 1e-3);
 }
+
+#[test]
+fn ball_rolls_down_a_heightfield_slope() {
+    let mut world = World2D::default();
+    // Ten samples falling from y = 5 on the left to y = 0 on the right.
+    let heights: Vec<f32> = (0..10).map(|i| 5.0 - i as f32 * 5.0 / 9.0).collect();
+    let desc = ColliderDesc2D::new(Shape2D::Heightfield {
+        heights,
+        scale: Vec2::new(20.0, 1.0),
+    });
+    world.add_static_collider(&desc).unwrap();
+    let id = ball(&mut world, 6.5, 0.5, 0.0);
+    world.set_transform(id, Vec2::new(-8.0, 6.5), 0.0).unwrap();
+    run(&mut world, 240);
+    let p = world.position(id).unwrap();
+    // It stays on top of the surface (never falls through) and rolls right.
+    assert!(p.x > -6.0, "ball should roll right, x = {}", p.x);
+    let surface = 5.0 - (p.x + 10.0) / 20.0 * 5.0;
+    assert!(p.y > surface - 0.05, "ball is under the surface: {p:?}");
+}
