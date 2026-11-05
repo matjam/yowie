@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Keep this map and level.tmj in step:
+     the tests expect them to parse to the same Map. -->
+<map version="1.10" tiledversion="1.11.0" orientation="orthogonal" renderorder="right-down" width="4" height="3" tilewidth="16" tileheight="16" infinite="0" backgroundcolor="#80336699" nextlayerid="6" nextobjectid="7">
+ <editorsettings>
+  <export target="level.tmj" format="json"/>
+ </editorsettings>
+ <properties>
+  <property name="difficulty" type="int" value="3"/>
+  <property name="title" value="Test"/>
+  <property name="gravity" type="float" value="9.5"/>
+  <property name="dark" type="bool" value="true"/>
+  <property name="tint" type="color" value="#80ff0000"/>
+  <property name="spawn" type="class" propertytype="Spawn">
+   <properties>
+    <property name="hp" type="int" value="10"/>
+    <property name="rate" type="float" value="0.5"/>
+    <property name="name" value="orc"/>
+   </properties>
+  </property>
+ </properties>
+ <tileset firstgid="9" source="sets/props.tsx"/>
+ <tileset firstgid="1" name="ground" tilewidth="16" tileheight="16" tilecount="8" columns="4">
+  <image source="img/ground.png" width="64" height="32"/>
+  <tile id="4">
+   <animation>
+    <frame tileid="4" duration="250"/>
+    <frame tileid="5" duration="500"/>
+   </animation>
+  </tile>
+  <tile id="2">
+   <properties>
+    <property name="solid" type="bool" value="true"/>
+   </properties>
+   <objectgroup draworder="index" id="2">
+    <object id="1" x="0" y="8" width="16" height="8"/>
+   </objectgroup>
+  </tile>
+ </tileset>
+ <layer id="1" name="ground" width="4" height="3">
+  <data encoding="csv">
+1,2,3,4,
+5,5,5,5,
+9,10,0,3
+</data>
+ </layer>
+ <layer id="2" name="decor" width="4" height="3">
+  <data encoding="base64" compression="zlib">
+   eJxiYGBgYGFgaGBhYHBgYWBQYMADWBgYDgACAAD//yTAAbE=
+  </data>
+ </layer>
+ <objectgroup id="3" name="things">
+  <object id="1" name="zone" type="trigger" x="10" y="20">
+   <properties>
+    <property name="target" value="exit"/>
+    <property name="count" type="int" value="2"/>
+   </properties>
+   <polygon points="0,0 32,0 16,24"/>
+  </object>
+  <object id="2" name="spawn" class="spawn" x="5" y="6">
+   <point/>
+  </object>
+  <object id="3" name="crate" gid="2147483650" x="16" y="32" width="16" height="16" rotation="45"/>
+  <object id="4" name="pool" x="1" y="2" width="8" height="4" visible="0">
+   <ellipse/>
+  </object>
+  <object id="5" name="path" x="0" y="0">
+   <polyline points="0,0 4,4"/>
+  </object>
+  <object id="6" name="sign" x="3" y="3" width="20" height="10">
+   <text wrap="1">hello</text>
+  </object>
+ </objectgroup>
+ <group id="4" name="fx" opacity="0.5" offsetx="1" parallaxx="0.5" tintcolor="#ff8000">
+  <layer id="5" name="overlay" width="4" height="3" visible="0" opacity="0.5" offsetx="4" offsety="-2">
+   <properties>
+    <property name="speed" type="float" value="0.5"/>
+   </properties>
+   <data encoding="base64">
+   CQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAKAAAA
+   </data>
+  </layer>
+ </group>
+</map>
