@@ -43,7 +43,7 @@ fn build(
     let mut textures = TextureCache::new(images);
     let mut materials: Vec<Material> = doc
         .materials()
-        .map(|m| material(gfx, &m, &mut textures))
+        .map(|m| material(gfx, doc, &m, &mut textures))
         .collect::<Result<_>>()?;
     let default_material = materials.len();
     materials.push(Material::default());
@@ -271,7 +271,12 @@ fn uv_set(info: &gltf::texture::Info) -> u8 {
     u8::from(info.tex_coord() > 0)
 }
 
-fn material(gfx: &Graphics, m: &gltf::Material, textures: &mut TextureCache) -> Result<Material> {
+fn material(
+    gfx: &Graphics,
+    doc: &gltf::Document,
+    m: &gltf::Material,
+    textures: &mut TextureCache,
+) -> Result<Material> {
     let pbr = m.pbr_metallic_roughness();
     let mut out = Material {
         base_color: Color::from_linear(pbr.base_color_factor()),
@@ -323,5 +328,6 @@ fn material(gfx: &Graphics, m: &gltf::Material, textures: &mut TextureCache) -> 
         uv.emissive = uv_set(&info);
     }
     out.uv_sets = uv;
+    super::extensions::import(gfx, doc, m, textures, &mut out)?;
     Ok(out)
 }

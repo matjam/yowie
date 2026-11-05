@@ -3,6 +3,7 @@
 //! holds one pose.
 
 mod draw;
+mod extensions;
 mod instance;
 mod load;
 mod textures;
@@ -75,9 +76,12 @@ pub(crate) struct ModelData {
 /// texture, and materials keep their metallic-roughness factors and
 /// textures, alpha mode, double-sidedness, `KHR_materials_unlit`,
 /// `KHR_texture_transform` (the base colour texture's transform applies
-/// to all of a material's textures) and
-/// `KHR_materials_emissive_strength`. Skins, morph targets and animation
-/// clips come through `yowie_anim::gltf_import`.
+/// to all of a material's textures), `KHR_materials_emissive_strength`,
+/// and the layer extensions `KHR_materials_clearcoat`, `_sheen`,
+/// `_transmission`, `_volume`, `_ior`, `_specular`, `_iridescence` and
+/// `_anisotropy` (their textures read the base colour's UV set; factors
+/// kept in two images are packed into one texture). Skins, morph targets
+/// and animation clips come through `yowie_anim::gltf_import`.
 #[derive(Clone, Debug)]
 pub struct Model {
     pub(crate) inner: Arc<ModelData>,
