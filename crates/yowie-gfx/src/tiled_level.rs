@@ -1,7 +1,7 @@
 //! A drawable level built from a Tiled map.
 
 use yowie_asset::Vfs;
-use yowie_core::{Color, UVec2, Vec2, uvec2, vec2};
+use yowie_core::{Color, IVec2, UVec2, Vec2, uvec2, vec2};
 use yowie_tiled::{
     ImageLayer, LayerKind, Map, Object, Orientation, ResolvedLayer, Shape, StaggerAxis,
     StaggerIndex, Tileset,
@@ -51,8 +51,10 @@ pub struct LevelLayer {
 /// [`TiledLevel::load`] reads a map and its tileset images through a
 /// [`Vfs`]. Tile layers become [`Tilemap`]s that cull to the camera;
 /// animated tiles play when [`advance`](Self::advance) runs; object layers
-/// draw as outlines. Orthogonal, isometric and hexagonal maps are
-/// supported. Tiled's staggered isometric orientation is an error.
+/// draw as outlines. Orthogonal, isometric, staggered isometric and
+/// hexagonal maps are supported, with either stagger axis and index;
+/// [`tile_center`](Self::tile_center) and [`tile_at`](Self::tile_at) convert
+/// between tiles and world positions on all of them.
 ///
 /// ```ignore
 /// let mut level = TiledLevel::load(&gfx, &vfs, "maps/level.tmx")?;
@@ -118,6 +120,32 @@ impl TiledLevel {
         match self.map.orientation {
             Orientation::Isometric => bounds.translate(iso_offset(&self.map)),
             _ => bounds,
+        }
+    }
+
+    /// The world position of the middle of tile `(x, y)` on any map
+    /// orientation, before layer offsets.
+    pub fn tile_center(&self, tile: IVec2) -> Vec2 {
+        let base = grid_layout(&self.map)
+            .map(|l| l.cell_center(tile))
+            .unwrap_or_default();
+        base + self.base_offset()
+    }
+
+    /// The tile holding a world position, the inverse of
+    /// [`tile_center`](Self::tile_center). The result can lie outside the
+    /// map; compare it with [`size_in_cells`](Self::size_in_cells).
+    pub fn tile_at(&self, world: Vec2) -> IVec2 {
+        grid_layout(&self.map)
+            .map(|l| l.cell_at(world - self.base_offset()))
+            .unwrap_or_default()
+    }
+
+    fn base_offset(&self) -> Vec2 {
+        if self.map.orientation == Orientation::Isometric {
+            iso_offset(&self.map)
+        } else {
+            Vec2::ZERO
         }
     }
 
@@ -190,11 +218,10 @@ fn grid_layout(map: &Map) -> Result<GridLayout> {
             }
             .with_hex_side(side)
         }
-        Orientation::Staggered => {
-            return Err(GfxError::TiledLevel(
-                "staggered isometric maps are not supported".into(),
-            ));
-        }
+        Orientation::Staggered => match map.stagger_axis {
+            Some(StaggerAxis::X) => GridLayout::diamond_cols(cell, stagger(map.stagger_index)),
+            _ => GridLayout::diamond_rows(cell, stagger(map.stagger_index)),
+        },
     })
 }
 

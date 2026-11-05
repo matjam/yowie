@@ -99,6 +99,8 @@ pub(crate) struct SceneRecord {
     pub(crate) morph_weights: Vec<GpuMorphWeight>,
     pub(crate) lines: Vec<LineVertex>,
     pub(crate) lines_on_top: Vec<LineVertex>,
+    /// Custom GPU draws queued with `Scene::draw_gpu`.
+    pub(crate) customs: Vec<crate::custom::CustomEntry>,
     /// The colour behind the scene in its viewport, premultiplied linear;
     /// set when the frame renders.
     pub(crate) background_color: [f32; 4],
@@ -135,6 +137,7 @@ impl SceneRecord {
         self.morph_weights.clear();
         self.lines.clear();
         self.lines_on_top.clear();
+        self.customs.clear();
         self.background_color = [0.0; 4];
         self.output_clear = None;
         self.large.clear();

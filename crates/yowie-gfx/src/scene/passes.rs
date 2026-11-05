@@ -171,6 +171,14 @@ pub(crate) fn encode_scene(
     let sky_pipe = sky.then(|| r.fixed(shared, FixedPipeline::Sky));
     let lines_pipe = (n_lines > 0).then(|| r.fixed(shared, FixedPipeline::Lines));
     let top_pipe = (n_top > 0).then(|| r.fixed(shared, FixedPipeline::LinesOnTop));
+    let customs = r.records[ri].customs.clone();
+    for c in &customs {
+        c.0.prepare(&mut crate::PrepareContext {
+            device: shared.device(),
+            queue: shared.queue(),
+            encoder,
+        });
+    }
     let Some(mut pass) = begin_hdr_pass(encoder, &r.slots[ri]) else {
         return calls;
     };
@@ -187,6 +195,21 @@ pub(crate) fn encode_scene(
     }
     calls += r.draw_batches(shared, &mut pass, ri, &p.blend, &mut state);
     calls += r.draw_large_blend(&mut pass, ri);
+    // GPU particles and other extensions draw over the blended meshes with
+    // the frame bind group bound; they set their own pipelines.
+    let ctx = crate::Draw3D {
+        color_format: super::layouts::HDR_FORMAT,
+        depth_format: super::layouts::DEPTH_FORMAT,
+        frame_layout: &r.layouts.frame,
+    };
+    for c in &customs {
+        c.0.draw_3d(&mut pass, &ctx);
+        calls += 1;
+    }
+    if !customs.is_empty() {
+        pass.set_bind_group(0, &frame_group, &[]);
+        pass.set_vertex_buffer(1, instances.slice(..));
+    }
     if let Some(lp) = &lines_pipe {
         pass.set_pipeline(lp);
         pass.set_vertex_buffer(0, lines.slice(..));

@@ -15,6 +15,7 @@ pub(crate) fn to_json(data: &[u8]) -> Result<Value> {
     match root.name.as_str() {
         "map" => convert::map_json(&root),
         "tileset" => convert::tileset_json(&root),
+        "template" => convert::template_json(&root),
         other => Err(Error::Invalid(format!("unexpected root element <{other}>"))),
     }
 }

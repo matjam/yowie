@@ -31,9 +31,10 @@
 //!   batch through `SceneRenderer::draw_batches`, which only reads the
 //!   batch list and bind groups, so a bundle encoder can replay a cached
 //!   batch list for meshes the game marks static.
-//! - **GPU particles** draw in the HDR pass after the blended meshes, in
-//!   `passes.rs` (`encode_scene`) beside the lines, with the frame bind
-//!   group bound.
+//! - **GPU particles** and other extensions queue a [`GpuDraw`](crate::GpuDraw)
+//!   with [`Scene::draw_gpu`]; `passes.rs` (`encode_scene`) runs their
+//!   compute work before the HDR pass and their draws after the blended
+//!   meshes, beside the lines, with the frame bind group bound.
 //! - **Large-scene classes** (terrain, water, billboards and impostors,
 //!   dithered cross-fades) draw with their own pipelines inside the same
 //!   passes; `large.rs` describes the three calls that hook them in.
@@ -117,6 +118,9 @@ pub use vertex::{MeshData, Vertex3D};
 pub use water::{Water, WaterOptions};
 
 pub(crate) use render::SceneRenderer;
+
+/// Scenes recorded for one output.
+pub(crate) type SceneRecordList = Vec<record::SceneRecord>;
 pub(crate) use resolve::resolve_output;
 
 impl crate::Graphics {

@@ -137,8 +137,14 @@ mod services;
 mod services_tests;
 mod stepper;
 mod time;
+#[cfg(test)]
+mod time_tests;
 mod ui_hook;
 mod window;
+mod window_extra;
+mod windows;
+
+pub use windows::{WindowConfig, WindowId, WindowInfo};
 
 pub use cameras::{FlyCamera, OrbitCamera};
 pub use config::{Config, LoopMode};

@@ -221,7 +221,7 @@ mod tests {
         // switches.
         assert_eq!(lod.select(0.19, &mut state).0, 0);
         assert_eq!(lod.select(0.15, &mut state).0, 1);
-        // Back just over holds the coarse level.
+        // Back slightly over holds the coarse level.
         assert_eq!(lod.select(0.21, &mut state).0, 1);
         assert_eq!(lod.select(0.3, &mut state).0, 0);
         assert_eq!(lod.select(0.001, &mut state), (2, None));

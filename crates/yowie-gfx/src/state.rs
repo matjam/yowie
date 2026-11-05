@@ -167,7 +167,7 @@ impl Graphics {
         self.cursor.visible
     }
 
-    fn view_slot(&mut self) -> u32 {
+    pub(crate) fn view_slot(&mut self) -> u32 {
         if let Some(v) = self.cursor.view {
             return v;
         }

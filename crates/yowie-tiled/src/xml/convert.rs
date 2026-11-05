@@ -36,6 +36,19 @@ pub(super) fn map_json(el: &Element) -> Result<Value> {
     Ok(Value::Object(m))
 }
 
+/// Converts a `<template>` element into `{tileset, object}`.
+pub(super) fn template_json(el: &Element) -> Result<Value> {
+    let mut m = Map::new();
+    if let Some(ts) = el.child("tileset") {
+        m.insert("tileset".into(), tileset_json(ts)?);
+    }
+    let object = el
+        .child("object")
+        .ok_or_else(|| Error::Invalid("template has no <object>".into()))?;
+    m.insert("object".into(), object_json(object)?);
+    Ok(Value::Object(m))
+}
+
 /// Converts a `<properties>` element into an array of property objects.
 pub(super) fn properties_json(el: &Element) -> Result<Value> {
     let mut out = Vec::new();

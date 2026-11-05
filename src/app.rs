@@ -60,18 +60,29 @@ impl<G: Game> ApplicationHandler<UserEvent> for App<G> {
         }
     }
 
-    fn window_event(&mut self, el: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
+    fn window_event(&mut self, el: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
         let Some(w) = &mut self.window else {
             return;
         };
-        let result = match event {
-            WindowEvent::RedrawRequested => {
-                let draw = !w.hidden();
-                w.frame(draw)
+        let result = if id == w.window.id() {
+            match event {
+                WindowEvent::RedrawRequested => {
+                    let draw = !w.hidden();
+                    w.frame(draw)
+                }
+                other => w.window_event(other),
             }
-            other => w.window_event(other),
+        } else if let Some(extra) = w.ctx.windows.by_native(id) {
+            // Extra windows are drawn with the main window's frame.
+            match event {
+                WindowEvent::RedrawRequested => Ok(()),
+                other => w.window_event_for(extra, other),
+            }
+        } else {
+            return;
         };
         w.apply_requests(el);
+        let result = result.and_then(|()| w.apply_windows(el));
         self.fail(el, result);
         self.check_end(el);
     }
@@ -135,6 +146,7 @@ impl<G: Game> ApplicationHandler<UserEvent> for App<G> {
             }
         };
         w.apply_requests(el);
+        let result = result.and_then(|()| w.apply_windows(el));
         el.set_control_flow(flow);
         self.fail(el, result);
         self.check_end(el);

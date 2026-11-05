@@ -157,6 +157,12 @@ impl SceneRenderer {
         self.skies.retain(|s| frame - s.used < SKY_KEEP_FRAMES);
     }
 
+    /// Exchanges the recorded scenes with `other`, so each extra window
+    /// keeps the scenes drawn into it apart from the main window's.
+    pub(crate) fn swap_records(&mut self, other: &mut Vec<SceneRecord>) {
+        std::mem::swap(&mut self.records, other);
+    }
+
     pub(crate) fn take_record(&mut self) -> SceneRecord {
         self.free.pop().unwrap_or_default()
     }

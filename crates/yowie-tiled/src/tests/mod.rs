@@ -6,6 +6,7 @@ mod errors;
 mod fixtures;
 mod loading;
 mod orientations;
+mod templates;
 mod terrain;
 
 use yowie_asset::BoxError;

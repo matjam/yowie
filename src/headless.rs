@@ -35,10 +35,17 @@ pub(crate) fn run_headless<G: Game>(config: Config, args: RunArgs) -> Result<()>
         turn: true,
         draw: true,
     };
+    // A paused or zero-scale game never reaches `--seconds` of game time,
+    // so the run also ends after enough frames to cover the seconds twice
+    // over at normal speed.
+    let frame_limit = args
+        .seconds
+        .map(|s| (s * 2.0 / stepper.step()).ceil() as u64 + 600);
     loop {
         stepper.tick(&mut ctx, &mut game, tick)?;
         let done = args.seconds.is_none_or(|s| ctx.time.elapsed() + 1e-9 >= s);
-        if done || ctx.requests.quit {
+        let out_of_frames = frame_limit.is_some_and(|n| ctx.time.frame() >= n);
+        if done || out_of_frames || ctx.requests.quit {
             break;
         }
     }

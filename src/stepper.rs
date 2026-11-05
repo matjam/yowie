@@ -81,13 +81,18 @@ impl Stepper {
         let resumed = self.paused && !paused;
         self.paused = paused;
         let step = self.clock.step();
+        crate::ui_hook::sync_time_scale(ctx);
+        let rate = ctx.time.rate();
         let updates = match self.mode {
             _ if paused => {
                 self.clock.reset();
                 0
             }
-            LoopMode::FixedStep { .. } if self.fixed_clock => 1,
-            LoopMode::FixedStep { .. } => self.clock.advance(wall),
+            // The fixed clock stands in for a wall clock that advances one
+            // step per frame, so the scale still decides how many updates
+            // that frame owes.
+            LoopMode::FixedStep { .. } if self.fixed_clock => self.clock.advance(step * rate),
+            LoopMode::FixedStep { .. } => self.clock.advance(wall * rate),
             LoopMode::TurnBased if !self.drawn_any || !tick.turn => 0,
             LoopMode::TurnBased => 1,
         };
@@ -99,7 +104,7 @@ impl Stepper {
         for _ in 0..updates {
             let delta = match self.mode {
                 LoopMode::FixedStep { .. } => step,
-                LoopMode::TurnBased if self.fixed_clock => step,
+                LoopMode::TurnBased if self.fixed_clock => step * rate,
                 LoopMode::TurnBased => {
                     let since = self
                         .last_turn
@@ -107,7 +112,7 @@ impl Stepper {
                     if resumed {
                         0.0
                     } else {
-                        since.min(MAX_TURN_DELTA)
+                        since.min(MAX_TURN_DELTA) * rate
                     }
                 }
             };
@@ -124,6 +129,7 @@ impl Stepper {
                 break;
             }
         }
+        crate::windows::process_closes(ctx, game)?;
         if self.last_turn.is_none() {
             self.last_turn = Some(now);
         }
@@ -159,8 +165,12 @@ impl Stepper {
             crate::ui_hook::end_draw(ctx);
             drawn.map_err(Error::Game)?;
             draw_ms = started.elapsed().as_secs_f32() * 1000.0;
+            for id in ctx.windows.ids() {
+                ctx.gfx.end_window_frame(id)?;
+            }
             ctx.gfx.end_frame()?;
             crate::ui_hook::after_frame(ctx);
+            crate::windows::process_closes(ctx, game)?;
             ctx.time.frame += 1;
             self.drawn_any = true;
         }

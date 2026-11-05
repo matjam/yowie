@@ -1,7 +1,7 @@
 //! Debug drawing of a 3D world.
 
 use rapier3d::math::Vector;
-use rapier3d::pipeline::{DebugRenderBackend, DebugRenderObject};
+use rapier3d::pipeline::{DebugRenderBackend, DebugRenderMode, DebugRenderObject};
 
 use super::convert::unvec;
 use super::world::World3D;
@@ -30,5 +30,13 @@ impl World3D {
             &pw.narrow_phase,
             &pw.soft_bodies,
         );
+    }
+}
+
+impl World3D {
+    /// Turns the drawing of contact points and normals on or off in
+    /// [`debug_draw`](Self::debug_draw). Off by default.
+    pub fn set_debug_contacts(&mut self, on: bool) {
+        self.debug.mode.set(DebugRenderMode::CONTACTS, on);
     }
 }
