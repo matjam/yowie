@@ -78,24 +78,37 @@
 
 mod app;
 mod args;
+#[cfg(feature = "audio")]
+mod audio_backend;
 mod clipboard;
 mod clock;
 mod config;
+mod config_window;
+pub mod content;
 mod context;
+mod context_content;
+mod context_window;
+pub mod ecs_glue;
 mod error;
 mod game;
 mod gamepad;
 mod headless;
+mod icon;
 mod keymap;
 mod overlay;
+mod services;
+#[cfg(test)]
+mod services_tests;
 mod stepper;
 mod time;
 mod window;
 
 pub use config::{Config, LoopMode};
 pub use context::{Context, CursorGrab, Waker};
+pub use context_content::TextureLoad;
 pub use error::{BoxError, Error, GameResult, Result};
 pub use game::{Event, Game};
+pub use icon::{Cursor, CursorImage, Icon};
 pub use time::Time;
 pub use yowie_gfx::ScaleMode;
 

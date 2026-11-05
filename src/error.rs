@@ -27,6 +27,13 @@ pub enum Error {
     /// A window control (cursor grab, clipboard) is not available.
     #[error("window: {0}")]
     Window(String),
+    /// An asset could not be found, read or decoded.
+    #[error("asset: {0}")]
+    Asset(#[from] yowie_asset::Error),
+    /// The audio mixer could not be created.
+    #[cfg(feature = "audio")]
+    #[error("audio: {0}")]
+    Audio(#[from] yowie_audio::Error),
     /// A command-line argument the engine reads had a bad value.
     #[error("bad argument: {0}")]
     Argument(String),

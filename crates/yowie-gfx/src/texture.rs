@@ -270,6 +270,13 @@ impl Texture {
         self.gpu().view.clone()
     }
 
+    /// How many clones of this texture exist, itself included. A registry
+    /// that keeps a clone to update it can drop the entry when the count
+    /// falls to one.
+    pub fn share_count(&self) -> usize {
+        Arc::strong_count(&self.inner)
+    }
+
     pub(crate) fn id(&self) -> u64 {
         self.inner.id
     }

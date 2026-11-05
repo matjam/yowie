@@ -52,6 +52,7 @@ yowie-particle = { workspace = true, optional = true }
 yowie-tiled = { workspace = true, optional = true }
 thiserror.workspace = true
 log.workspace = true
+bytemuck.workspace = true
 winit.workspace = true
 gilrs.workspace = true
 arboard.workspace = true
@@ -61,6 +62,8 @@ image.workspace = true
 
 [dev-dependencies]
 image.workspace = true
+serde.workspace = true
+tempfile.workspace = true
 
 [workspace.dependencies]
 # Workspace crates

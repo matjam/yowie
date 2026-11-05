@@ -4789,11 +4789,14 @@ name = "yowie"
 version = "0.1.0"
 dependencies = [
  "arboard",
+ "bytemuck",
  "env_logger",
  "gilrs",
  "image",
  "log",
  "pollster",
+ "serde",
+ "tempfile",
  "thiserror 2.0.21",
  "winit",
  "yowie-anim",
