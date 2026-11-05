@@ -7,10 +7,15 @@ use super::layouts::{DEPTH_FORMAT, HDR_FORMAT, SceneLayouts, sampler, texture};
 use super::vertex::buffer_layouts;
 use crate::pipelines::trusted_module;
 
-const SOURCES: [&str; 10] = [
+/// The scene's shared declarations, before the probe lookups.
+const SHARED: [&str; 3] = [
     include_str!("shaders/common.wgsl"),
     include_str!("shaders/atmosphere.wgsl"),
     include_str!("shaders/vertex.wgsl"),
+];
+
+/// The lighting and the classes' own programs, after the probe lookups.
+const SOURCES: [&str; 7] = [
     include_str!("shaders/surface.wgsl"),
     include_str!("shaders/large.wgsl"),
     include_str!("shaders/terrain.wgsl"),
@@ -147,8 +152,12 @@ pub(crate) const BILLBOARD_ATTRIBUTES: [wgpu::VertexAttribute; 7] = wgpu::vertex
 ];
 
 impl LargePipelines {
-    pub(crate) fn new(device: &wgpu::Device, layouts: &SceneLayouts) -> Self {
-        let module = trusted_module(device, "yowie large scene", &SOURCES.join("\n"));
+    /// Builds the module and pipelines; `cube_array` picks how reflection
+    /// probes are bound, as for the mesh module.
+    pub(crate) fn new(device: &wgpu::Device, layouts: &SceneLayouts, cube_array: bool) -> Self {
+        let probes = super::probes::shader_source(cube_array);
+        let source = [SHARED.join("\n"), probes, SOURCES.join("\n")].join("\n");
+        let module = trusted_module(device, "yowie large scene", &source);
         let bgl = |label, entries: &[Entry]| {
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some(label),

@@ -2,9 +2,10 @@
 //! and impostors, and mesh draws dithered out for cross-fades. Each has
 //! its own pipelines and draws inside the scene passes:
 //!
-//! - `render.rs` calls [`SceneRenderer::prepare_large`] after the scene is
-//!   prepared, which culls each class against the camera and the shadow
-//!   views and uploads its instances into the slot's buffers.
+//! - `render.rs` calls [`SceneRenderer::prepare_large`] after a scene
+//!   slot is prepared, which culls each class against the camera and the
+//!   shadow views and uploads its instances into the slot's buffers.
+//!   Probe captures skip the classes.
 //! - `passes.rs` calls [`SceneRenderer::draw_large_opaque`] at the start of
 //!   the HDR pass, [`SceneRenderer::draw_large_blend`] after the blended
 //!   meshes, and [`SceneRenderer::draw_large_shadows`] after the mesh
@@ -24,7 +25,7 @@ use super::label::LabelDraw;
 use super::large_pipelines::LargePipelines;
 use super::prepare::Prepared;
 use super::render::SceneRenderer;
-use super::slot::GrowBuffer;
+use super::slot::{GrowBuffer, SlotId};
 use super::terrain::{self, TerrainDraw};
 use super::water::{self, WaterDraw};
 use crate::graphics::FrameStats;
@@ -158,7 +159,7 @@ impl LargeRenderer {
             })
         };
         Self {
-            pipelines: LargePipelines::new(device, layouts),
+            pipelines: LargePipelines::new(device, layouts, super::probes::cube_arrays(shared)),
             repeat_sampler: sampler("yowie large repeat", wgpu::AddressMode::Repeat),
             clamp_sampler: sampler("yowie large clamp", wgpu::AddressMode::ClampToEdge),
             white: texel(device, queue, wgpu::TextureFormat::Rgba8UnormSrgb, [255; 4]),
@@ -249,11 +250,11 @@ impl SceneRenderer {
         fade::prepare(&ctx, rec, &mut slot.fades);
     }
 
-    /// Records the opaque large-scene draws of slot `ri`: terrain, cut-out
-    /// billboards and dithered meshes. Leaves the pipeline, group 1 and
-    /// vertex buffers changed.
-    pub(crate) fn draw_large_opaque(&self, pass: &mut wgpu::RenderPass<'_>, ri: usize) -> u32 {
-        let Some((large, slot)) = self.large_slot(ri) else {
+    /// Records the opaque large-scene draws of a scene slot: terrain,
+    /// cut-out billboards and dithered meshes. Leaves the pipeline, group
+    /// 1 and vertex buffers changed.
+    pub(crate) fn draw_large_opaque(&self, pass: &mut wgpu::RenderPass<'_>, id: SlotId) -> u32 {
+        let Some((ri, large, slot)) = self.large_slot(id) else {
             return 0;
         };
         let rec = &self.records[ri];
@@ -263,10 +264,10 @@ impl SceneRenderer {
         calls
     }
 
-    /// Records the blended large-scene draws of slot `ri`: water and
+    /// Records the blended large-scene draws of a scene slot: water and
     /// blended billboards.
-    pub(crate) fn draw_large_blend(&self, pass: &mut wgpu::RenderPass<'_>, ri: usize) -> u32 {
-        let Some((large, slot)) = self.large_slot(ri) else {
+    pub(crate) fn draw_large_blend(&self, pass: &mut wgpu::RenderPass<'_>, id: SlotId) -> u32 {
+        let Some((ri, large, slot)) = self.large_slot(id) else {
             return 0;
         };
         let rec = &self.records[ri].large;
@@ -275,15 +276,15 @@ impl SceneRenderer {
         calls
     }
 
-    /// Records the large-scene shadow casters of slot `ri` into every
+    /// Records the large-scene shadow casters of a scene slot into every
     /// shadow view, setting each view's viewport.
     pub(crate) fn draw_large_shadows(
         &self,
         pass: &mut wgpu::RenderPass<'_>,
-        ri: usize,
+        id: SlotId,
         p: &Prepared,
     ) -> u32 {
-        let Some((large, slot)) = self.large_slot(ri) else {
+        let Some((_, large, slot)) = self.large_slot(id) else {
             return 0;
         };
         let mut calls = 0;
@@ -297,12 +298,18 @@ impl SceneRenderer {
         calls
     }
 
-    fn large_slot(&self, ri: usize) -> Option<(&LargeRenderer, &LargeSlot)> {
+    /// The record index, renderer and buffers a scene slot draws its
+    /// large-scene classes from; `None` for probe captures, which leave
+    /// them out, and for scenes without any.
+    fn large_slot(&self, id: SlotId) -> Option<(usize, &LargeRenderer, &LargeSlot)> {
+        let SlotId::Scene(ri) = id else {
+            return None;
+        };
         let large = self.large.as_deref()?;
         if !self.records.get(ri)?.large.has_gpu_work() {
             return None;
         }
-        Some((large, large.slots.get(ri)?))
+        Some((ri, large, large.slots.get(ri)?))
     }
 }
 

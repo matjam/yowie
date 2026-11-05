@@ -20,7 +20,7 @@ use crate::scene::model::ModelInstance;
 use crate::scene::prepare::{Prepared, View, prepare};
 use crate::scene::record::SceneRecord;
 use crate::scene::render::SceneRenderer;
-use crate::scene::slot::SceneSlot;
+use crate::scene::slot::{SceneSlot, SlotId};
 use crate::scene::submit::Scene;
 use crate::shared::Shared;
 use crate::texture::{Filter, Purpose, Texture, TextureOptions};
@@ -159,8 +159,13 @@ impl SceneRenderer {
         let mut p = Prepared::default();
         prepare(&self.records[ri], &v, &mut p);
         fill_frame(&self.records[ri], &v, &mut p.frame);
-        self.upload(shared, ri, &p);
-        self.bind_groups(shared, ri, 0, false);
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("yowie impostor bake"),
+        });
+        let slot = SlotId::Scene(ri);
+        let grid = self.write_probes(shared, &mut encoder, ri, slot, None);
+        self.upload(shared, ri, slot, &p);
+        self.bind_groups(shared, ri, slot, 0, grid, false);
         let rec = &self.records[ri];
         for m in &rec.materials {
             self.textures.prepare(shared, &self.layouts, m);
@@ -195,9 +200,6 @@ impl SceneRenderer {
                 view_formats: &[],
             })
             .create_view(&Default::default());
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("yowie impostor bake"),
-        });
         if let Some((_, frame_group, _)) = self.slots[ri].groups.clone() {
             let color = |view| {
                 Some(wgpu::RenderPassColorAttachment {

@@ -108,6 +108,10 @@ pub enum GfxError {
     /// built from the given sizes and options.
     #[error("terrain: {0}")]
     Terrain(String),
+    /// A light probe grid was malformed, or saved probe data could not be
+    /// read.
+    #[error("light probes: {0}")]
+    Probes(String),
 }
 
 /// Results from the renderer.
