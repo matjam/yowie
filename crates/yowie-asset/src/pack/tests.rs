@@ -25,7 +25,11 @@ fn build(compression: Compression) -> Vec<u8> {
 #[test]
 fn round_trip_with_and_without_compression() {
     let mut sizes = Vec::new();
-    for compression in [Compression::None, Compression::Zstd, Compression::default()] {
+    for compression in [
+        Compression::None,
+        Compression::Zstd(3),
+        Compression::default(),
+    ] {
         let bytes = build(compression);
         sizes.push(bytes.len());
         let src = PackSource::from_bytes(bytes).unwrap();
@@ -75,7 +79,7 @@ fn corrupted_packs_are_rejected() {
 
 #[test]
 fn data_corruption_fails_the_entry_checksum() {
-    for compression in [Compression::None, Compression::Zstd] {
+    for compression in [Compression::None, Compression::Zstd(3)] {
         let mut bytes = build(compression);
         bytes[HEADER_LEN as usize + 2] ^= 0x55;
         let src = PackSource::from_bytes(bytes).unwrap();

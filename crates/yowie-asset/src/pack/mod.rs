@@ -34,14 +34,21 @@ pub(crate) const METHOD_STORED: u8 = 0;
 pub(crate) const METHOD_ZSTD: u8 = 1;
 
 /// How a [`PackWriter`] compresses entries.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Compression {
     /// Store every entry as it is.
     None,
-    /// Compress each entry as a zstd frame. An entry that does not shrink
-    /// is stored uncompressed. This is the default.
-    #[default]
-    Zstd,
+    /// Compress each entry as a zstd frame at this level (1 to 22; higher
+    /// is smaller and slower to write, with similar read speed). An entry
+    /// that does not shrink is stored uncompressed.
+    Zstd(i32),
+}
+
+impl Default for Compression {
+    /// Level 19, suited to an offline packing tool.
+    fn default() -> Self {
+        Self::Zstd(19)
+    }
 }
 
 /// Returns the CRC-32 of `data`.

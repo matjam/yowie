@@ -41,7 +41,7 @@ pub(crate) fn decode_base64(text: &str, compression: &str) -> Result<Vec<Gid>> {
         "zlib" => inflate(flate2::read::ZlibDecoder::new(&raw[..]), "zlib")?,
         "gzip" => inflate(flate2::read::GzDecoder::new(&raw[..]), "gzip")?,
         "zstd" => {
-            let dec = ruzstd::decoding::StreamingDecoder::new(&raw[..])
+            let dec = zstd::stream::read::Decoder::new(&raw[..])
                 .map_err(|e| Error::Data(format!("zstd: {e}")))?;
             inflate(dec, "zstd")?
         }
@@ -98,10 +98,7 @@ pub(crate) mod tests {
                 e.write_all(&raw).unwrap();
                 e.finish().unwrap()
             }
-            "zstd" => ruzstd::encoding::compress_to_vec(
-                &raw[..],
-                ruzstd::encoding::CompressionLevel::Fastest,
-            ),
+            "zstd" => zstd::bulk::compress(&raw, 3).unwrap(),
             _ => raw,
         };
         STANDARD.encode(packed)

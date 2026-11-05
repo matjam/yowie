@@ -76,7 +76,9 @@ impl<W: Write> PackWriter<W> {
         let io = |e| Error::io("<pack>", e);
         let compressed = match compression {
             Compression::None => None,
-            Compression::Zstd => Some(crate::zstd::compress(data)).filter(|c| c.len() < data.len()),
+            Compression::Zstd(level) => {
+                crate::zstd::compress(data, level.clamp(1, 22)).filter(|c| c.len() < data.len())
+            }
         };
         let (method, stored): (u8, &[u8]) = match &compressed {
             Some(c) => (METHOD_ZSTD, c),

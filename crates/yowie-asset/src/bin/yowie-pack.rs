@@ -1,7 +1,7 @@
 //! Bundles an asset directory into a Yowie pack file.
 //!
 //! ```text
-//! yowie-pack [-o assets.pak] [--no-compress] DIRECTORY
+//! yowie-pack [-o assets.pak] [--no-compress] [--level N] DIRECTORY
 //! ```
 
 use std::path::PathBuf;
@@ -22,6 +22,9 @@ struct Args {
     /// Store every file without compression.
     #[arg(long)]
     no_compress: bool,
+    /// The zstd compression level, 1 to 22.
+    #[arg(long, default_value_t = 19, value_parser = clap::value_parser!(i32).range(1..=22))]
+    level: i32,
 }
 
 fn main() -> ExitCode {
@@ -29,7 +32,7 @@ fn main() -> ExitCode {
     let compression = if args.no_compress {
         Compression::None
     } else {
-        Compression::Zstd
+        Compression::Zstd(args.level)
     };
     if let Err(e) = pack_dir(&args.directory, &args.output, compression) {
         eprintln!("yowie-pack: {e}");

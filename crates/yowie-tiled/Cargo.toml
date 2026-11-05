@@ -14,7 +14,7 @@ serde_json.workspace = true
 quick-xml.workspace = true
 base64.workspace = true
 flate2.workspace = true
-ruzstd.workspace = true
+zstd.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
