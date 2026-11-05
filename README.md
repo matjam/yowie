@@ -188,7 +188,10 @@ orbits) is always built.
 ## Examples
 
 To run an example, clone the repository and use `cargo run --example
-<name>`. Arguments for the example go after `--`.
+<name>`. Arguments for the example go after `--`. To try them without
+building, download `yowie-examples-<version>-<platform>.zip` from the
+[releases page](https://github.com/matjam/yowie/releases); it holds every
+example built for that platform and a `README.txt` on running them.
 
 | Example | Command | Shows |
 |---|---|---|

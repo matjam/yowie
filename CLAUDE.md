@@ -80,5 +80,18 @@ em-dashes, no filler adverbs.
 
 ## Commits
 
-Author as `578676+matjam@users.noreply.github.com`. Imperative subject under
-72 characters saying what changed and why.
+Author as `578676+matjam@users.noreply.github.com`. Subjects follow
+Conventional Commits (`feat:`, `fix:`, `docs:`, `perf:`, `refactor:`,
+`test:`, `ci:`, `chore:`; `!` or a `BREAKING CHANGE:` footer for breaking
+changes), imperative, under 72 characters, saying what changed and why.
+release-please reads these on `main` to choose the next version and write
+`CHANGELOG.md`.
+
+## Releases
+
+`.github/workflows/release.yml` runs release-please on every push to `main`.
+It keeps a release pull request open; merging it tags `vX.Y.Z`, bumps every
+version marked `x-release-please` in `Cargo.toml`, and runs
+`release-binaries.yml`, which attaches
+`yowie-examples-<version>-<platform>.zip` for Linux, macOS and Windows. After
+a release merges, run `cargo build` and commit the refreshed `Cargo.lock`.

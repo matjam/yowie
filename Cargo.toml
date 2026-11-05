@@ -15,7 +15,8 @@ members = ["crates/*"]
 resolver = "3"
 
 [workspace.package]
-version = "0.1.0"
+# release-please sets every version marked x-release-please.
+version = "0.1.0" # x-release-please-version
 edition = "2024"
 # parking_lot 0.13 needs 1.95.
 rust-version = "1.95"
@@ -71,6 +72,7 @@ tempfile.workspace = true
 
 [workspace.dependencies]
 # Workspace crates
+# x-release-please-start-version
 yowie-core = { path = "crates/yowie-core", version = "0.1.0" }
 yowie-input = { path = "crates/yowie-input", version = "0.1.0" }
 yowie-gfx = { path = "crates/yowie-gfx", version = "0.1.0" }
@@ -93,6 +95,7 @@ yowie-orbit = { path = "crates/yowie-orbit", version = "0.1.0" }
 yowie-net = { path = "crates/yowie-net", version = "0.1.0" }
 yowie-ktx2 = { path = "crates/yowie-ktx2", version = "0.1.0" }
 yowie-tools = { path = "crates/yowie-tools", version = "0.1.0" }
+# x-release-please-end
 
 # Platform, GPU and maths
 winit = "0.30.13"

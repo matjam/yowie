@@ -1,0 +1,87 @@
+name: Release binaries
+
+# Builds every example in release mode on Linux, macOS and Windows and packs
+# each platform's programs into one zip. The release workflow calls this
+# with the new tag and the zips are attached to that release. Run it by hand
+# with no tag to get the zips as workflow artifacts instead.
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        type: string
+        required: true
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to attach the zips to; leave empty to keep them as workflow artifacts
+        type: string
+        default: ""
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: ${{ matrix.platform }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # 22.04 keeps the glibc requirement low enough for older distributions.
+          - platform: linux-x86_64
+            os: ubuntu-22.04
+          - platform: macos-aarch64
+            os: macos-latest
+          - platform: windows-x86_64
+            os: windows-latest
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release
+      - name: Install Linux build packages
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev
+      - name: Link the C runtime statically on Windows
+        if: runner.os == 'Windows'
+        shell: bash
+        run: echo "RUSTFLAGS=-C target-feature=+crt-static" >> "$GITHUB_ENV"
+      - name: Build
+        shell: bash
+        run: |
+          cargo build --release -p yowie --examples
+          cargo build --release -p yowie-tools --bin yowie-info
+      - name: Package
+        id: package
+        shell: bash
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          version="${TAG#v}"
+          version="${version:-dev-${GITHUB_SHA::7}}"
+          zip=$(.github/scripts/package-examples.sh "$version" "${{ matrix.platform }}")
+          echo "zip=$zip" >> "$GITHUB_OUTPUT"
+      - name: Attach to the release
+        if: inputs.tag != ''
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: gh release upload "$TAG" "${{ steps.package.outputs.zip }}" --clobber
+      - name: Keep as a workflow artifact
+        if: inputs.tag == ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.package.outputs.zip }}
+          path: ${{ steps.package.outputs.zip }}
