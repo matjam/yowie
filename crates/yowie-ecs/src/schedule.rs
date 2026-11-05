@@ -2,6 +2,8 @@
 
 use std::time::{Duration, Instant};
 
+use crate::error::{Error, Result};
+use crate::order::{self, Node};
 use crate::world::World;
 
 /// Run phase of a system. Stages run in the order listed.
@@ -35,6 +37,9 @@ pub struct System {
     name: String,
     run: Box<dyn FnMut(&mut World)>,
     conditions: Vec<Condition>,
+    before: Vec<String>,
+    after: Vec<String>,
+    sets: Vec<String>,
 }
 
 impl System {
@@ -45,7 +50,33 @@ impl System {
             name: name.to_owned(),
             run: Box::new(run),
             conditions: Vec::new(),
+            before: Vec::new(),
+            after: Vec::new(),
+            sets: Vec::new(),
         }
+    }
+
+    /// Makes the system run before `target`, a system name or a set label.
+    /// The constraint applies to systems of the same stage; a target in
+    /// another stage is already ordered by the stages. Several calls add
+    /// several constraints.
+    pub fn before(mut self, target: &str) -> Self {
+        self.before.push(target.to_owned());
+        self
+    }
+
+    /// Makes the system run after `target`, a system name or a set label.
+    /// See [`before`](Self::before).
+    pub fn after(mut self, target: &str) -> Self {
+        self.after.push(target.to_owned());
+        self
+    }
+
+    /// Puts the system in the set `label`. Other systems can then run
+    /// before or after the whole set by naming the label.
+    pub fn in_set(mut self, label: &str) -> Self {
+        self.sets.push(label.to_owned());
+        self
     }
 
     /// Adds a run condition. The system runs only when every condition
@@ -86,12 +117,17 @@ struct Slot {
 
 /// Runs systems in stage order, applying deferred commands after each one.
 ///
-/// Within a stage, systems run in the order they were added. After the
-/// last stage the schedule rotates the world's event queues, so an event is
-/// readable in the update that sent it and the next.
+/// Within a stage, systems run in the order they were added unless
+/// [`System::before`], [`System::after`] and [`System::in_set`] constrain
+/// them; see [`Schedule::validate`] for the errors constraints can cause.
+/// After the last stage the schedule rotates the world's event queues, so an
+/// event is readable in the update that sent it and the next.
 #[derive(Default)]
 pub struct Schedule {
     slots: [Vec<Slot>; 4],
+    /// For each stage, the indices of `slots` in run order.
+    orders: [Vec<usize>; 4],
+    dirty: bool,
     started: bool,
     updates: u64,
 }
@@ -115,7 +151,66 @@ impl Schedule {
             skipped: 0,
         };
         self.slots[stage as usize].push(Slot { system, stat });
+        self.dirty = true;
         self
+    }
+
+    /// Checks the ordering constraints: every name in a `before` or `after`
+    /// must be a system or set of the schedule, and no stage may have a
+    /// cycle. Call it once after adding systems to fail early; [`run`]
+    /// otherwise logs the error and runs the stage in insertion order.
+    ///
+    /// [`run`]: Schedule::run
+    pub fn validate(&mut self) -> Result<()> {
+        self.resolve()
+    }
+
+    /// The names of the systems of `stage` in the order they run. Stages
+    /// with a cycle list insertion order.
+    pub fn system_order(&self, stage: Stage) -> Vec<String> {
+        let slots = &self.slots[stage as usize];
+        let order = stage_order(slots).unwrap_or_else(|_| (0..slots.len()).collect());
+        order
+            .into_iter()
+            .map(|i| slots[i].system.name.clone())
+            .collect()
+    }
+
+    /// Sorts every stage if systems were added since the last sort. A
+    /// failing stage keeps insertion order and the first error is returned.
+    fn resolve(&mut self) -> Result<()> {
+        if !self.dirty {
+            return Ok(());
+        }
+        self.dirty = false;
+        let mut first = self.check_names().err();
+        for (i, slots) in self.slots.iter().enumerate() {
+            self.orders[i] = match stage_order(slots) {
+                Ok(order) => order,
+                Err(e) => {
+                    first.get_or_insert(e);
+                    (0..slots.len()).collect()
+                }
+            };
+        }
+        first.map_or(Ok(()), Err)
+    }
+
+    /// Every ordering target must name a system or set somewhere.
+    fn check_names(&self) -> Result<()> {
+        let all = || self.slots.iter().flatten().map(|s| &s.system);
+        for system in all() {
+            for target in system.before.iter().chain(&system.after) {
+                let known = all().any(|s| s.name == *target || s.sets.contains(target));
+                if !known {
+                    return Err(Error::UnknownOrderTarget {
+                        system: system.name.clone(),
+                        target: target.clone(),
+                    });
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Adds a function or closure as a system with no conditions.
@@ -143,10 +238,13 @@ impl Schedule {
 
     /// Returns the stats of every system in run order.
     pub fn stats(&self) -> Vec<SystemStat> {
-        self.slots
+        STAGES
             .iter()
-            .flatten()
-            .map(|s| s.stat.clone())
+            .flat_map(|stage| {
+                let slots = &self.slots[*stage as usize];
+                let order = stage_order(slots).unwrap_or_else(|_| (0..slots.len()).collect());
+                order.into_iter().map(move |i| slots[i].stat.clone())
+            })
             .collect()
     }
 
@@ -158,6 +256,9 @@ impl Schedule {
     /// Runs one update: the startup stage first if it has not run yet, then
     /// pre-update, update and post-update, then rotates the event queues.
     pub fn run(&mut self, world: &mut World) {
+        if let Err(e) = self.resolve() {
+            log::error!("yowie-ecs: system ordering: {e}; running in insertion order");
+        }
         if !self.started {
             self.started = true;
             self.run_stage(Stage::Startup, world);
@@ -170,7 +271,9 @@ impl Schedule {
     }
 
     fn run_stage(&mut self, stage: Stage, world: &mut World) {
-        for slot in &mut self.slots[stage as usize] {
+        let slots = &mut self.slots[stage as usize];
+        for &i in &self.orders[stage as usize] {
+            let slot = &mut slots[i];
             let runnable = slot.stat.enabled && slot.system.conditions.iter_mut().all(|c| c(world));
             if !runnable {
                 slot.stat.skipped += 1;
@@ -186,6 +289,22 @@ impl Schedule {
             world.flush_commands();
         }
     }
+}
+
+/// The run order of one stage's slots, or the cycle error.
+fn stage_order(slots: &[Slot]) -> Result<Vec<usize>> {
+    let nodes: Vec<Node> = slots
+        .iter()
+        .map(|s| Node {
+            name: &s.system.name,
+            before: &s.system.before,
+            after: &s.system.after,
+            sets: &s.system.sets,
+        })
+        .collect();
+    order::sort(&nodes).map_err(|stuck| Error::OrderCycle {
+        systems: stuck.into_iter().map(|i| nodes[i].name.to_owned()).collect(),
+    })
 }
 
 /// Run condition: true when a resource of type `T` exists.
@@ -275,6 +394,60 @@ mod tests {
         log.borrow_mut().clear();
         s.run(&mut w);
         assert!(log.borrow().is_empty());
+    }
+
+    #[test]
+    fn constraints_order_systems_within_a_stage() {
+        let log = Rc::new(RefCell::new(Vec::new()));
+        let mut s = Schedule::new();
+        s.add(Stage::Update, log_system(&log, "draw-prep").after("logic"));
+        s.add(Stage::Update, log_system(&log, "input").in_set("logic"));
+        s.add(
+            Stage::Update,
+            log_system(&log, "gravity").in_set("logic").after("input"),
+        );
+        s.add(Stage::Update, log_system(&log, "audio"));
+        s.add(Stage::Update, log_system(&log, "first").before("input"));
+        assert!(s.validate().is_ok());
+        // "audio" has no constraint and was added before "first", so it
+        // stays ahead of it.
+        let want = ["audio", "first", "input", "gravity", "draw-prep"];
+        assert_eq!(s.system_order(Stage::Update), want);
+        let mut w = World::new();
+        s.run(&mut w);
+        assert_eq!(*log.borrow(), want);
+        let stats: Vec<String> = s.stats().into_iter().map(|t| t.name).collect();
+        assert_eq!(stats, want);
+    }
+
+    #[test]
+    fn a_cycle_is_an_error_and_runs_in_insertion_order() {
+        let log = Rc::new(RefCell::new(Vec::new()));
+        let mut s = Schedule::new();
+        s.add(Stage::Update, log_system(&log, "a").after("b"));
+        s.add(Stage::Update, log_system(&log, "b").after("a"));
+        s.add(Stage::Update, log_system(&log, "c"));
+        match s.validate() {
+            Err(Error::OrderCycle { systems }) => assert_eq!(systems, ["a", "b"]),
+            other => panic!("expected a cycle, got {other:?}"),
+        }
+        let mut w = World::new();
+        s.run(&mut w);
+        assert_eq!(*log.borrow(), ["a", "b", "c"]);
+    }
+
+    #[test]
+    fn unknown_targets_are_reported() {
+        let mut s = Schedule::new();
+        s.add_system(Stage::Update, "a", |_| {});
+        s.add(
+            Stage::Update,
+            System::new("b", |_| {}).before("missing"),
+        );
+        assert!(matches!(
+            s.validate(),
+            Err(Error::UnknownOrderTarget { target, .. }) if target == "missing"
+        ));
     }
 
     #[test]
