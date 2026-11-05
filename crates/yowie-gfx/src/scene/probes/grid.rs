@@ -87,7 +87,8 @@ impl LightProbeGrid {
     }
 
     /// Every cell's position, x fastest, then y, then z: the order baked
-    /// data is stored in. Draw small spheres there to see the probes.
+    /// data is stored in. To see the cells, call
+    /// [`Scene::draw_light_probes`](crate::scene::Scene::draw_light_probes).
     pub fn cell_positions(&self) -> impl Iterator<Item = Vec3> + '_ {
         let c = self.counts;
         (0..c.z).flat_map(move |z| {

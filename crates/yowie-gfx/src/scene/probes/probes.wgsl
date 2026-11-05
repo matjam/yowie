@@ -30,34 +30,37 @@ struct Probes {
 @group(0) @binding(20) var<uniform> probes: Probes;
 @group(0) @binding(22) var grid_sh: texture_3d<f32>;
 
-// How much probe p covers `pos`: 1 inside its box, falling to 0 over the
-// blend distance towards the box faces.
+// How much probe p covers `pos`: 1 inside its box and on its faces (a
+// room's walls and floor), falling to 0 over the blend distance outside.
 fn probe_weight(p: ProbeGpu, pos: vec3<f32>) -> f32 {
-    let d = min(pos - p.box_min.xyz, p.box_max.xyz - pos);
-    let depth = min(min(d.x, d.y), d.z);
-    if depth <= 0.0 {
-        return 0.0;
+    // Per axis at most one of the two terms is above zero.
+    let out = max(p.box_min.xyz - pos, vec3<f32>(0.0)) + max(pos - p.box_max.xyz, vec3<f32>(0.0));
+    let outside = length(out);
+    if p.box_min.w <= 0.0 {
+        return select(0.0, 1.0, outside <= 0.0);
     }
-    return clamp(depth / max(p.box_min.w, 1e-4), 0.0, 1.0);
+    return clamp(1.0 - outside / p.box_min.w, 0.0, 1.0);
 }
 
 // The direction to look up in probe p's cube for light arriving at `pos`
 // along -r. Box projection intersects r with the box and looks from the
 // capture point towards that hit, so walls reflect where they stand
-// (parallax correction). Captures store directions with z mirrored (see
-// probes/capture.rs).
+// (parallax correction); a point in the blend band outside the box
+// projects from the nearest point inside. Captures store directions with z
+// mirrored (see probes/capture.rs).
 fn probe_dir(p: ProbeGpu, pos: vec3<f32>, r: vec3<f32>) -> vec3<f32> {
     var d = r;
     if p.params.y > 0.5 {
+        let q = clamp(pos, p.box_min.xyz, p.box_max.xyz);
         // An axis the ray runs along gets a tiny step, so its exit
         // distance is huge and never the nearest.
         let rr = select(r, vec3<f32>(1e-6), abs(r) < vec3<f32>(1e-6));
         let inv = 1.0 / rr;
-        let t1 = (p.box_max.xyz - pos) * inv;
-        let t2 = (p.box_min.xyz - pos) * inv;
+        let t1 = (p.box_max.xyz - q) * inv;
+        let t2 = (p.box_min.xyz - q) * inv;
         let tmax = max(t1, t2);
         let t = min(min(tmax.x, tmax.y), tmax.z);
-        d = pos + r * max(t, 0.0) - p.center.xyz;
+        d = q + r * max(t, 0.0) - p.center.xyz;
     }
     return vec3<f32>(d.x, d.y, -d.z);
 }

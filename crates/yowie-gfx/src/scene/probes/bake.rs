@@ -1,7 +1,7 @@
 //! Baking probes: the `Graphics` and `Scene` calls games make, and the
 //! captures behind them.
 
-use yowie_core::{Vec2, Vec3};
+use yowie_core::{Color, Mat4, Quat, Vec2, Vec3};
 
 use super::Capture;
 use super::capture::FACES;
@@ -16,6 +16,8 @@ use crate::half::f16_to_f32;
 use crate::scene::camera::Camera3D;
 use crate::scene::ibl::{IblBaker, face_view};
 use crate::scene::layouts::HDR_FORMAT;
+use crate::scene::material::Material;
+use crate::scene::mesh::Mesh;
 use crate::scene::render::SceneRenderer;
 use crate::scene::submit::{DrawId, Scene};
 use crate::shared::Shared;
@@ -124,6 +126,23 @@ impl Scene<'_> {
         if let Err(at) = hidden.binary_search(&draw.0) {
             hidden.insert(at, draw.0);
         }
+    }
+
+    /// Draws a matte white sphere `radius` world units across at each of
+    /// `grid`'s cells, to show where the cells are and, with the grid set
+    /// through [`set_light_probes`](Self::set_light_probes), the light each
+    /// one holds. `sphere` is a sphere mesh of radius 1, such as
+    /// `MeshData::sphere(1.0, 16, 32)`. The spheres are left out of probe
+    /// captures.
+    pub fn draw_light_probes(&mut self, grid: &LightProbeGrid, sphere: &Mesh, radius: f32) {
+        let white = Material::color(Color::WHITE, 0.0, 1.0);
+        let scale = Vec3::splat(radius);
+        let models: Vec<Mat4> = grid
+            .cell_positions()
+            .map(|p| Mat4::from_scale_rotation_translation(scale, Quat::IDENTITY, p))
+            .collect();
+        let id = self.draw_instanced(sphere, &white, &models);
+        self.hide_in_probes(id);
     }
 }
 

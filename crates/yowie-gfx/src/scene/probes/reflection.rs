@@ -60,8 +60,9 @@ pub struct ReflectionProbe {
     /// The box the probe lights, and the box reflections are projected
     /// onto when `box_projection` is on: usually the room's walls.
     pub bounds: Aabb,
-    /// How far inside its box the probe fades in from nothing at the box
-    /// faces, in world units.
+    /// How far outside its box the probe fades out, in world units.
+    /// Surfaces inside the box and on its faces get the whole probe; 0
+    /// ends it sharply at the faces.
     pub blend_distance: f32,
     /// Multiplies the probe's light.
     pub intensity: f32,

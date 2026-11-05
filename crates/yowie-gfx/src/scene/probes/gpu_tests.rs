@@ -45,7 +45,8 @@ impl Room {
         }
     }
 
-    fn walls(&self, s: &mut Scene, side_glow: f32) {
+    /// Each wall's material and placement.
+    fn pieces(side_glow: f32) -> Vec<(Material, Mat4)> {
         let wall = |c: Color| Material {
             double_sided: true,
             ..Material::glowing(c, side_glow)
@@ -55,24 +56,40 @@ impl Room {
             ..Material::glowing(Color::rgb(0.5, 0.5, 0.5), 0.6)
         };
         let slab = |p: Vec3, sc: Vec3| Mat4::from_scale_rotation_translation(sc, Quat::IDENTITY, p);
-        s.draw(
-            &self.cube,
-            &wall(Color::RED),
-            slab(Vec3::new(-5.0, 0.0, 0.0), Vec3::new(0.2, 10.0, 10.0)),
-        );
-        s.draw(
-            &self.cube,
-            &wall(Color::GREEN),
-            slab(Vec3::new(5.0, 0.0, 0.0), Vec3::new(0.2, 10.0, 10.0)),
-        );
+        let mut out = vec![
+            (
+                wall(Color::RED),
+                slab(Vec3::new(-5.0, 0.0, 0.0), Vec3::new(0.2, 10.0, 10.0)),
+            ),
+            (
+                wall(Color::GREEN),
+                slab(Vec3::new(5.0, 0.0, 0.0), Vec3::new(0.2, 10.0, 10.0)),
+            ),
+        ];
         for (p, sc) in [
             (Vec3::new(0.0, 5.0, 0.0), Vec3::new(10.0, 0.2, 10.0)),
             (Vec3::new(0.0, -5.0, 0.0), Vec3::new(10.0, 0.2, 10.0)),
             (Vec3::new(0.0, 0.0, -5.0), Vec3::new(10.0, 10.0, 0.2)),
             (Vec3::new(0.0, 0.0, 5.0), Vec3::new(10.0, 10.0, 0.2)),
         ] {
-            s.draw(&self.cube, &other, slab(p, sc));
+            out.push((other.clone(), slab(p, sc)));
         }
+        out
+    }
+
+    fn walls(&self, s: &mut Scene, side_glow: f32) {
+        for (m, at) in Self::pieces(side_glow) {
+            s.draw(&self.cube, &m, at);
+        }
+    }
+
+    /// The walls as one static group.
+    fn static_walls(&self, side_glow: f32) -> StaticGroup {
+        let mut g = StaticGroup::new();
+        for (m, at) in Self::pieces(side_glow) {
+            g.add(&self.cube, &m, at);
+        }
+        g
     }
 }
 
@@ -229,6 +246,54 @@ fn matte_balls_pick_up_the_wall_beside_them_from_the_grid() {
         .irradiance(Vec3::new(-3.0, 0.0, 0.0), Vec3::NEG_X)
         .expect("baked");
     assert!(e.x > e.y * 2.0, "{e}");
+}
+
+#[test]
+fn probes_capture_static_groups_like_ordinary_draws() {
+    let Some(mut gfx) = headless(uvec2(SIZE, SIZE)) else {
+        return;
+    };
+    let room = Room::new(&gfx);
+    let walls = room.static_walls(1.0);
+    let new_grid = || {
+        LightProbeGrid::new(
+            Vec3::new(-3.0, 0.0, 0.0),
+            Vec3::splat(3.0),
+            UVec3::new(3, 1, 1),
+        )
+    };
+    let (mut drawn, mut grouped) = (new_grid(), new_grid());
+    gfx.bake_light_probes(&mut drawn, |s| {
+        s.set_ambient(Color::BLACK);
+        room.walls(s, 1.0);
+    })
+    .expect("bake");
+    gfx.bake_light_probes(&mut grouped, |s| {
+        s.set_ambient(Color::BLACK);
+        s.draw_static(&walls);
+    })
+    .expect("bake");
+    for x in 0..3 {
+        let (a, b) = (drawn.coefficients(x, 0, 0), grouped.coefficients(x, 0, 0));
+        let (a, b) = (a.expect("baked"), b.expect("baked"));
+        for (ca, cb) in a.iter().zip(&b) {
+            assert!(
+                (*ca - *cb).abs().max_element() < 1e-3,
+                "cell {x}: {a:?} {b:?}"
+            );
+        }
+    }
+    let env = blue_sky(&gfx);
+    let p = probe();
+    gfx.bake_reflection_probe(&p, |s| {
+        s.set_ambient(Color::BLACK);
+        s.set_environment(Some(&env));
+        s.draw_static(&walls);
+    });
+    let with = chrome_scene(&mut gfx, &room, &env, Some(&p));
+    let c = SIZE / 2;
+    let w = px(&with, c, c);
+    assert!(w[0] > 40 && (w[2] - w[0]).abs() < 15, "with probe {w:?}");
 }
 
 #[test]

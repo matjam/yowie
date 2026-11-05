@@ -26,6 +26,7 @@ const GOLDEN: &[(&str, &[&str])] = &[
     ("pathfinding", &[]),
     ("physics2d", &["--seconds", "6"]),
     ("physics3d", &["--seconds", "3"]),
+    ("probes", &["--seconds", "1"]),
     ("roguelike", &["--autoplay", "--seconds", "0.5"]),
     ("shaders", &["--seconds", "1"]),
     ("sprites", &["--seconds", "1"]),
