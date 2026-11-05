@@ -89,6 +89,27 @@ mod gpu_tests;
 #[cfg(test)]
 mod gpu_tests_text;
 
+// 2D world features: camera rig, sheets, atlases, Aseprite, colour
+// matrices, tilemaps, autotiling and Tiled levels.
+mod aseprite;
+mod atlas;
+pub mod autotile;
+mod camera_rig;
+mod color_matrix;
+mod sheet;
+mod tiled_level;
+mod tilemap;
+
+pub use aseprite::{AseSlice, AseSliceKey, AseTag, AsepriteData, AsepriteSheet};
+pub use atlas::{Atlas, AtlasBuilder, AtlasPacker, PackRect};
+pub use camera_rig::CameraRig;
+pub use color_matrix::{ColorMatrix, ColorMatrixShader};
+pub use sheet::{SheetGrid, SpriteSheet, sheet_flipbook};
+pub use tiled_level::{LevelLayer, LevelLayerKind, TiledLevel};
+pub use tilemap::{
+    GridKind, GridLayout, Stagger, Tile, TileAnimation, TileAnimations, TileFlip, Tilemap,
+};
+
 pub use blend::BlendMode;
 pub use camera::Camera2D;
 pub use device::{adapter_available, default_adapter_info};

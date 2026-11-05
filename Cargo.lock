@@ -174,7 +174,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "aeb9553e62312c8756a5979254fc6d7da8bbeb5986a1e17037fab932f7037917"
 dependencies = [
  "clipboard-win",
- "image",
+ "image 0.25.10",
  "log",
  "objc2 0.6.5",
  "objc2-app-kit 0.3.2",
@@ -205,6 +205,20 @@ name = "as-raw-xcb-connection"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "175571dd1d178ced59193a6fc02dde1b972eb0bc56c892cde9beeceac5bf0f6b"
+
+[[package]]
+name = "asefile"
+version = "0.3.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "556cab74f613f2bcf3ab5dc5bbd2220fe2e1a4e7380fbaff96c5333a117066b4"
+dependencies = [
+ "bitflags 2.13.2",
+ "byteorder",
+ "flate2",
+ "image 0.24.9",
+ "log",
+ "nohash",
+]
 
 [[package]]
 name = "ash"
@@ -495,6 +509,12 @@ checksum = "af491d569909a7e4dee0ad7db7f5341fef5c614d5b8ec8cf765732aba3cff681"
 dependencies = [
  "unicode-width",
 ]
+
+[[package]]
+name = "color_quant"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3d7b894f5411737b7867f4827955924d7c254fc9f4d91a6aad6b097804b1018b"
 
 [[package]]
 name = "colorchoice"
@@ -1216,7 +1236,7 @@ dependencies = [
  "base64 0.13.1",
  "byteorder",
  "gltf-json",
- "image",
+ "image 0.25.10",
  "lazy_static",
  "serde_json",
  "urlencoding",
@@ -1378,6 +1398,18 @@ name = "hermit-abi"
 version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e17592d60ebacc7d5e169f4663c5f84f9161cc90328abcfe8456f41e4dfcb284"
+
+[[package]]
+name = "image"
+version = "0.24.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5690139d2f55868e080017335e4b94cb7414274c74f1669c84fb5feba2c9f69d"
+dependencies = [
+ "bytemuck",
+ "byteorder",
+ "color_quant",
+ "num-traits",
+]
 
 [[package]]
 name = "image"
@@ -1894,6 +1926,12 @@ dependencies = [
  "cfg_aliases",
  "libc",
 ]
+
+[[package]]
+name = "nohash"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a0f889fb66f7acdf83442c35775764b51fed3c606ab9cee51500dbde2cf528ca"
 
 [[package]]
 name = "nom"
@@ -4791,7 +4829,7 @@ dependencies = [
  "arboard",
  "env_logger",
  "gilrs",
- "image",
+ "image 0.25.10",
  "log",
  "pollster",
  "thiserror 2.0.21",
@@ -4892,16 +4930,20 @@ dependencies = [
 name = "yowie-gfx"
 version = "0.1.0"
 dependencies = [
+ "asefile",
  "bytemuck",
  "cosmic-text",
- "image",
+ "image 0.25.10",
  "log",
  "parking_lot 0.13.0",
  "pollster",
  "raw-window-handle",
  "thiserror 2.0.21",
  "wgpu",
+ "yowie-anim",
+ "yowie-asset",
  "yowie-core",
+ "yowie-tiled",
 ]
 
 [[package]]
@@ -4960,7 +5002,12 @@ dependencies = [
 name = "yowie-particle"
 version = "0.1.0"
 dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
  "yowie-core",
+ "yowie-gfx",
+ "yowie-rng",
 ]
 
 [[package]]
@@ -5025,7 +5072,7 @@ name = "yowie-tools"
 version = "0.1.0"
 dependencies = [
  "clap",
- "image",
+ "image 0.25.10",
  "intel_tex_2",
  "ktx2",
  "pollster",
