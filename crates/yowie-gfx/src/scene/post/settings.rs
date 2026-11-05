@@ -85,9 +85,9 @@ pub struct PostSettings {
     /// soft knee below it; 1 by default.
     pub bloom_threshold: f32,
 
-    /// Strength of screen-space ambient occlusion, 0 (off, the default) to
-    /// 1. It darkens the ambient and image-based light in creases and
-    /// where objects meet; direct light is left alone.
+    /// Strength of screen-space ambient occlusion, from 0 (off, the
+    /// default) to 1. It darkens the ambient and image-based light in
+    /// creases and where objects meet; direct light is left alone.
     pub ambient_occlusion: f32,
     /// How far, in world units, occlusion reaches; 1 by default.
     pub occlusion_radius: f32,
