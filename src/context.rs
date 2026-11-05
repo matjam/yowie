@@ -10,9 +10,11 @@ use yowie_gfx::Graphics;
 use yowie_input::InputState;
 
 use crate::clipboard::Clipboard;
+use crate::icon::Cursor;
 use crate::overlay::Overlay;
+use crate::services::Services;
 use crate::time::Time;
-use crate::{Error, Result};
+use crate::{Config, Error, Result};
 
 /// A message the engine sends its own event loop from any thread.
 #[derive(Clone, Copy, Debug)]
@@ -71,12 +73,13 @@ pub(crate) struct Requests {
     pub(crate) quit: bool,
     pub(crate) redraw: bool,
     pub(crate) wake_at: Option<Instant>,
+    /// The cursor changed and the window has not shown it yet.
+    pub(crate) cursor_dirty: bool,
 }
 
 /// Everything a game callback works with. `gfx`, `input` and `time` are
 /// public fields so they can be borrowed at the same time:
 /// `ctx.gfx.draw_texture(&tex, ctx.input.mouse())`.
-#[derive(Debug)]
 pub struct Context {
     /// The renderer: drawing, textures, fonts, shaders.
     pub gfx: Graphics,
@@ -93,21 +96,52 @@ pub struct Context {
     #[cfg(feature = "console")]
     pub console: yowie_console::Console,
     pub(crate) hook: crate::ui_hook::Hook,
+    /// The audio mixer. Windowed runs play it on the default output device;
+    /// headless runs, runs with [`Config::audio`](crate::Config) off and
+    /// machines without a device get a mixer that is rendered each frame
+    /// and heard by no one, so voices still start, finish and call back.
+    #[cfg(feature = "audio")]
+    pub audio: yowie_audio::Mixer,
+    /// The assets: directories and packs behind one file system, typed
+    /// loaders and background loading. Use the `load_*` methods of the
+    /// context for GPU objects that reload when their files change.
+    pub assets: yowie_asset::Assets,
     pub(crate) host: Host,
     pub(crate) requests: Requests,
     pub(crate) clipboard: Clipboard,
     pub(crate) overlay: Overlay,
     pub(crate) focused: bool,
     pub(crate) text_input: bool,
+    pub(crate) cursor: Cursor,
+    pub(crate) always_on_top: bool,
+    pub(crate) services: Services,
+}
+
+impl std::fmt::Debug for Context {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Context")
+            .field("gfx", &self.gfx)
+            .field("time", &self.time)
+            .field("host", &self.host)
+            .finish_non_exhaustive()
+    }
 }
 
 impl Context {
-    pub(crate) fn new(gfx: Graphics, host: Host, debug_overlay: bool) -> Self {
+    pub(crate) fn new(gfx: Graphics, host: Host, config: &Config) -> Result<Self> {
         let clipboard = match host {
             Host::Window { .. } => Clipboard::system(),
             Host::Headless { .. } => Clipboard::memory(),
         };
-        Self {
+        let windowed = matches!(host, Host::Window { .. });
+        #[cfg(feature = "audio")]
+        let (audio, backend) = crate::audio_backend::start(config.audio && windowed)?;
+        #[cfg(feature = "audio")]
+        let rate = Some(audio.rate());
+        #[cfg(not(feature = "audio"))]
+        let rate = None;
+        let assets = crate::content::build_assets(config, rate)?;
+        Ok(Self {
             gfx,
             input: InputState::new(),
             time: Time::default(),
@@ -116,13 +150,22 @@ impl Context {
             #[cfg(feature = "console")]
             console: yowie_console::Console::disabled(),
             hook: crate::ui_hook::Hook::default(),
+            #[cfg(feature = "audio")]
+            audio,
+            assets,
             host,
             requests: Requests::default(),
             clipboard,
-            overlay: Overlay::new(debug_overlay),
+            overlay: Overlay::new(config.debug_overlay),
             focused: true,
             text_input: false,
-        }
+            cursor: Cursor::default(),
+            always_on_top: config.always_on_top,
+            services: Services::new(
+                #[cfg(feature = "audio")]
+                backend,
+            ),
+        })
     }
 
     /// Ends the loop after the current callback.

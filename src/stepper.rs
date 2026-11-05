@@ -93,6 +93,8 @@ impl Stepper {
         };
         ctx.input.set_update_step(step as f32);
 
+        ctx.begin_services();
+        let game_time_before = ctx.time.elapsed;
         let started = Instant::now();
         for _ in 0..updates {
             let delta = match self.mode {
@@ -125,6 +127,7 @@ impl Stepper {
         if self.last_turn.is_none() {
             self.last_turn = Some(now);
         }
+        ctx.end_services(ctx.time.elapsed - game_time_before);
         ctx.time.alpha = match self.mode {
             LoopMode::FixedStep { .. } if !self.fixed_clock => self.clock.alpha(),
             _ => 0.0,
@@ -137,7 +140,11 @@ impl Stepper {
             ctx.gfx.set_time(ctx.time.elapsed as f32);
             ctx.gfx.begin_frame();
             ctx.input.begin_draw();
-            let ui_dt = if self.fixed_clock { step as f32 } else { wall as f32 };
+            let ui_dt = if self.fixed_clock {
+                step as f32
+            } else {
+                wall as f32
+            };
             crate::ui_hook::begin_draw(ctx, ui_dt);
             let held = crate::ui_hook::capture_input(ctx);
             let drawn = game.draw(ctx);

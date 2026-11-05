@@ -5,12 +5,12 @@
 //! snapshot each frame (`feed_world`, `feed_physics_2d`) or a shared
 //! handle once (`attach_mixer`).
 
+#[cfg(feature = "audio")]
+use yowie_audio::Mixer;
 #[cfg(feature = "ecs")]
 use yowie_core::Vec2;
 #[cfg(feature = "ecs")]
 use yowie_ecs::{Name, Schedule, SystemStat, World};
-#[cfg(feature = "audio")]
-use yowie_audio::Mixer;
 #[cfg(feature = "phys")]
 use yowie_phys::{World2D, World3D};
 
@@ -60,6 +60,10 @@ pub(crate) struct Sim {
     #[cfg(feature = "ecs")]
     pub(crate) worlds: Vec<WorldInfo>,
     #[cfg(feature = "ecs")]
+    pub(crate) engine_systems: Vec<SystemStat>,
+    #[cfg(feature = "ecs")]
+    pub(crate) engine_updates: u64,
+    #[cfg(feature = "ecs")]
     pub(crate) toggles: Vec<(String, bool)>,
     #[cfg(feature = "ecs")]
     pub(crate) selected: Option<u32>,
@@ -77,7 +81,7 @@ impl Sim {
         #[allow(unused_mut)]
         let mut names = Vec::new();
         #[cfg(feature = "ecs")]
-        if !self.worlds.is_empty() {
+        if !self.worlds.is_empty() || !self.engine_systems.is_empty() {
             names.push("Entities");
         }
         #[cfg(feature = "phys")]
@@ -129,13 +133,26 @@ impl Console {
             rows,
             systems,
             updates,
-            registered: world.registered_components().iter().map(|s| (*s).to_owned()).collect(),
+            registered: world
+                .registered_components()
+                .iter()
+                .map(|s| (*s).to_owned())
+                .collect(),
         };
         let sim = &mut self.core.sim;
         match sim.worlds.iter_mut().find(|w| w.name == name) {
             Some(w) => *w = info,
             None => sim.worlds.push(info),
         }
+    }
+
+    /// Shows per-system timings the engine recorded (`Context::schedule_stats`)
+    /// in the Entities panel. Used when no schedule was passed to
+    /// [`feed_world`](Self::feed_world). The engine calls it every frame.
+    #[cfg(feature = "ecs")]
+    pub fn set_schedule_stats(&mut self, stats: &[SystemStat], updates: u64) {
+        self.core.sim.engine_systems = stats.to_vec();
+        self.core.sim.engine_updates = updates;
     }
 
     /// Shows a 2D physics world's body and collider counts in the Physics
@@ -212,17 +229,29 @@ impl Core {
     fn entities_panel(&mut self, f: &mut Frame<'_>) {
         use yowie_ui::{Column, Size};
         let sim = &mut self.sim;
-        let Some(world) = sim.worlds.first().cloned() else {
-            return;
-        };
-        for w in &sim.worlds {
-            f.label(&format!("{}: {} entities, {} systems", w.name, w.entities, w.systems.len()));
-        }
-        f.label_dim(&format!("{} registered component types", world.registered.len()));
-        f.separator();
-        f.heading("Systems");
+        let mut world = sim.worlds.first().cloned().unwrap_or_default();
         if world.systems.is_empty() {
-            f.label_dim("no schedule attached");
+            world.systems = sim.engine_systems.clone();
+            world.updates = sim.engine_updates;
+        }
+        for w in &sim.worlds {
+            f.label(&format!(
+                "{}: {} entities, {} systems",
+                w.name,
+                w.entities,
+                w.systems.len()
+            ));
+        }
+        if !sim.worlds.is_empty() {
+            f.label_dim(&format!(
+                "{} registered component types",
+                world.registered.len()
+            ));
+        }
+        f.separator();
+        f.heading(&format!("Systems ({} runs)", world.updates));
+        if world.systems.is_empty() {
+            f.label_dim("no schedule recorded; call Context::record_schedule");
         }
         for s in &world.systems {
             let mut on = s.enabled;
@@ -260,22 +289,42 @@ impl Core {
                     || r.id.to_string().contains(&needle)
             })
             .collect();
-        let mut selected = sim.selected.and_then(|id| rows.iter().position(|r| r.id == id));
-        let cols = [Column::fixed("id", 60.0), Column::fill("name"), Column::fixed("parts", 60.0), Column::fixed("position", 130.0)];
-        let t = f.table("entities", &cols, rows.len(), 180.0, &mut selected, |f, row, col| {
-            let r = rows[row];
-            match col {
-                0 => f.label(&r.id.to_string()),
-                1 => f.label(&r.name),
-                2 => f.label(&r.components.to_string()),
-                _ => f.label(&r.position.map_or(String::new(), |p| format!("{:.1}, {:.1}", p.x, p.y))),
-            };
-        });
+        let mut selected = sim
+            .selected
+            .and_then(|id| rows.iter().position(|r| r.id == id));
+        let cols = [
+            Column::fixed("id", 60.0),
+            Column::fill("name"),
+            Column::fixed("parts", 60.0),
+            Column::fixed("position", 130.0),
+        ];
+        let t = f.table(
+            "entities",
+            &cols,
+            rows.len(),
+            180.0,
+            &mut selected,
+            |f, row, col| {
+                let r = rows[row];
+                match col {
+                    0 => f.label(&r.id.to_string()),
+                    1 => f.label(&r.name),
+                    2 => f.label(&r.components.to_string()),
+                    _ => f.label(
+                        &r.position
+                            .map_or(String::new(), |p| format!("{:.1}, {:.1}", p.x, p.y)),
+                    ),
+                };
+            },
+        );
         if let Some(i) = t.row_clicked.or(selected) {
             sim.selected = rows.get(i).map(|r| r.id);
         }
         if world.rows.len() >= MAX_ENTITY_ROWS {
-            f.label_dim(&format!("showing the first {MAX_ENTITY_ROWS} of {}", world.entities));
+            f.label_dim(&format!(
+                "showing the first {MAX_ENTITY_ROWS} of {}",
+                world.entities
+            ));
         }
     }
 

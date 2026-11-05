@@ -3,12 +3,13 @@
 //!
 //! Arguments: `--theme <name>` picks a built-in theme (try `nord`),
 //! `--skin` draws the widgets from nine-slice textures, `--overlay` shows
-//! the frame-timing overlay and `--beep` plays a tone through the audio
+//! the frame-timing overlay, `--console` and `--panels` start with the
+//! console drop-down or the debug panels open, and `--beep` plays a tone through the audio
 //! mixer (never in headless runs). In a window, the backtick key opens
 //! the console and F4 the debug panels; F3 toggles the overlay. Try
 //! `theme nord`, `set gallery.volume 0.2` and `help` in the console.
 
-use yowie::audio::{Output, Pcm, PlayOptions, Sound};
+use yowie::audio::{Pcm, PlayOptions, Sound};
 use yowie::console::IntVar;
 use yowie::gfx::{NineSlice, Texture, TextureOptions};
 use yowie::input::Key;
@@ -19,20 +20,13 @@ const MAPS: [&str; 5] = ["Archipelago", "Pangaea", "Fractal", "Highlands", "Atol
 const QUALITY: [&str; 3] = ["Low", "Medium", "High"];
 const ITEMS: [&str; 3] = ["Sword", "Shield", "Potion"];
 
-/// A tone and the device that plays it.
-struct Audio {
-    _output: Output,
-    mixer: yowie::audio::Mixer,
-    beep: Sound,
-}
-
 struct Gallery {
     args: Args,
     theme: IntVar,
     applied: (i64, bool),
     skin: Skin,
     use_skin: bool,
-    audio: Option<Audio>,
+    audio: Option<Sound>,
     play_beep: bool,
     quit: bool,
     volume: yowie::console::FloatVar,
@@ -62,6 +56,8 @@ struct Args {
     skin: bool,
     beep: bool,
     overlay: bool,
+    console: bool,
+    panels: bool,
 }
 
 impl Args {
@@ -74,6 +70,8 @@ impl Args {
                 "--skin" => a.skin = true,
                 "--beep" => a.beep = true,
                 "--overlay" => a.overlay = true,
+                "--console" => a.console = true,
+                "--panels" => a.panels = true,
                 other => {
                     if let Some(t) = other.strip_prefix("--theme=") {
                         a.theme = Some(t.to_owned());
@@ -92,7 +90,9 @@ fn bevel(ctx: &Context, base: [u8; 3], raised: bool) -> GameResult<NineSlice> {
     for y in 0..16i32 {
         for x in 0..16i32 {
             let d = x.min(y).min(15 - x).min(15 - y);
-            let top_left = x < 8 && x <= y || y < 8 && y < x;
+            // The top and left edges catch the light; the bottom and right
+            // edges are in shadow.
+            let top_left = y == d || x == d;
             let shade = |c: u8, k: f32| (f32::from(c) * k).clamp(0.0, 255.0) as u8;
             let rgb = match d {
                 0 => [14, 16, 24],
@@ -145,8 +145,14 @@ impl Game for Gallery {
             .as_deref()
             .and_then(|t| names.iter().position(|n| *n == t))
             .unwrap_or(0);
-        let theme = ctx.console.int("gallery.theme", first as i64, "index of the interface theme");
-        let volume = ctx.console.float("gallery.volume", 0.65, "the volume slider's value");
+        let theme = ctx.console.int(
+            "gallery.theme",
+            first as i64,
+            "index of the interface theme",
+        );
+        let volume = ctx
+            .console
+            .float("gallery.volume", 0.65, "the volume slider's value");
         let t = theme.clone();
         ctx.console.register_completing(
             "theme",
@@ -169,26 +175,11 @@ impl Game for Gallery {
                     .collect()
             },
         );
-        let audio = if ctx.headless() {
-            None
-        } else {
-            match Output::open_default() {
-                Ok(output) => {
-                    let mixer = output.mixer();
-                    let beep = mixer.sound(&Pcm::sine(440.0, 0.3, mixer.rate()))?;
-                    ctx.console.attach_mixer(&mixer);
-                    Some(Audio {
-                        _output: output,
-                        mixer,
-                        beep,
-                    })
-                }
-                Err(e) => {
-                    log::warn!("gallery: no audio output: {e}");
-                    None
-                }
-            }
-        };
+        // The engine opens the output device in windowed runs and never in
+        // headless ones, where the mixer renders to memory.
+        let beep = ctx.audio.sound(&Pcm::sine(440.0, 0.3, ctx.audio.rate()))?;
+        ctx.console.attach_mixer(&ctx.audio);
+        let audio = Some(beep);
         let skin = make_skin(ctx)?;
         let mut g = Gallery {
             theme,
@@ -219,6 +210,14 @@ impl Game for Gallery {
             about: false,
         };
         ctx.set_debug_overlay(g.args.overlay);
+        if g.args.console {
+            // For screenshots: open the drop-down with a few commands run.
+            ctx.console.set_open(true);
+            ctx.console.execute("help");
+            ctx.console.execute("get gallery.volume");
+            ctx.console.execute("theme");
+        }
+        ctx.console.set_panels_open(g.args.panels);
         let theme = g.build_theme();
         ctx.ui.set_theme(theme);
         g.applied = (g.theme.get(), g.use_skin);
@@ -231,18 +230,15 @@ impl Game for Gallery {
         }
         if self.play_beep {
             self.play_beep = false;
-            if let Some(a) = &self.audio {
-                a.mixer.play(
-                    &a.beep,
+            if let Some(beep) = &self.audio {
+                ctx.audio.play(
+                    beep,
                     PlayOptions {
                         volume: 0.4,
                         ..PlayOptions::default()
                     },
                 );
             }
-        }
-        if let Some(a) = &self.audio {
-            a.mixer.update();
         }
         if self.quit {
             ctx.quit();
@@ -260,7 +256,10 @@ impl Game for Gallery {
         let view = ctx.gfx.view_size();
         for i in 0..10 {
             let a = t * 0.4 + i as f32;
-            let c = vec2(view.x * 0.5 + 360.0 * a.cos(), view.y * 0.55 + 200.0 * (a * 1.3).sin());
+            let c = vec2(
+                view.x * 0.5 + 360.0 * a.cos(),
+                view.y * 0.55 + 200.0 * (a * 1.3).sin(),
+            );
             let col = Color::rgba8(70 + i as u8 * 12, 80, 190 - i as u8 * 9, 90);
             ctx.gfx.fill_circle(c, 70.0, col);
         }
@@ -273,7 +272,15 @@ impl Game for Gallery {
         let mut beep = false;
         ctx.ui.draw(&mut ctx.gfx, &ctx.input, |f| {
             self.menu(f, &names, &mut theme_idx, &mut skin_on);
-            self.widgets_window(f, &names, &mut theme_idx, &mut skin_on, &mut vol, progress, &mut beep);
+            self.widgets_window(
+                f,
+                &names,
+                &mut theme_idx,
+                &mut skin_on,
+                &mut vol,
+                progress,
+                &mut beep,
+            );
             self.more_window(f);
             self.dialogs(f, &mut quit);
         });
@@ -287,7 +294,13 @@ impl Game for Gallery {
 }
 
 impl Gallery {
-    fn menu(&mut self, f: &mut Frame<'_>, names: &[&str], theme_idx: &mut usize, skin_on: &mut bool) {
+    fn menu(
+        &mut self,
+        f: &mut Frame<'_>,
+        names: &[&str],
+        theme_idx: &mut usize,
+        skin_on: &mut bool,
+    ) {
         f.menu_bar(|f| {
             f.menu("File", |f| {
                 if f.menu_item_with("Reset clicks", "", None).clicked {
@@ -374,13 +387,14 @@ impl Gallery {
                         *beep = true;
                     }
                 });
-                f.label_dim(if can { "through the audio mixer" } else { "no audio device" });
+                f.label_dim("through the audio mixer");
             });
         });
     }
 
     fn more_window(&mut self, f: &mut Frame<'_>) {
-        f.window("More widgets", &mut self.win_b, |f| {
+        let mut win = self.win_b;
+        f.window("More widgets", &mut win, |f| {
             f.tabs("sections", &["Lists", "Text", "Table", "Drag"], &mut self.tab);
             f.space(4.0);
             match self.tab {
@@ -422,6 +436,7 @@ impl Gallery {
                 _ => self.drag_tab(f),
             }
         });
+        self.win_b = win;
     }
 
     fn drag_tab(&mut self, f: &mut Frame<'_>) {

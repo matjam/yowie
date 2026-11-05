@@ -69,9 +69,9 @@ pub fn split_words(line: &str) -> Result<Vec<String>, ParseError> {
 /// The word being typed at the end of `line` and where it starts, for
 /// completion. A trailing space starts an empty word.
 pub fn last_word(line: &str) -> (usize, &str) {
-    let start = line
-        .rfind(|c: char| c.is_whitespace())
-        .map_or(0, |i| i + line[i..].chars().next().map_or(1, char::len_utf8));
+    let start = line.rfind(|c: char| c.is_whitespace()).map_or(0, |i| {
+        i + line[i..].chars().next().map_or(1, char::len_utf8)
+    });
     (start, &line[start..])
 }
 
@@ -85,7 +85,10 @@ mod tests {
             ("echo hello world", &["echo", "hello", "world"]),
             ("  set   speed  3 ", &["set", "speed", "3"]),
             ("bind Space \"echo jump\"", &["bind", "Space", "echo jump"]),
-            ("say \"a \\\"quoted\\\" word\"", &["say", "a \"quoted\" word"]),
+            (
+                "say \"a \\\"quoted\\\" word\"",
+                &["say", "a \"quoted\" word"],
+            ),
             ("empty \"\" arg", &["empty", "", "arg"]),
             ("path \"C:\\\\dir\"", &["path", "C:\\dir"]),
             ("", &[]),
@@ -101,7 +104,10 @@ mod tests {
 
     #[test]
     fn unterminated_quote_is_an_error() {
-        assert_eq!(split_words("echo \"oops"), Err(ParseError::UnterminatedQuote));
+        assert_eq!(
+            split_words("echo \"oops"),
+            Err(ParseError::UnterminatedQuote)
+        );
     }
 
     #[test]

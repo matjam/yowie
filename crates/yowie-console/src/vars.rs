@@ -105,22 +105,46 @@ pub(crate) struct Var {
 impl Var {
     pub(crate) fn float(default: f32, help: &str) -> (Var, FloatVar) {
         let h = FloatVar::new(default);
-        (Var { help: help.into(), value: Value::Float(h.clone()) }, h)
+        (
+            Var {
+                help: help.into(),
+                value: Value::Float(h.clone()),
+            },
+            h,
+        )
     }
 
     pub(crate) fn int(default: i64, help: &str) -> (Var, IntVar) {
         let h = IntVar::new(default);
-        (Var { help: help.into(), value: Value::Int(h.clone()) }, h)
+        (
+            Var {
+                help: help.into(),
+                value: Value::Int(h.clone()),
+            },
+            h,
+        )
     }
 
     pub(crate) fn boolean(default: bool, help: &str) -> (Var, BoolVar) {
         let h = BoolVar::new(default);
-        (Var { help: help.into(), value: Value::Bool(h.clone()) }, h)
+        (
+            Var {
+                help: help.into(),
+                value: Value::Bool(h.clone()),
+            },
+            h,
+        )
     }
 
     pub(crate) fn text(default: &str, help: &str) -> (Var, StringVar) {
         let h = StringVar::new(default);
-        (Var { help: help.into(), value: Value::Text(h.clone()) }, h)
+        (
+            Var {
+                help: help.into(),
+                value: Value::Text(h.clone()),
+            },
+            h,
+        )
     }
 
     /// The type's name as shown in listings.
@@ -147,14 +171,19 @@ impl Var {
     pub(crate) fn assign(&self, text: &str) -> Result<(), String> {
         match &self.value {
             Value::Float(v) => {
-                let x: f32 = text.parse().map_err(|_| format!("{text:?} is not a number"))?;
+                let x: f32 = text
+                    .parse()
+                    .map_err(|_| format!("{text:?} is not a number"))?;
                 if !x.is_finite() {
                     return Err(format!("{text:?} is not a finite number"));
                 }
                 v.set(x);
             }
             Value::Int(v) => {
-                v.set(text.parse().map_err(|_| format!("{text:?} is not a whole number"))?);
+                v.set(
+                    text.parse()
+                        .map_err(|_| format!("{text:?} is not a whole number"))?,
+                );
             }
             Value::Bool(v) => v.set(parse_bool(text)?),
             Value::Text(v) => v.set(text),

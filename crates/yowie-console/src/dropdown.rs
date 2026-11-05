@@ -33,17 +33,17 @@ impl Core {
             return;
         }
         let step = |k: Key| input.key_pressed(k) || input.key_repeated(k);
-        if step(Key::Up) {
-            if let Some(s) = self.history.back(&self.line) {
-                self.line = s.to_owned();
-                self.caret_end = true;
-            }
+        if step(Key::Up)
+            && let Some(s) = self.history.back(&self.line)
+        {
+            self.line = s.to_owned();
+            self.caret_end = true;
         }
-        if step(Key::Down) {
-            if let Some(s) = self.history.forward() {
-                self.line = s.to_owned();
-                self.caret_end = true;
-            }
+        if step(Key::Down)
+            && let Some(s) = self.history.forward()
+        {
+            self.line = s.to_owned();
+            self.caret_end = true;
         }
         if input.key_pressed(Key::Tab) {
             self.complete_in_place();
@@ -103,7 +103,7 @@ impl Core {
         let rect = Rect::new(0.0, 0.0, view.w, h);
         let line_h = f.measure_mono("Ag").y.max(1.0);
         let row_h = (line_h + 10.0).max(theme.row_height);
-        f.fill_rect(rect, Color::rgba(0.04, 0.05, 0.07, 0.93));
+        f.fill_rect(rect, Color::rgba(0.04, 0.05, 0.07, 0.97));
         f.fill_rect(Rect::new(0.0, h - 1.0, view.w, 1.0), theme.accent);
         // Output.
         let out = Rect::new(8.0, 4.0, view.w - 16.0, h - row_h - 10.0);
@@ -136,11 +136,19 @@ impl Core {
         if self.scroll > 0 {
             let note = format!("-- {} lines up, PageDown to return --", self.scroll);
             let w = f.measure_mono(&note).x;
-            f.text_at_mono(vec2(view.w - w - 12.0, out.y + out.h - line_h), &note, theme.text_dim);
+            f.text_at_mono(
+                vec2(view.w - w - 12.0, out.y + out.h - line_h),
+                &note,
+                theme.text_dim,
+            );
         }
         // Command line.
         let input_y = h - row_h - 3.0;
-        f.text_at_mono(vec2(10.0, input_y + (row_h - line_h) * 0.5), ">", theme.accent);
+        f.text_at_mono(
+            vec2(10.0, input_y + (row_h - line_h) * 0.5),
+            ">",
+            theme.accent,
+        );
         let field = Rect::new(26.0, input_y, view.w - 36.0, row_h);
         let opts = TextOptions {
             placeholder: "type help for commands",
@@ -154,7 +162,7 @@ impl Core {
         let mut resp = None;
         if !self.just_toggled {
             f.area(field, |f| {
-                resp = Some(f.text_field_with("console input", &mut line, &opts));
+                resp = Some(f.text_field_with("##console input", &mut line, &opts));
             });
         }
         self.line = line;

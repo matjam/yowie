@@ -42,7 +42,8 @@ impl Core {
                 "Services" => self.services_panel(f),
                 other => {
                     if !self.sim_panel(other, f)
-                        && let Some((_, body)) = self.user_panels.iter_mut().find(|(n, _)| n == other)
+                        && let Some((_, body)) =
+                            self.user_panels.iter_mut().find(|(n, _)| n == other)
                     {
                         body(f);
                     }
@@ -73,7 +74,11 @@ impl Core {
         Self::kv(f, "draw", &format!("{:.2} ms", last.draw_ms));
         f.space(4.0);
         let graph = f.allocate(0.0, 110.0);
-        let (panel, accent, orange) = (f.theme().track, f.theme().accent, Color::rgb(1.0, 0.6, 0.25));
+        let (panel, accent, orange) = (
+            f.theme().track,
+            f.theme().accent,
+            Color::rgb(1.0, 0.6, 0.25),
+        );
         f.fill_rect(graph, panel);
         const TOP_MS: f32 = 1000.0 / 20.0;
         let n = self.frames.len().max(1);
@@ -87,7 +92,10 @@ impl Core {
             f.fill_rect(Rect::new(x, graph.y + graph.h - u - d, col_w, d), orange);
         }
         let target = graph.y + graph.h - (1000.0 / 60.0 / TOP_MS) * graph.h;
-        f.fill_rect(Rect::new(graph.x, target, graph.w, 1.0), Color::rgba(1.0, 1.0, 1.0, 0.5));
+        f.fill_rect(
+            Rect::new(graph.x, target, graph.w, 1.0),
+            Color::rgba(1.0, 1.0, 1.0, 0.5),
+        );
         let dim = f.theme().text_dim;
         f.text_at(vec2(graph.x + 4.0, target - 16.0), "16.7 ms", dim);
         f.label_dim("blue: update, orange: draw");
@@ -104,8 +112,19 @@ impl Core {
         Self::kv(f, "adapter", &g.adapter);
         Self::kv(f, "backend", &g.backend);
         Self::kv(f, "type", &g.device_type);
-        Self::kv(f, "output", &format!("{} x {} px, {}", g.output.0, g.output.1, g.format));
-        Self::kv(f, "view", &format!("{:.0} x {:.0} units, {:.2} px per unit", g.view.0, g.view.1, g.pixels_per_unit));
+        Self::kv(
+            f,
+            "output",
+            &format!("{} x {} px, {}", g.output.0, g.output.1, g.format),
+        );
+        Self::kv(
+            f,
+            "view",
+            &format!(
+                "{:.0} x {:.0} units, {:.2} px per unit",
+                g.view.0, g.view.1, g.pixels_per_unit
+            ),
+        );
         Self::kv(f, "draw calls", &g.stats.draw_calls.to_string());
         f.separator();
         f.heading("Textures");
@@ -117,14 +136,26 @@ impl Core {
         for (name, t) in &self.textures {
             let bytes = u64::from(t.width()) * u64::from(t.height()) * 4;
             total += bytes;
-            Self::kv(f, name, &format!("{} x {}  {}", t.width(), t.height(), human(bytes)));
+            Self::kv(
+                f,
+                name,
+                &format!("{} x {}  {}", t.width(), t.height(), human(bytes)),
+            );
         }
         Self::kv(f, "total (estimate)", &human(total));
     }
 
     fn input_panel(&mut self, f: &mut Frame<'_>, input: &InputState) {
         let keys: Vec<&str> = input.keys_down().map(|k| k.name()).collect();
-        Self::kv(f, "keys down", &if keys.is_empty() { "none".to_owned() } else { keys.join(" ") });
+        Self::kv(
+            f,
+            "keys down",
+            &if keys.is_empty() {
+                "none".to_owned()
+            } else {
+                keys.join(" ")
+            },
+        );
         let m = input.mouse();
         Self::kv(f, "pointer", &format!("{:.0}, {:.0}", m.x, m.y));
         let buttons: Vec<&str> = MouseButton::ALL
@@ -132,7 +163,15 @@ impl Core {
             .filter(|b| input.mouse_down(**b))
             .map(|b| b.name())
             .collect();
-        Self::kv(f, "buttons", &if buttons.is_empty() { "none".to_owned() } else { buttons.join(" ") });
+        Self::kv(
+            f,
+            "buttons",
+            &if buttons.is_empty() {
+                "none".to_owned()
+            } else {
+                buttons.join(" ")
+            },
+        );
         let w = input.wheel();
         Self::kv(f, "wheel", &format!("{:.1}, {:.1}", w.x, w.y));
         let mods = input.modifiers();
@@ -146,7 +185,15 @@ impl Core {
         .filter(|(m, _)| mods.contains(*m))
         .map(|(_, n)| *n)
         .collect();
-        Self::kv(f, "modifiers", &if mod_names.is_empty() { "none".to_owned() } else { mod_names.join(" ") });
+        Self::kv(
+            f,
+            "modifiers",
+            &if mod_names.is_empty() {
+                "none".to_owned()
+            } else {
+                mod_names.join(" ")
+            },
+        );
         f.separator();
         let mut any = false;
         for pad in input.gamepads() {
@@ -157,7 +204,15 @@ impl Core {
                 .filter(|b| pad.down(**b))
                 .map(|b| b.name())
                 .collect();
-            Self::kv(f, "buttons", &if down.is_empty() { "none".to_owned() } else { down.join(" ") });
+            Self::kv(
+                f,
+                "buttons",
+                &if down.is_empty() {
+                    "none".to_owned()
+                } else {
+                    down.join(" ")
+                },
+            );
             for axis in GamepadAxis::ALL {
                 let v = pad.axis(*axis);
                 let bar = f.allocate(0.0, 10.0);
@@ -165,7 +220,11 @@ impl Core {
                 f.fill_rect(bar, track);
                 let half = bar.w * 0.5;
                 let len = v.abs().min(1.0) * half;
-                let x = if v >= 0.0 { bar.x + half } else { bar.x + half - len };
+                let x = if v >= 0.0 {
+                    bar.x + half
+                } else {
+                    bar.x + half - len
+                };
                 f.fill_rect(Rect::new(x, bar.y, len, bar.h), accent);
                 let dim = f.theme().text_dim;
                 f.text_at(vec2(bar.x + 4.0, bar.y - 5.0), axis.name(), dim);
@@ -194,7 +253,14 @@ impl Core {
                     if !focused {
                         *buf = var.show();
                     }
-                    let r = f.text_field_with("##value", buf, &TextOptions { mono: true, ..TextOptions::default() });
+                    let r = f.text_field_with(
+                        "##value",
+                        buf,
+                        &TextOptions {
+                            mono: true,
+                            ..TextOptions::default()
+                        },
+                    );
                     if r.submitted {
                         if let Err(e) = var.assign(buf) {
                             self.pending_error = Some(e);

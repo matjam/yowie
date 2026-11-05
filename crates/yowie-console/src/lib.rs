@@ -56,8 +56,8 @@ mod parse;
 mod sim;
 mod vars;
 
-pub use complete::{Completion, Names, complete};
-pub use console::{CommandResult, Console, ConsoleOptions, FrameTimes, Request};
+pub use complete::{Completion, CustomCompleter, Names, complete};
+pub use console::{CommandResult, Console, ConsoleOptions, FileReader, FrameTimes, Request};
 pub use history::History;
 pub use logcap::{LogCapture, LogLine, TeeLogger, install_logger};
 pub use parse::{ParseError, last_word, split_words};

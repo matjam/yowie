@@ -234,7 +234,9 @@ impl Frame<'_> {
             return;
         }
         if let Some((slice, tint)) = self.slice_for(kind, state) {
-            self.pass(Pass::Image);
+            // Skins draw in call order with the flat fills, so a fill drawn
+            // over a skinned panel stays visible.
+            self.pass(Pass::Fill);
             let t = self.dim(tint);
             self.p.nine_slice(&slice, r, t);
             return;

@@ -68,6 +68,8 @@ mod error;
 mod frame;
 mod geometry;
 mod graphics;
+mod half;
+mod image_data;
 mod mipmap;
 mod nine_slice;
 mod output;
@@ -82,10 +84,14 @@ mod sprite;
 mod state;
 mod text;
 mod texture;
+mod texture_gpu;
+mod texture_upload;
 mod view;
 
 #[cfg(test)]
 mod gpu_tests;
+#[cfg(test)]
+mod gpu_tests_reload;
 #[cfg(test)]
 mod gpu_tests_text;
 
@@ -95,6 +101,7 @@ pub use device::{adapter_available, default_adapter_info};
 pub use error::{GfxError, Result};
 pub use geometry::Vertex;
 pub use graphics::{FrameStats, Graphics, GraphicsSettings};
+pub use image_data::ImageData;
 pub use nine_slice::NineSlice;
 pub use render_texture::{RenderTexture, RenderTextureOptions};
 pub use shader::Shader;

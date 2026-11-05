@@ -132,8 +132,8 @@ impl GlyphAtlas {
                 label: Some("yowie atlas grow"),
             });
         encoder.copy_texture_to_texture(
-            self.texture.inner.texture.as_image_copy(),
-            texture.inner.texture.as_image_copy(),
+            self.texture.gpu().texture.as_image_copy(),
+            texture.gpu().texture.as_image_copy(),
             wgpu::Extent3d {
                 width: old,
                 height: old,

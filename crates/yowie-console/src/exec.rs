@@ -17,15 +17,30 @@ pub(crate) const BUILTINS: &[(&str, &str)] = &[
     ("echo", "echo <text...>: print the arguments"),
     ("clear", "clear: empty the output"),
     ("quit", "quit: end the game"),
-    ("screenshot", "screenshot [file]: write the next frame to a PNG (screenshot.png by default)"),
-    ("exec", "exec <file>: run a file of commands, one per line (# and // start comments)"),
-    ("bind", "bind <key> <command...>: run a command when a key is pressed"),
+    (
+        "screenshot",
+        "screenshot [file]: write the next frame to a PNG (screenshot.png by default)",
+    ),
+    (
+        "exec",
+        "exec <file>: run a file of commands, one per line (# and // start comments)",
+    ),
+    (
+        "bind",
+        "bind <key> <command...>: run a command when a key is pressed",
+    ),
     ("unbind", "unbind <key>: drop a key's binding"),
     ("binds", "binds: list the key bindings"),
     ("fps", "fps: the frame rate and frame time"),
     ("stats", "stats: frame timings and draw counts"),
-    ("log", "log [level]: show log records at this level and above: debug, info, warn or error"),
-    ("panels", "panels [tab]: open or close the debug panels, on a named tab"),
+    (
+        "log",
+        "log [level]: show log records at this level and above: debug, info, warn or error",
+    ),
+    (
+        "panels",
+        "panels [tab]: open or close the debug panels, on a named tab",
+    ),
     ("set", "set <name> <value>: change a variable"),
     ("get", "get <name>: print a variable"),
     ("vars", "vars [prefix]: list the variables"),
@@ -98,7 +113,10 @@ impl Core {
                 Ok("quitting".into())
             }
             "screenshot" => {
-                let path = args.first().map_or("screenshot.png", String::as_str).to_owned();
+                let path = args
+                    .first()
+                    .map_or("screenshot.png", String::as_str)
+                    .to_owned();
                 self.requests.push(Request::Screenshot(path.clone()));
                 Ok(format!("saving {path}"))
             }
@@ -126,7 +144,9 @@ impl Core {
             "panels" => self.cmd_panels(args),
             "set" => match args {
                 [n, rest @ ..] if !rest.is_empty() => match self.vars.get(n.as_str()) {
-                    Some(v) => v.assign(&rest.join(" ")).map(|()| format!("{n} = {}", v.show())),
+                    Some(v) => v
+                        .assign(&rest.join(" "))
+                        .map(|()| format!("{n} = {}", v.show())),
                     None => Err(format!("no variable {n:?}")),
                 },
                 _ => Err("usage: set <name> <value>".into()),
@@ -145,11 +165,19 @@ impl Core {
                     .iter()
                     .filter(|(n, _)| n.starts_with(prefix))
                     .map(|(n, v)| {
-                        let help = if v.help.is_empty() { String::new() } else { format!("  {}", v.help) };
+                        let help = if v.help.is_empty() {
+                            String::new()
+                        } else {
+                            format!("  {}", v.help)
+                        };
                         format!("{n} = {} ({}){help}", v.show(), v.kind())
                     })
                     .collect();
-                if rows.is_empty() { Err("no variables".into()) } else { Ok(rows.join("\n")) }
+                if rows.is_empty() {
+                    Err("no variables".into())
+                } else {
+                    Ok(rows.join("\n"))
+                }
             }
             _ => return None,
         })
@@ -173,7 +201,11 @@ impl Core {
             .filter(|(n, _)| !self.commands.contains_key(*n))
             .map(|(n, h)| ((*n).to_owned(), (*h).to_owned()))
             .collect();
-        rows.extend(self.commands.iter().map(|(n, c)| (n.clone(), c.help.clone())));
+        rows.extend(
+            self.commands
+                .iter()
+                .map(|(n, c)| (n.clone(), c.help.clone())),
+        );
         rows.sort();
         let mut out = rows
             .iter()
@@ -213,7 +245,13 @@ impl Core {
         let k = parse_key(key)?;
         let line = cmd
             .iter()
-            .map(|w| if w.contains(' ') || w.is_empty() { format!("\"{w}\"") } else { w.clone() })
+            .map(|w| {
+                if w.contains(' ') || w.is_empty() {
+                    format!("\"{w}\"")
+                } else {
+                    w.clone()
+                }
+            })
             .collect::<Vec<_>>()
             .join(" ");
         self.binds.insert(k, line.clone());
@@ -234,7 +272,14 @@ impl Core {
         let s = self.gpu.stats;
         format!(
             "{:.1} fps  frame {:.2} ms  update {:.2} ms  draw {:.2} ms\n{} draw calls  {} vertices  {} indices  {} outputs",
-            t.fps, t.frame_ms, t.update_ms, t.draw_ms, s.draw_calls, s.vertices, s.indices, s.outputs
+            t.fps,
+            t.frame_ms,
+            t.update_ms,
+            t.draw_ms,
+            s.draw_calls,
+            s.vertices,
+            s.indices,
+            s.outputs
         )
     }
 
@@ -248,7 +293,11 @@ impl Core {
             "warn" | "warning" => LevelFilter::Warn,
             "error" => LevelFilter::Error,
             "trace" => LevelFilter::Trace,
-            other => return Err(format!("unknown level {other:?}: use debug, info, warn or error")),
+            other => {
+                return Err(format!(
+                    "unknown level {other:?}: use debug, info, warn or error"
+                ));
+            }
         };
         self.capture.set_level(filter);
         Ok(format!("log level {filter}"))
@@ -290,7 +339,10 @@ impl Core {
             panels: &panels,
         };
         complete(&self.line, &names, &|cmd, args| {
-            self.commands.get(cmd).and_then(|c| c.complete.as_ref()).map(|f| f(args))
+            self.commands
+                .get(cmd)
+                .and_then(|c| c.complete.as_ref())
+                .map(|f| f(args))
         })
     }
 }
@@ -310,13 +362,18 @@ mod tests {
     use super::*;
 
     fn console() -> Console {
-        let mut c = Console::new(ConsoleOptions::default());
+        let c = Console::new(ConsoleOptions::default());
         c.core.capture.clear();
         c
     }
 
     fn out(c: &Console) -> Vec<String> {
-        c.core.capture.window(100, 0).into_iter().map(|l: LogLine| l.text).collect()
+        c.core
+            .capture
+            .window(100, 0)
+            .into_iter()
+            .map(|l: LogLine| l.text)
+            .collect()
     }
 
     #[test]
@@ -335,7 +392,11 @@ mod tests {
         c.execute("fail");
         assert_eq!(out(&c).last().map(String::as_str), Some("nope"));
         c.execute("nonsense");
-        assert!(out(&c).last().is_some_and(|l| l.contains("unknown command")));
+        assert!(
+            out(&c)
+                .last()
+                .is_some_and(|l| l.contains("unknown command"))
+        );
     }
 
     #[test]
@@ -359,7 +420,11 @@ mod tests {
         assert!(lines.iter().any(|l| l == "player.speed = 8.5"));
         assert!(lines.iter().any(|l| l.contains("not a number")));
         c.execute("vars player.");
-        assert!(out(&c).iter().any(|l| l.starts_with("player.noclip = true (bool)")));
+        assert!(
+            out(&c)
+                .iter()
+                .any(|l| l.starts_with("player.noclip = true (bool)"))
+        );
     }
 
     #[test]
@@ -368,7 +433,10 @@ mod tests {
         c.execute("bind F5 echo \"jump now\"");
         c.execute("binds");
         assert!(out(&c).iter().any(|l| l == "F5 = echo \"jump now\""));
-        assert_eq!(c.core.binds.get(&Key::F5).map(String::as_str), Some("echo \"jump now\""));
+        assert_eq!(
+            c.core.binds.get(&Key::F5).map(String::as_str),
+            Some("echo \"jump now\"")
+        );
         c.execute("bind Nope x");
         assert!(out(&c).last().is_some_and(|l| l.contains("unknown key")));
         c.execute("unbind F5");
@@ -390,7 +458,10 @@ mod tests {
         assert_eq!(a.get(), 1);
         let lines = out(&c);
         assert!(lines.iter().any(|l| l == "done"));
-        assert!(lines.iter().any(|l| l.contains("nest too deeply")), "recursion is cut off");
+        assert!(
+            lines.iter().any(|l| l.contains("nest too deeply")),
+            "recursion is cut off"
+        );
         c.execute("exec missing.cfg");
         assert!(out(&c).last().is_some_and(|l| l.contains("not found")));
     }
@@ -400,7 +471,10 @@ mod tests {
         let mut c = console();
         c.execute("screenshot shot.png");
         c.execute("quit");
-        assert_eq!(c.take_requests(), [Request::Screenshot("shot.png".into()), Request::Quit]);
+        assert_eq!(
+            c.take_requests(),
+            [Request::Screenshot("shot.png".into()), Request::Quit]
+        );
         c.register("zap", "zap: do it", |_| Ok(String::new()));
         c.execute("help");
         let lines = out(&c);
@@ -415,9 +489,18 @@ mod tests {
     #[test]
     fn user_commands_replace_builtins_and_complete() {
         let mut c = console();
-        c.register_completing("spawn", "", |_| Ok(String::new()), |args| {
-            if args.len() == 1 { vec!["goblin".into(), "gnome".into()] } else { Vec::new() }
-        });
+        c.register_completing(
+            "spawn",
+            "",
+            |_| Ok(String::new()),
+            |args| {
+                if args.len() == 1 {
+                    vec!["goblin".into(), "gnome".into()]
+                } else {
+                    Vec::new()
+                }
+            },
+        );
         c.core.line = "spawn go".into();
         assert_eq!(c.core.complete_line().candidates, ["goblin"]);
         c.core.line = "he".into();

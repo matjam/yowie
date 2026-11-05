@@ -15,6 +15,10 @@ pub struct Names<'a> {
     pub panels: &'a [String],
 }
 
+/// Supplies candidates for a command that registered a completer, given
+/// the command name and the words typed after it.
+pub type CustomCompleter<'a> = dyn Fn(&str, &[String]) -> Option<Vec<String>> + 'a;
+
 /// What completion found for the word being typed.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Completion {
@@ -67,11 +71,7 @@ fn common_prefix(items: &[String]) -> String {
 /// variables, `help` a command, `bind` a key then a command, `log` a
 /// level, `panels` a panel. `custom` supplies candidates for commands that
 /// register a completer, given the command name and the words after it.
-pub fn complete(
-    line: &str,
-    names: &Names<'_>,
-    custom: &dyn Fn(&str, &[String]) -> Option<Vec<String>>,
-) -> Completion {
+pub fn complete(line: &str, names: &Names<'_>, custom: &CustomCompleter<'_>) -> Completion {
     let (start, partial) = last_word(line);
     let before: Vec<&str> = line[..start].split_whitespace().collect();
     let pool: Vec<String> = match before.as_slice() {
@@ -88,9 +88,13 @@ pub fn complete(
                 match (*cmd, rest.len()) {
                     ("set" | "get", 0) | ("vars", 0) => names.vars.to_vec(),
                     ("help", 0) => names.commands.to_vec(),
-                    ("bind", 0) | ("unbind", 0) => names.keys.iter().map(|k| (*k).to_owned()).collect(),
+                    ("bind", 0) | ("unbind", 0) => {
+                        names.keys.iter().map(|k| (*k).to_owned()).collect()
+                    }
                     ("bind", 1) => names.commands.to_vec(),
-                    ("log", 0) => ["debug", "info", "warn", "error"].map(String::from).to_vec(),
+                    ("log", 0) => ["debug", "info", "warn", "error"]
+                        .map(String::from)
+                        .to_vec(),
                     ("panels", 0) => names.panels.to_vec(),
                     _ => Vec::new(),
                 }
@@ -117,10 +121,21 @@ mod tests {
     use super::*;
 
     fn run(line: &str) -> Completion {
-        let commands: Vec<String> = ["help", "set", "get", "spawn", "screenshot", "bind", "log", "panels"]
+        let commands: Vec<String> = [
+            "help",
+            "set",
+            "get",
+            "spawn",
+            "screenshot",
+            "bind",
+            "log",
+            "panels",
+        ]
+        .map(String::from)
+        .to_vec();
+        let vars: Vec<String> = ["player.speed", "player.name", "world.seed"]
             .map(String::from)
             .to_vec();
-        let vars: Vec<String> = ["player.speed", "player.name", "world.seed"].map(String::from).to_vec();
         let panels: Vec<String> = ["Engine", "Physics"].map(String::from).to_vec();
         let keys = ["Space", "F5", "Grave"];
         let names = Names {
@@ -130,7 +145,8 @@ mod tests {
             panels: &panels,
         };
         complete(line, &names, &|cmd, args| {
-            (cmd == "spawn" && args.len() == 1).then(|| vec!["goblin".to_owned(), "gnome".to_owned()])
+            (cmd == "spawn" && args.len() == 1)
+                .then(|| vec!["goblin".to_owned(), "gnome".to_owned()])
         })
     }
 

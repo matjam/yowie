@@ -128,7 +128,8 @@ pub struct TeeLogger {
 
 impl Log for TeeLogger {
     fn enabled(&self, metadata: &Metadata<'_>) -> bool {
-        metadata.level() <= self.capture.level() || self.previous.as_ref().is_some_and(|p| p.enabled(metadata))
+        metadata.level() <= self.capture.level()
+            || self.previous.as_ref().is_some_and(|p| p.enabled(metadata))
     }
 
     fn log(&self, record: &Record<'_>) {

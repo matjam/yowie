@@ -284,7 +284,9 @@ impl Ui {
         body: impl FnOnce(&mut Frame<'_>) -> R,
     ) -> R {
         let mut painter = match &self.fonts {
-            Some((regular, mono)) => GfxPainter::with_fonts(gfx, layer, regular.clone(), mono.clone()),
+            Some((regular, mono)) => {
+                GfxPainter::with_fonts(gfx, layer, regular.clone(), mono.clone())
+            }
             None => GfxPainter::new(gfx, layer),
         };
         self.frame(&mut painter, input, body)

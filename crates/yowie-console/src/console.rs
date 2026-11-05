@@ -15,6 +15,11 @@ use crate::vars::{BoolVar, FloatVar, IntVar, StringVar, Var};
 /// in red.
 pub type CommandResult = Result<String, String>;
 
+/// Reads a script file by path for `exec`; the error is printed.
+pub type FileReader = Box<dyn Fn(&str) -> Result<String, String>>;
+
+type PanelBody = Box<dyn FnMut(&mut Frame<'_>)>;
+
 pub(crate) type Handler = Box<dyn FnMut(&[String]) -> CommandResult>;
 pub(crate) type Completer = Box<dyn Fn(&[String]) -> Vec<String>>;
 
@@ -60,7 +65,7 @@ pub struct ConsoleOptions {
     pub height: f32,
     /// Reads files for the `exec` command, so scripts can come from a
     /// pack file; reads from disk when `None`.
-    pub reader: Option<Box<dyn Fn(&str) -> Result<String, String>>>,
+    pub reader: Option<FileReader>,
 }
 
 impl Default for ConsoleOptions {
@@ -106,7 +111,7 @@ pub(crate) struct Core {
     pub(crate) gpu: GpuInfo,
     pub(crate) textures: Vec<(String, Texture)>,
     pub(crate) infos: Vec<(String, Box<dyn FnMut() -> String>)>,
-    pub(crate) user_panels: Vec<(String, Box<dyn FnMut(&mut Frame<'_>)>)>,
+    pub(crate) user_panels: Vec<(String, PanelBody)>,
     pub(crate) tab: usize,
     pub(crate) panel_rect: Rect,
     pub(crate) var_edits: BTreeMap<String, String>,
@@ -360,7 +365,9 @@ impl Console {
     /// Adds a panel tab. `body` runs every frame the tab is shown and adds
     /// widgets to the frame it is given.
     pub fn add_panel(&mut self, name: &str, body: impl FnMut(&mut Frame<'_>) + 'static) {
-        self.core.user_panels.push((name.to_owned(), Box::new(body)));
+        self.core
+            .user_panels
+            .push((name.to_owned(), Box::new(body)));
     }
 
     /// Lists a texture in the GPU panel with its size and an estimate of

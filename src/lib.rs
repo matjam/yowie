@@ -71,6 +71,39 @@
 //! - `YOWIE_FIXED_CLOCK=1` advances exactly one fixed step per frame, so a
 //!   given frame is the same picture on every machine.
 //!
+//! # Audio
+//!
+//! `ctx.audio` is a [`audio::Mixer`]. Windowed runs open the default output
+//! device unless [`Config::audio`] is off; headless runs, runs without a
+//! device and runs with audio off get an offline mixer that the engine
+//! renders every frame into nothing, so voices start, finish and call back
+//! exactly as with a device and no sound is made. The engine calls
+//! `Mixer::update` each frame.
+//!
+//! # Assets and hot reload
+//!
+//! `ctx.assets` reads from the `assets` directory in the working directory
+//! and beside the executable, from [`Config::asset_dir`], and from pack
+//! files (`assets.pak` in those places and [`Config::packs`]). Load GPU
+//! objects with [`Context::load_texture`], [`Context::load_texture_async`],
+//! [`Context::load_shader`], [`Context::load_font`] and
+//! [`Context::load_sound`]. With [`Config::hot_reload`] (on in debug builds)
+//! a changed file rewrites the texture or shader in place: the objects the
+//! game already holds, and every sprite using them, show the new contents.
+//! Textures load from PNG, JPEG, Radiance HDR and KTX2 (BC1, BC3, BC4, BC5
+//! and BC7 where [`gfx::Graphics::supports_bc`] says so).
+//!
+//! # Window extras
+//!
+//! [`Config`] sets an icon, minimum and maximum size, position and
+//! always-on-top; [`Context`] changes them while running and sets the
+//! cursor ([`Cursor`]). Wayland compositors place windows and order them
+//! themselves, so position and always-on-top have no effect there, and the
+//! icon is ignored on macOS and Wayland. Drag and drop arrives as
+//! [`Event::FileHovered`], [`Event::FileDropped`] and
+//! [`Event::FileHoverCancelled`]; focus as [`Event::Focused`]. Frames are
+//! not drawn while the window is occluded or minimised.
+//!
 //! F3 toggles a frame-timing overlay. A logger (`env_logger`, configured by
 //! `RUST_LOG`) is installed when [`run`] starts unless one exists.
 
@@ -78,16 +111,27 @@
 
 mod app;
 mod args;
+#[cfg(feature = "audio")]
+mod audio_backend;
 mod clipboard;
 mod clock;
 mod config;
+mod config_window;
+pub mod content;
 mod context;
+mod context_content;
+mod context_window;
+pub mod ecs_glue;
 mod error;
 mod game;
 mod gamepad;
 mod headless;
+mod icon;
 mod keymap;
 mod overlay;
+mod services;
+#[cfg(test)]
+mod services_tests;
 mod stepper;
 mod time;
 mod ui_hook;
@@ -95,8 +139,10 @@ mod window;
 
 pub use config::{Config, LoopMode};
 pub use context::{Context, CursorGrab, Waker};
+pub use context_content::TextureLoad;
 pub use error::{BoxError, Error, GameResult, Result};
 pub use game::{Event, Game};
+pub use icon::{Cursor, CursorImage, Icon};
 pub use time::Time;
 pub use yowie_gfx::ScaleMode;
 

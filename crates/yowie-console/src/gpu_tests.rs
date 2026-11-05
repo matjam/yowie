@@ -1,7 +1,7 @@
 //! The console drawn on a headless GPU and driven by input events.
 //! Skipped without a GPU adapter.
 
-use yowie_core::{vec2, uvec2};
+use yowie_core::{uvec2, vec2};
 use yowie_gfx::{Graphics, GraphicsSettings};
 use yowie_input::{InputEvent, InputState, Key};
 
@@ -41,7 +41,8 @@ impl Rig {
     }
 
     fn key(&mut self, key: Key) {
-        self.input.apply(&InputEvent::KeyDown { key, repeat: false });
+        self.input
+            .apply(&InputEvent::KeyDown { key, repeat: false });
         self.input.apply(&InputEvent::KeyUp { key });
     }
 

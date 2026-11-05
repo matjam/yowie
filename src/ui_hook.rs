@@ -101,6 +101,12 @@ pub(crate) fn begin_draw(ctx: &mut Context, dt: f32) {
 pub(crate) fn draw_console(ctx: &mut Context, dt: f32) {
     #[cfg(feature = "console")]
     {
+        if ctx.console.enabled() {
+            ctx.console.set_schedule_stats(
+                ctx.services.schedule_stats.as_slice(),
+                ctx.services.schedule_updates,
+            );
+        }
         let input = &ctx.input;
         ctx.console.draw(&mut ctx.gfx, input, dt);
         for request in ctx.console.take_requests() {
