@@ -126,6 +126,8 @@ pub mod ecs_glue;
 mod error;
 mod game;
 mod gamepad;
+#[cfg(doctest)]
+mod guides;
 mod headless;
 mod icon;
 mod keymap;
