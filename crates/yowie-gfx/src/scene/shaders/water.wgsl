@@ -94,8 +94,8 @@ fn wave_slope(p: vec2<f32>, t: f32, footprint: f32) -> vec2<f32> {
     return slope * 0.25;
 }
 
-@fragment
-fn fs_water(in: WaterOut) -> @location(0) vec4<f32> {
+// The lit water colour (linear, straight) and its coverage.
+fn water_color(in: WaterOut) -> vec4<f32> {
     let fw = fwidth(in.world.xz);
     let footprint = max(fw.x, fw.y);
     var depth = water.level.w;
@@ -126,5 +126,17 @@ fn fs_water(in: WaterOut) -> @location(0) vec4<f32> {
     var a = clamp(alpha + fresnel * (1.0 - alpha), 0.0, 1.0);
     a *= smoothstep(0.0, 0.04, depth);
     c = apply_fog(c, in.world);
-    return vec4<f32>(c * a, a);
+    return vec4<f32>(c, a);
+}
+
+@fragment
+fn fs_water(in: WaterOut) -> @location(0) vec4<f32> {
+    let c = water_color(in);
+    return vec4<f32>(c.rgb * c.a, c.a);
+}
+
+@fragment
+fn fs_water_oit(in: WaterOut) -> OitOut {
+    let c = water_color(in);
+    return oit_out(c.rgb, c.a, view_depth_of(in.world));
 }

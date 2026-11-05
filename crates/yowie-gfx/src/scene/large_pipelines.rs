@@ -7,21 +7,15 @@ use std::collections::HashMap;
 
 use wgpu::{BindGroupLayoutEntry as Entry, BindingType, ShaderStages as S};
 
-use super::layouts::{DEPTH_FORMAT, SceneLayouts, sampler, texture};
+use super::layouts::{SHADOW_FORMAT, SceneLayouts, sampler, texture};
+use super::pipelines::{engine_source, oit_targets};
 use super::targets::{Outputs, SceneFormat};
 use super::vertex::buffer_layouts;
 use crate::pipelines::trusted_module;
 
-/// The scene's shared declarations, before the probe lookups.
-const SHARED: [&str; 3] = [
-    include_str!("shaders/common.wgsl"),
-    include_str!("shaders/atmosphere.wgsl"),
-    include_str!("shaders/vertex.wgsl"),
-];
-
-/// The lighting and the classes' own programs, after the probe lookups.
-const SOURCES: [&str; 7] = [
-    include_str!("shaders/surface.wgsl"),
+/// The classes' own programs, after the engine's mesh program (shared
+/// declarations, probe lookups, material layers and lighting).
+const SOURCES: [&str; 6] = [
     include_str!("shaders/large.wgsl"),
     include_str!("shaders/terrain.wgsl"),
     include_str!("shaders/water.wgsl"),
@@ -72,18 +66,24 @@ fn tex2d(binding: u32) -> Entry {
 pub(crate) struct HdrPipelines {
     pub(crate) terrain: wgpu::RenderPipeline,
     pub(crate) water: wgpu::RenderPipeline,
+    /// Water into the order-independent transparency targets.
+    pub(crate) water_oit: wgpu::RenderPipeline,
     pub(crate) billboard_cutout: wgpu::RenderPipeline,
     pub(crate) billboard_blend: wgpu::RenderPipeline,
+    /// Blended billboards into the order-independent transparency targets.
+    pub(crate) billboard_oit: wgpu::RenderPipeline,
     pub(crate) fade: wgpu::RenderPipeline,
 }
 
-/// The pipeline layouts the HDR-pass pipelines are built with.
+/// The pipeline layouts the HDR-pass pipelines are built with, and the
+/// scene's depth and stencil format they attach.
 #[derive(Debug)]
 struct HdrLayouts {
     terrain: wgpu::PipelineLayout,
     water: wgpu::PipelineLayout,
     sheet: wgpu::PipelineLayout,
     mesh: wgpu::PipelineLayout,
+    depth_format: wgpu::TextureFormat,
 }
 
 /// Every layout and pipeline of the large-scene classes.
@@ -141,9 +141,15 @@ fn build(device: &wgpu::Device, module: &wgpu::ShaderModule, d: Desc<'_>) -> wgp
     })
 }
 
-fn depth(write: bool, compare: wgpu::CompareFunction) -> wgpu::DepthStencilState {
+/// Depth testing in `format` (the scene's depth and stencil format, or
+/// the shadow atlas's); the classes leave the stencil alone.
+fn depth(
+    format: wgpu::TextureFormat,
+    write: bool,
+    compare: wgpu::CompareFunction,
+) -> wgpu::DepthStencilState {
     wgpu::DepthStencilState {
-        format: DEPTH_FORMAT,
+        format,
         depth_write_enabled: Some(write),
         depth_compare: Some(compare),
         stencil: wgpu::StencilState::default(),
@@ -152,7 +158,7 @@ fn depth(write: bool, compare: wgpu::CompareFunction) -> wgpu::DepthStencilState
 }
 
 fn shadow_depth() -> wgpu::DepthStencilState {
-    let mut d = depth(true, wgpu::CompareFunction::LessEqual);
+    let mut d = depth(SHADOW_FORMAT, true, wgpu::CompareFunction::LessEqual);
     d.bias = wgpu::DepthBiasState {
         constant: 2,
         slope_scale: 2.0,
@@ -195,8 +201,7 @@ impl LargePipelines {
     /// Builds the module and pipelines; `cube_array` picks how reflection
     /// probes are bound, as for the mesh module.
     pub(crate) fn new(device: &wgpu::Device, layouts: &SceneLayouts, cube_array: bool) -> Self {
-        let probes = super::probes::shader_source(cube_array);
-        let source = [SHARED.join("\n"), probes, SOURCES.join("\n")].join("\n");
+        let source = [engine_source(cube_array), SOURCES.join("\n")].join("\n");
         let module = trusted_module(device, "yowie large scene", &source);
         let bgl = |label, entries: &[Entry]| {
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -287,7 +292,7 @@ impl LargePipelines {
                 vs,
                 fs: Some("fs_impostor_bake"),
                 buffers: &buffer_layouts(skinned),
-                depth: depth(true, greater),
+                depth: depth(layouts.depth_format, true, greater),
                 cull: None,
                 targets: &bake_targets,
                 multisample: single,
@@ -305,6 +310,7 @@ impl LargePipelines {
                 water: water_pl,
                 sheet: sheet_pl,
                 mesh: layouts.mesh.clone(),
+                depth_format: layouts.depth_format,
             },
             hdr: HashMap::new(),
             module,
@@ -339,7 +345,11 @@ impl LargePipelines {
         let opaque = format.color_targets(None, surface);
         let blended =
             format.color_targets(Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING), false);
-        let greater = wgpu::CompareFunction::Greater;
+        // The transparency accumulation pass has its own two targets and
+        // the scene's sample count; it writes no surface images.
+        let oit = oit_targets();
+        // Lit draws attach the scene's depth and stencil image.
+        let lit = |write| depth(l.depth_format, write, wgpu::CompareFunction::Greater);
         let b = |d: Desc<'_>| build(device, &self.module, d);
         HdrPipelines {
             terrain: b(Desc {
@@ -348,7 +358,7 @@ impl LargePipelines {
                 vs: "vs_terrain",
                 fs: fs("fs_terrain", "fs_terrain_post"),
                 buffers: &chunk_buffers(),
-                depth: depth(true, greater),
+                depth: lit(true),
                 cull: Some(wgpu::Face::Back),
                 targets: &opaque,
                 multisample: format.multisample(),
@@ -359,9 +369,20 @@ impl LargePipelines {
                 vs: "vs_water",
                 fs: Some("fs_water"),
                 buffers: &[],
-                depth: depth(false, greater),
+                depth: lit(false),
                 cull: None,
                 targets: &blended,
+                multisample: format.multisample(),
+            }),
+            water_oit: b(Desc {
+                label: "yowie water oit",
+                layout: &l.water,
+                vs: "vs_water",
+                fs: Some("fs_water_oit"),
+                buffers: &[],
+                depth: lit(false),
+                cull: None,
+                targets: &oit,
                 multisample: format.multisample(),
             }),
             billboard_cutout: b(Desc {
@@ -370,7 +391,7 @@ impl LargePipelines {
                 vs: "vs_billboard",
                 fs: fs("fs_billboard_cutout", "fs_billboard_cutout_post"),
                 buffers: &board_buffers(),
-                depth: depth(true, greater),
+                depth: lit(true),
                 cull: None,
                 targets: &opaque,
                 multisample: format.multisample(),
@@ -381,9 +402,20 @@ impl LargePipelines {
                 vs: "vs_billboard",
                 fs: Some("fs_billboard_blend"),
                 buffers: &board_buffers(),
-                depth: depth(false, greater),
+                depth: lit(false),
                 cull: None,
                 targets: &blended,
+                multisample: format.multisample(),
+            }),
+            billboard_oit: b(Desc {
+                label: "yowie billboard oit",
+                layout: &l.sheet,
+                vs: "vs_billboard",
+                fs: Some("fs_billboard_oit"),
+                buffers: &board_buffers(),
+                depth: lit(false),
+                cull: None,
+                targets: &oit,
                 multisample: format.multisample(),
             }),
             fade: b(Desc {
@@ -392,7 +424,7 @@ impl LargePipelines {
                 vs: "vs_fade",
                 fs: fs("fs_fade", "fs_fade_post"),
                 buffers: &buffer_layouts(false),
-                depth: depth(true, greater),
+                depth: lit(true),
                 cull: None,
                 targets: &opaque,
                 multisample: format.multisample(),

@@ -32,7 +32,8 @@ fn trusted(device: &wgpu::Device, label: &str, source: String) -> wgpu::ShaderMo
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 struct PipelineKey {
-    three_d: bool,
+    /// The scene's depth format for a 3D pass; `None` draws in 2D.
+    depth: Option<wgpu::TextureFormat>,
     format: wgpu::TextureFormat,
     blend: BlendMode,
     samples: u32,
@@ -184,18 +185,19 @@ impl Programs {
         gfx.extension(Programs::build)
     }
 
-    /// The render pipeline for a pass: `camera` is the layout of group 0.
+    /// The render pipeline for a pass: `camera` is the layout of group 0,
+    /// and `depth` the scene's depth format in a 3D pass (`None` in 2D).
     pub(crate) fn pipeline(
         &self,
         device: &wgpu::Device,
         camera: &wgpu::BindGroupLayout,
-        three_d: bool,
+        depth: Option<wgpu::TextureFormat>,
         format: wgpu::TextureFormat,
         blend: BlendMode,
         shape: PassShape<'_>,
     ) -> wgpu::RenderPipeline {
         let key = PipelineKey {
-            three_d,
+            depth,
             format,
             blend,
             samples: shape.samples,
@@ -205,6 +207,7 @@ impl Programs {
                 .map(|t| t.as_ref().map(|t| t.format))
                 .collect(),
         };
+        let three_d = depth.is_some();
         let mut map = self.pipelines.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(p) = map.get(&key) {
             return p.clone();
@@ -219,8 +222,8 @@ impl Programs {
         } else {
             &self.module_2d
         };
-        let depth_stencil = three_d.then(|| wgpu::DepthStencilState {
-            format: wgpu::TextureFormat::Depth32Float,
+        let depth_stencil = depth.map(|format| wgpu::DepthStencilState {
+            format,
             depth_write_enabled: Some(false),
             depth_compare: Some(wgpu::CompareFunction::GreaterEqual),
             stencil: wgpu::StencilState::default(),

@@ -4,7 +4,6 @@
 use super::StaticUse;
 use super::gpu::{BundleKey, INSTANCE_BYTES};
 use super::layout::Layout;
-use crate::scene::layouts::DEPTH_FORMAT;
 use crate::scene::pipelines::MeshKey;
 use crate::scene::render::SceneRenderer;
 use crate::scene::slot::SlotId;
@@ -61,9 +60,13 @@ impl SceneRenderer {
         let pipes: Vec<wgpu::RenderPipeline> = l
             .batches
             .iter()
-            .map(|b| self.pipelines.mesh(device, &self.layouts, b.key, format))
+            .map(|b| {
+                self.pipelines
+                    .mesh(device, &self.layouts, b.key, format, None)
+            })
             .collect();
         let rec = Recording {
+            depth_format: self.layouts.depth_format,
             key: &key,
             pipes: &pipes,
             layout: l,
@@ -87,6 +90,9 @@ impl SceneRenderer {
 
 /// What both bundles of a group are recorded from.
 struct Recording<'a> {
+    /// The scene's depth and stencil format, which the HDR pass the
+    /// bundles replay in attaches.
+    depth_format: wgpu::TextureFormat,
     key: &'a BundleKey,
     pipes: &'a [wgpu::RenderPipeline],
     layout: &'a Layout,
@@ -110,8 +116,11 @@ impl Recording<'_> {
         let mut enc = device.create_render_bundle_encoder(&wgpu::RenderBundleEncoderDescriptor {
             label: Some("yowie static"),
             color_formats: &color_formats,
+            // Bundles draw only materials that leave the stencil alone
+            // (`classes::bundles_can_draw`), so their pipelines never
+            // write it; a read-only bundle runs in the read-write pass.
             depth_stencil: Some(wgpu::RenderBundleDepthStencil {
-                format: DEPTH_FORMAT,
+                format: self.depth_format,
                 depth_read_only: false,
                 stencil_read_only: true,
             }),

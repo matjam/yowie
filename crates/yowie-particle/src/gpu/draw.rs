@@ -43,7 +43,7 @@ impl GpuDraw for Inner {
         let pipeline = core.programs.pipeline(
             &core.device,
             ctx.view_layout,
-            false,
+            None,
             ctx.format,
             core.blend,
             PassShape::PLAIN,
@@ -58,7 +58,7 @@ impl GpuDraw for Inner {
         let pipeline = core.programs.pipeline(
             &core.device,
             ctx.frame_layout,
-            true,
+            Some(ctx.depth_format),
             ctx.color_format,
             core.blend,
             PassShape {

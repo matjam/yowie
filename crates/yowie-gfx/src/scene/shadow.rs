@@ -12,7 +12,7 @@ use yowie_core::{Mat4, Vec3, Vec4};
 
 use super::bounds::Frustum;
 use super::frame_data::ShadowViewGpu;
-use super::layouts::DEPTH_FORMAT;
+use super::layouts::SHADOW_FORMAT;
 
 /// The most spot lights that get a shadow map in one scene.
 pub const MAX_SPOT_SHADOWS: usize = 4;
@@ -50,7 +50,7 @@ impl ShadowAtlas {
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
-            format: DEPTH_FORMAT,
+            format: SHADOW_FORMAT,
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
             view_formats: &[],
         });
@@ -69,7 +69,7 @@ impl ShadowAtlas {
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
-            format: DEPTH_FORMAT,
+            format: SHADOW_FORMAT,
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
             view_formats: &[],
         });

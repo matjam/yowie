@@ -23,6 +23,7 @@ const GOLDEN: &[(&str, &[&str])] = &[
     ("gallery", &["--seconds", "1", "--theme", "nord"]),
     ("inputs", &[]),
     ("lighting", &["--seconds", "2"]),
+    ("materials", &["--seconds", "1"]),
     ("particles", &["--seconds", "2"]),
     ("pathfinding", &[]),
     ("physics2d", &["--seconds", "6"]),

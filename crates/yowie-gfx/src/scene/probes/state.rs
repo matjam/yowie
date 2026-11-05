@@ -4,11 +4,14 @@
 
 use std::sync::Arc;
 
+use yowie_core::UVec2;
+
 use super::reflection::ProbeMaps;
 use super::{Capture, MAX_REFLECTION_PROBES, ProbeBlock, ProbeGpu};
 use crate::scene::layouts::HDR_FORMAT;
 use crate::scene::render::SceneRenderer;
 use crate::scene::slot::SlotId;
+use crate::scene::targets::depth_views;
 use crate::shared::Shared;
 
 /// Face size of a prefiltered probe cube.
@@ -36,7 +39,8 @@ pub(crate) struct ProbeState {
     stamp: u64,
     /// A black one-cell grid for scenes without one.
     pub(crate) no_grid: wgpu::TextureView,
-    depth: Option<(u32, wgpu::TextureView)>,
+    /// The capture depth target's size and its sampled and attached views.
+    depth: Option<(u32, wgpu::TextureView, wgpu::TextureView)>,
 }
 
 impl ProbeState {
@@ -97,16 +101,23 @@ impl ProbeState {
         self.slots.len()
     }
 
-    /// The capture depth target `size` texels square.
-    pub(crate) fn capture_depth(&mut self, device: &wgpu::Device, size: u32) -> wgpu::TextureView {
-        if let Some((s, v)) = &self.depth
+    /// The capture depth target `size` texels square in `format` (the
+    /// scene's depth and stencil format): its depth-only view for sampling
+    /// and its view of both aspects for attaching.
+    pub(crate) fn capture_depth(
+        &mut self,
+        device: &wgpu::Device,
+        size: u32,
+        format: wgpu::TextureFormat,
+    ) -> (wgpu::TextureView, wgpu::TextureView) {
+        if let Some((s, d, ds)) = &self.depth
             && *s == size
         {
-            return v.clone();
+            return (d.clone(), ds.clone());
         }
-        let v = super::capture::depth_target(device, size);
-        self.depth = Some((size, v.clone()));
-        v
+        let (d, ds) = depth_views(device, "yowie capture depth", UVec2::splat(size), format, 1);
+        self.depth = Some((size, d.clone(), ds.clone()));
+        (d, ds)
     }
 
     /// The array slot holding `maps`, copying it in (into a free slot, or

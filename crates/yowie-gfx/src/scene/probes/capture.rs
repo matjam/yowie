@@ -19,7 +19,6 @@ use yowie_core::{UVec2, Vec2, Vec3};
 use super::Capture;
 use crate::graphics::FrameStats;
 use crate::scene::camera::{Camera3D, Projection};
-use crate::scene::layouts::DEPTH_FORMAT;
 use crate::scene::prepare::View;
 use crate::scene::render::SceneRenderer;
 use crate::scene::slot::{SceneSlot, SlotId};
@@ -89,7 +88,9 @@ impl SceneRenderer {
         kind: Capture,
     ) {
         let device = shared.device();
-        let depth = self.probes.capture_depth(device, size);
+        let (depth, depth_stencil) =
+            self.probes
+                .capture_depth(device, size, self.layouts.depth_format);
         while self.captures.len() < 6 {
             self.captures.push(SceneSlot::new(device));
         }
@@ -99,6 +100,7 @@ impl SceneRenderer {
                 UVec2::splat(size),
                 face.clone(),
                 depth.clone(),
+                depth_stencil.clone(),
             ));
             let cam = face_camera(position, f, range.0, range.1);
             let mut v = View::new(&cam, Vec2::splat(size as f32));
@@ -106,26 +108,6 @@ impl SceneRenderer {
             self.render_view(shared, encoder, ri, SlotId::Capture(f), &v, &mut stats);
         }
     }
-}
-
-/// A depth target for captures `size` texels square.
-pub(super) fn depth_target(device: &wgpu::Device, size: u32) -> wgpu::TextureView {
-    device
-        .create_texture(&wgpu::TextureDescriptor {
-            label: Some("yowie capture depth"),
-            size: wgpu::Extent3d {
-                width: size,
-                height: size,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: DEPTH_FORMAT,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
-            view_formats: &[],
-        })
-        .create_view(&Default::default())
 }
 
 #[cfg(test)]

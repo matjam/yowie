@@ -85,7 +85,7 @@ impl StaticData {
         self.layout.get_or_init(|| Layout::build(&self.items))
     }
 
-    /// The items drawn through GPU culling (all but blended ones).
+    /// The items drawn through GPU culling (all but the ordinary ones).
     pub(crate) fn gpu_items(&self) -> u32 {
         self.layout().order.len() as u32
     }
@@ -200,14 +200,15 @@ pub(crate) struct StaticUse {
 
 impl Scene<'_> {
     /// Draws a static group. Its opaque and cut-out items are culled and
-    /// drawn on the GPU from render bundles; blended ones, and every item
-    /// on GPUs without compute shaders or indirect draws, draw as ordinary
-    /// draws.
+    /// drawn on the GPU from render bundles. Items whose material blends,
+    /// refracts, uses the stencil, has fur, an outline, an x-ray tint or a
+    /// surface shader, and every item on GPUs without compute shaders or
+    /// indirect draws, draw as ordinary draws.
     pub fn draw_static(&mut self, group: &StaticGroup) {
         let data = &group.data;
         let layout = data.layout();
         let fallback: Vec<u32> = if self.rec.gpu_statics {
-            layout.blended.clone()
+            layout.ordinary.clone()
         } else {
             (0..data.items.len() as u32).collect()
         };
@@ -280,7 +281,7 @@ pub(crate) fn emit_casters(
             let key = MeshKey {
                 pass,
                 double_sided: true,
-                skinned: false,
+                ..MeshKey::default()
             };
             // Opaque casters ignore the material, so they batch by mesh.
             let m = if pass == MeshPass::ShadowMask { mat } else { 0 };

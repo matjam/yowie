@@ -1,12 +1,16 @@
 //! Recording one scene's GPU passes: the shadow atlas, then the HDR scene
-//! (opaque and cut-out meshes, the sky, blended meshes, debug lines).
+//! (opaque, cut-out and fur meshes, static group bundles, the sky,
+//! outlines, refracting meshes over a copy of the scene, x-ray tints,
+//! order-independent transparency, sorted blended meshes, debug lines).
 
 use super::pipelines::{FixedPipeline, MeshKey};
 use super::prepare::{Batch, Prepared};
 use super::render::SceneRenderer;
 use super::shadow::atlas_rect;
 use super::slot::{SceneSlot, SlotId};
+use super::stencil::StencilKey;
 use super::targets::SceneFormat;
+use super::textures::TextureKey;
 use crate::gpu_timer::{Span, Timed};
 use crate::graphics::FrameStats;
 use crate::shared::Shared;
@@ -15,35 +19,73 @@ use crate::shared::Shared;
 #[derive(Debug, Default)]
 pub(crate) struct PassState {
     pipeline: Option<MeshKey>,
-    textures: Option<[u64; 5]>,
+    textures: Option<TextureKey>,
     mesh: Option<u32>,
     index_count: u32,
+    stencil: Option<u32>,
+    user: Option<u32>,
 }
 
 impl SceneRenderer {
-    /// Records the batches of one pass into attachments of `format`.
-    /// Pipelines, bind groups and vertex buffers change only where a batch
-    /// differs from the one before.
+    /// Records the batches of one pass of record `ri` into `slot`, with
+    /// pipelines matching the slot's attachments. Pipelines, bind groups
+    /// and vertex buffers change only where a batch differs from the one
+    /// before.
     pub(crate) fn draw_batches(
         &mut self,
         shared: &Shared,
         pass: &mut wgpu::RenderPass<'_>,
-        ri: usize,
-        format: SceneFormat,
+        (ri, slot): (usize, SlotId),
         batches: &[Batch],
         state: &mut PassState,
     ) -> u32 {
         let rec = &self.records[ri];
+        // Matched by field so the pipeline cache below can still change.
+        let slot = match slot {
+            SlotId::Scene(i) => &self.slots[i],
+            SlotId::Capture(i) => &self.captures[i],
+        };
+        let (features, format) = (&slot.features, slot.format());
         let mut calls = 0;
         for b in batches {
+            let material = &rec.materials[b.material as usize];
+            if b.key.shader.1 {
+                // A shader with uniforms draws only with its block bound.
+                let offset = features
+                    .user_offsets
+                    .get(b.material as usize)
+                    .copied()
+                    .unwrap_or(u32::MAX);
+                let Some((_, group)) = features.user_group.as_ref() else {
+                    continue;
+                };
+                if offset == u32::MAX {
+                    continue;
+                }
+                if state.user != Some(offset) {
+                    pass.set_bind_group(3, group, &[offset]);
+                    state.user = Some(offset);
+                }
+            }
             if state.pipeline != Some(b.key) {
+                let custom = if b.key.shader.0 != 0 {
+                    material.shader.as_ref().map(|s| s.module())
+                } else {
+                    None
+                };
                 let p = self
                     .pipelines
-                    .mesh(shared.device(), &self.layouts, b.key, format);
+                    .mesh(shared.device(), &self.layouts, b.key, format, custom);
                 pass.set_pipeline(&p);
                 state.pipeline = Some(b.key);
             }
-            let material = &rec.materials[b.material as usize];
+            if b.key.stencil != StencilKey::None {
+                let reference = b.key.stencil.reference(&material.stencil);
+                if state.stencil != Some(reference) {
+                    pass.set_stencil_reference(reference);
+                    state.stencil = Some(reference);
+                }
+            }
             let tex_key = material.texture_ids();
             if state.textures != Some(tex_key)
                 && let Some(g) = self.textures.group(&tex_key)
@@ -88,9 +130,9 @@ impl SceneRenderer {
 
 /// Begins an HDR scene pass of a slot into the attachments its post
 /// settings asked for (`targets.rs`). The `first` pass clears colour to
-/// transparent and depth to the far plane (0, reversed); a pass that
-/// continues one loads them. `keep` keeps multisampled colour for a pass
-/// that follows.
+/// transparent, depth to the far plane (0, reversed) and stencil to 0; a
+/// pass that continues one loads them. `keep` keeps multisampled colour
+/// for a pass that follows.
 fn begin_hdr_pass<'e>(
     encoder: &'e mut wgpu::CommandEncoder,
     slot: &SceneSlot,
@@ -115,7 +157,7 @@ fn encode_shadows(
     r: &mut SceneRenderer,
     shared: &Shared,
     encoder: &mut wgpu::CommandEncoder,
-    (ri, slot): (usize, SlotId),
+    at: (usize, SlotId),
     p: &Prepared,
     group: &wgpu::BindGroup,
     instances: &wgpu::Buffer,
@@ -143,24 +185,28 @@ fn encode_shadows(
     pass.set_vertex_buffer(1, instances.slice(..));
     let mut state = PassState::default();
     let mut calls = 0;
-    // Shadow pipelines have no colour targets; any format serves.
-    let format = SceneFormat::default();
     for (view, batches) in &p.shadows {
         let (x, y, s) = atlas_rect(*view);
         pass.set_viewport(x as f32, y as f32, s as f32, s as f32, 0.0, 1.0);
         pass.set_scissor_rect(x, y, s, s);
-        calls += r.draw_batches(shared, &mut pass, ri, format, batches, &mut state);
+        calls += r.draw_batches(shared, &mut pass, at, batches, &mut state);
     }
-    calls += r.draw_large_shadows(&mut pass, slot, p);
+    calls += r.draw_large_shadows(&mut pass, at.1, p);
     calls
 }
 
 /// Records record `ri`'s scene into `slot` and returns its draw call
-/// count. Static groups culled on the GPU split the HDR pass in two: the
-/// draws visible last frame go first, then the rest are tested against
-/// the depth those left (see `statics`). A timed frame on a GPU that
-/// cannot write timestamps inside a pass also starts a new pass for the
-/// blended draws, to time them apart.
+/// count.
+///
+/// The HDR scene ends its pass and begins another where later draws need
+/// work outside it: static groups culled on the GPU test their remaining
+/// draws against the depth the first pass left (see `statics`),
+/// refracting meshes read a copy of the opaque scene, and the
+/// transparency accumulation has its own targets. A timed frame on a GPU
+/// that cannot write timestamps inside a pass also begins a pass for the
+/// blended half, to time it apart. Every pass but the last keeps its
+/// multisampled colour for the next; each pass resolves into the
+/// single-sample colour when it ends, which is what the scene copy reads.
 pub(crate) fn encode_scene(
     r: &mut SceneRenderer,
     shared: &Shared,
@@ -176,9 +222,18 @@ pub(crate) fn encode_scene(
     let instances = r.slot(slot).instances.buffer.clone();
     let format = r.slot(slot).format();
     let mut calls = 0;
+    let at = (ri, slot);
     if !p.shadows.is_empty() {
-        calls += encode_shadows(r, shared, encoder, (ri, slot), p, &shadow_group, &instances);
+        calls += encode_shadows(r, shared, encoder, at, p, &shadow_group, &instances);
     }
+    let Some(depth_stencil) = r
+        .slot(slot)
+        .targets
+        .as_ref()
+        .map(|t| t.attached_depth().clone())
+    else {
+        return calls;
+    };
     let statics = r.statics_early(shared, encoder, ri, slot, &frame_group, &p.frame);
     let lines = r.slot(slot).lines.buffer.clone();
     let rec = &r.records[ri];
@@ -206,6 +261,25 @@ pub(crate) fn encode_scene(
             encoder,
         });
     }
+    let bind = |pass: &mut wgpu::RenderPass<'_>| {
+        pass.set_bind_group(0, &frame_group, &[]);
+        pass.set_vertex_buffer(1, instances.slice(..));
+    };
+
+    // Every break in the HDR pass is known before the first pass begins,
+    // so each pass knows whether another follows it.
+    let copy_break = !p.transmit.is_empty()
+        && r.slot(slot).features.copy.is_some()
+        && r.features.copy_pipelines().is_some();
+    // Water and blended billboards join the accumulation when the scene
+    // uses order-independent transparency, and draw after the sorted
+    // blended meshes otherwise.
+    let large_oit = r.large_oit(slot);
+    let oit_break = (!p.oit.is_empty() || large_oit)
+        && r.slot(slot).features.oit.is_some()
+        && r.features.composite(format).is_some();
+    let large_oit = large_oit && oit_break;
+
     // Timed frames measure the opaque and blended halves apart: with
     // timestamps inside passes in one pass, otherwise at pass edges.
     // Probe captures are not timed.
@@ -216,38 +290,52 @@ pub(crate) fn encode_scene(
     };
     let inside = shared.timer.lock().inside_passes;
     let split = blend_span.is_some() && !inside;
-    let edge = |begin: bool, end: bool| {
+    let opaque_edge = |begin: bool, end: bool| {
         opaque_span
             .as_ref()
             .filter(|_| !inside)
             .and_then(|s| s.part(begin, end))
     };
-    let keep = split || statics.is_some();
-    let first_writes = edge(true, split && statics.is_none());
-    let Some(mut pass) = begin_hdr_pass(encoder, r.slot(slot), true, keep, first_writes) else {
+    let blend_edge = |begin: bool, end: bool| {
+        blend_span
+            .as_ref()
+            .filter(|_| split)
+            .and_then(|s| s.part(begin, end))
+    };
+    // A pass for the blended half begins after the opaque one when timing
+    // splits them or refracting meshes need the scene copy.
+    let blend_break = split || copy_break;
+    let after_statics = blend_break || oit_break;
+
+    let keep = statics.is_some() || after_statics;
+    let writes = opaque_edge(true, split && statics.is_none());
+    let Some(mut pass) = begin_hdr_pass(encoder, r.slot(slot), true, keep, writes) else {
         return calls;
     };
     if let Some(s) = opaque_span.as_ref().filter(|_| inside) {
         pass.write_timestamp(&s.set, s.begin);
     }
     pass.set_bind_group(0, &frame_group, &[]);
+    // Terrain, cut-out billboards and dithered fades set their own
+    // pipelines, group 1 and vertex buffers.
     calls += r.draw_large_opaque(&mut pass, slot);
-    pass.set_vertex_buffer(1, instances.slice(..));
+    bind(&mut pass);
     let mut state = PassState::default();
-    calls += r.draw_batches(shared, &mut pass, ri, format, &p.opaque, &mut state);
+    calls += r.draw_batches(shared, &mut pass, at, &p.opaque, &mut state);
     if let Some(st) = &statics {
+        // The bundles test depth and leave the stencil as the opaque draws
+        // set it, so outlines and stencil tests after them still work.
         pass.execute_bundles(st.early.iter());
         drop(pass);
         r.statics_late(encoder, slot, st);
-        let writes = edge(false, split);
-        let Some(next) = begin_hdr_pass(encoder, r.slot(slot), false, split, writes) else {
+        let writes = opaque_edge(false, split);
+        let Some(next) = begin_hdr_pass(encoder, r.slot(slot), false, after_statics, writes) else {
             return calls;
         };
         pass = next;
         pass.execute_bundles(st.late.iter());
         // Bundles leave no state behind, so bind the scene again.
-        pass.set_bind_group(0, &frame_group, &[]);
-        pass.set_vertex_buffer(1, instances.slice(..));
+        bind(&mut pass);
         state = PassState::default();
         calls += st.draws;
         stats.bundle_draws += st.draws;
@@ -260,29 +348,79 @@ pub(crate) fn encode_scene(
         state.pipeline = None;
         calls += 1;
     }
+    calls += r.draw_batches(shared, &mut pass, at, &p.outline, &mut state);
+
+    // The blended half: refracting meshes, x-ray tints, transparency.
     if inside && let (Some(o), Some(b)) = (&opaque_span, &blend_span) {
         pass.write_timestamp(&o.set, o.end);
         pass.write_timestamp(&b.set, b.begin);
     }
-    if split {
+    if blend_break {
         drop(pass);
-        let writes = blend_span.as_ref().map(Span::whole);
+        if copy_break
+            && let (Some(copy), Some(pipes)) = (
+                r.slot(slot).features.copy.as_ref(),
+                r.features.copy_pipelines(),
+            )
+        {
+            // Refracting meshes sample the opaque scene as it stands now,
+            // resolved into the single-sample colour by the pass above.
+            copy.record(pipes, encoder);
+        }
+        let writes = blend_edge(true, !oit_break);
+        let Some(next) = begin_hdr_pass(encoder, r.slot(slot), false, oit_break, writes) else {
+            return calls;
+        };
+        pass = next;
+        bind(&mut pass);
+        state = PassState::default();
+    }
+    // Probe captures have no copy: the stand-in has no coverage, so glass
+    // there blends over what lies behind it without refraction.
+    calls += r.draw_batches(shared, &mut pass, at, &p.transmit, &mut state);
+    calls += r.draw_batches(shared, &mut pass, at, &p.xray, &mut state);
+    if oit_break
+        && let (Some(oit), Some(composite)) = (
+            r.slot(slot).features.oit.as_ref(),
+            r.features.composite(format).cloned(),
+        )
+    {
+        drop(pass);
+        let groups = oit.groups.clone();
+        {
+            // The accumulation tests against the depth and stencil the
+            // HDR pass attaches, multisampled when the scene is.
+            let mut accum = oit.begin(encoder, &depth_stencil);
+            bind(&mut accum);
+            let mut s = PassState::default();
+            calls += r.draw_batches(shared, &mut accum, at, &p.oit, &mut s);
+            if large_oit {
+                calls += r.draw_large_blend(&mut accum, slot, true);
+            }
+        }
+        let writes = blend_edge(false, true);
         let Some(next) = begin_hdr_pass(encoder, r.slot(slot), false, false, writes) else {
             return calls;
         };
         pass = next;
-        pass.set_bind_group(0, &frame_group, &[]);
-        pass.set_vertex_buffer(1, instances.slice(..));
+        pass.set_pipeline(&composite);
+        pass.set_bind_group(0, &groups[0], &[]);
+        pass.set_bind_group(1, &groups[1], &[]);
+        pass.draw(0..3, 0..1);
+        calls += 1;
+        bind(&mut pass);
         state = PassState::default();
     }
-    calls += r.draw_batches(shared, &mut pass, ri, format, &p.blend, &mut state);
-    calls += r.draw_large_blend(&mut pass, slot);
+    calls += r.draw_batches(shared, &mut pass, at, &p.blend, &mut state);
+    if !large_oit {
+        calls += r.draw_large_blend(&mut pass, slot, false);
+    }
     // GPU particles and other extensions draw over the blended meshes with
     // the frame bind group bound; they set their own pipelines.
     let extra_targets = format.color_targets(None, false).split_off(1);
     let ctx = crate::Draw3D {
         color_format: super::layouts::HDR_FORMAT,
-        depth_format: super::layouts::DEPTH_FORMAT,
+        depth_format: r.layouts.depth_format,
         frame_layout: &r.layouts.frame,
         sample_count: format.samples,
         extra_targets: &extra_targets,
@@ -292,8 +430,7 @@ pub(crate) fn encode_scene(
         calls += 1;
     }
     if !customs.is_empty() {
-        pass.set_bind_group(0, &frame_group, &[]);
-        pass.set_vertex_buffer(1, instances.slice(..));
+        bind(&mut pass);
     }
     if let Some(lp) = &lines_pipe {
         pass.set_pipeline(lp);

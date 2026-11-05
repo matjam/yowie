@@ -55,7 +55,7 @@ struct Frame {
     shadow: vec4<f32>,
     // The view depth where each cascade ends.
     cascade_far: vec4<f32>,
-    // Light count, 1 for an orthographic camera, 0, 0.
+    // Light count, 1 for an orthographic camera, decal count, 0.
     counts: vec4<u32>,
     shadow_views: array<ShadowView, 31>,
 }
@@ -68,9 +68,11 @@ struct Material {
     params: vec4<f32>,
     uv_row0: vec4<f32>,
     uv_row1: vec4<f32>,
-    // Flags, coordinate set bits, extension flags, reserved.
+    // Flags, coordinate set bits, layered feature flags, layered feature
+    // textures present.
     flags: vec4<u32>,
-    ext: array<vec4<f32>, 6>,
+    // The layered features' parameters (see `layers.rs`).
+    ext: array<vec4<f32>, 10>,
 }
 
 const MAT_UNLIT: u32 = 1u;
@@ -78,6 +80,17 @@ const MAT_VERTEX_COLORS: u32 = 2u;
 const MAT_DOUBLE_SIDED: u32 = 4u;
 const MAT_BLEND: u32 = 8u;
 const MAT_NORMAL_MAP: u32 = 16u;
+const MAT_DECALS: u32 = 32u;
+
+// Bits of `flags.z`, one per layered feature.
+const EXT_CLEARCOAT: u32 = 1u;
+const EXT_SHEEN: u32 = 2u;
+const EXT_TRANSMISSION: u32 = 4u;
+const EXT_IRIDESCENCE: u32 = 8u;
+const EXT_ANISOTROPY: u32 = 16u;
+const EXT_SPECULAR: u32 = 32u;
+const EXT_SUBSURFACE: u32 = 64u;
+const EXT_FUR: u32 = 128u;
 
 struct Light {
     // Position and range.

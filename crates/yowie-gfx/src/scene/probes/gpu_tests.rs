@@ -296,6 +296,84 @@ fn probes_capture_static_groups_like_ordinary_draws() {
     assert!(w[0] > 40 && (w[2] - w[0]).abs() < 15, "with probe {w:?}");
 }
 
+/// The room with `group` (walls and a ball) drawn as a static group, lit
+/// by `env` and `probe` when given. Returns the image and the bundle draws.
+fn group_scene(
+    gfx: &mut Graphics,
+    group: &StaticGroup,
+    env: &Environment,
+    probe: Option<&ReflectionProbe>,
+) -> (RgbaImage, u32) {
+    gfx.scene(&camera(), |s| {
+        s.set_ambient(Color::BLACK);
+        s.set_tonemap(Tonemap::None);
+        s.set_environment(Some(env));
+        s.set_background(false);
+        if let Some(p) = probe {
+            s.add_reflection_probe(p);
+        }
+        s.draw_static(group);
+    });
+    let img = render(gfx);
+    (img, gfx.stats().bundle_draws)
+}
+
+#[test]
+fn clearcoat_in_a_static_group_reflects_the_room_through_its_probe() {
+    let Some(mut gfx) = headless(uvec2(SIZE, SIZE)) else {
+        return;
+    };
+    let room = Room::new(&gfx);
+    let env = blue_sky(&gfx);
+    let p = probe();
+    gfx.bake_reflection_probe(&p, |s| {
+        s.set_ambient(Color::BLACK);
+        s.set_environment(Some(&env));
+        s.draw_static(&room.static_walls(1.0));
+    });
+    // A black matte ball: only a clearcoat over it reflects anything sharp.
+    let matte = Material::color(Color::BLACK, 0.0, 1.0);
+    let coated = Material {
+        clearcoat: Some(Clearcoat::new(1.0, 0.05)),
+        ..matte.clone()
+    };
+    assert!(crate::scene::classes::bundles_can_draw(&coated));
+    let with_ball = |m: &Material| {
+        let mut g = room.static_walls(1.0);
+        g.add(&room.sphere, m, Mat4::IDENTITY);
+        g
+    };
+    let (coat_group, matte_group) = (with_ball(&coated), with_ball(&matte));
+    let (coat, bundles) = group_scene(&mut gfx, &coat_group, &env, Some(&p));
+    let (plain, _) = group_scene(&mut gfx, &matte_group, &env, Some(&p));
+    let (no_probe, _) = group_scene(&mut gfx, &coat_group, &env, None);
+    assert!(bundles > 0, "the group draws from bundles");
+    // Points on the ball 60 degrees round from the camera, where the coat
+    // reflects about a quarter of the light: the left one reflects the red
+    // wall at -X, the right one the green wall at +X.
+    let view = yowie_core::vec2(SIZE as f32, SIZE as f32);
+    let at = |img: &RgbaImage, x: f32| {
+        let s = camera()
+            .world_to_screen(Vec3::new(x * 0.866, 0.0, 0.5), view)
+            .expect("visible");
+        px(img, s.x as u32, s.y as u32)
+    };
+    let (left, right) = (at(&coat, -1.0), at(&coat, 1.0));
+    assert!(
+        left[0] > left[1] + 30 && left[0] > left[2] + 30,
+        "left {left:?}"
+    );
+    assert!(
+        right[1] > right[0] + 30 && right[1] > right[2] + 30,
+        "right {right:?}"
+    );
+    let bare = at(&plain, -1.0);
+    assert!(left[0] > bare[0] + 30, "coated {left:?}, bare {bare:?}");
+    // Without the probe the coat reflects the blue environment instead.
+    let sky = at(&no_probe, -1.0);
+    assert!(sky[2] > sky[0] + 30, "without probe {sky:?}");
+}
+
 #[test]
 fn saved_light_probes_load_back_and_light_the_same() {
     let Some(mut gfx) = headless(uvec2(SIZE, SIZE)) else {

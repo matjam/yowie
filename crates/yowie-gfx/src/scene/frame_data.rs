@@ -70,7 +70,8 @@ pub(crate) fn fill_frame(rec: &SceneRecord, v: &View, f: &mut FrameUniform) {
     f.proj = v.proj.to_cols_array_2d();
     f.view_proj = v.view_proj.to_cols_array_2d();
     f.inv_view_proj = v.view_proj.inverse().to_cols_array_2d();
-    f.camera = v.position.extend(0.0).to_array();
+    // W carries the scene time surface shaders read with `scene_time()`.
+    f.camera = v.position.extend(rec.time).to_array();
     f.target_size = [v.size.x, v.size.y, 1.0 / v.size.x, 1.0 / v.size.y];
     f.counts[1] = u32::from(v.ortho);
     let ambient = rec.ambient.to_linear();

@@ -248,22 +248,41 @@ fn draw(
     calls
 }
 
-/// Records the cut-out (`blend` false) or blended billboards of the scene
-/// pass.
+/// Which of the scene pass's billboards a call records, and how.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum SheetPass {
+    /// Cut-out billboards, with the opaque draws.
+    Cutout,
+    /// Blended billboards over the scene, after the sorted blended meshes.
+    Blend,
+    /// Blended billboards into the order-independent transparency targets.
+    Oit,
+}
+
+/// Whether the scene pass has blended billboards to draw.
+pub(crate) fn has_blend(frame: &BillboardFrame) -> bool {
+    frame
+        .batches
+        .iter()
+        .any(|b| b.view == usize::MAX && b.blend)
+}
+
+/// Records the scene pass's cut-out or blended billboards.
 pub(crate) fn encode(
     p: &HdrPipelines,
     frame: &BillboardFrame,
     pass: &mut wgpu::RenderPass<'_>,
-    blend: bool,
+    which: SheetPass,
 ) -> u32 {
+    let blend = which != SheetPass::Cutout;
     let pick = |b: &SheetBatch| b.view == usize::MAX && b.blend == blend;
     if !frame.batches.iter().any(pick) {
         return 0;
     }
-    pass.set_pipeline(if blend {
-        &p.billboard_blend
-    } else {
-        &p.billboard_cutout
+    pass.set_pipeline(match which {
+        SheetPass::Cutout => &p.billboard_cutout,
+        SheetPass::Blend => &p.billboard_blend,
+        SheetPass::Oit => &p.billboard_oit,
     });
     pass.set_vertex_buffer(0, frame.instances.buffer.slice(..));
     draw(pass, frame, pick)

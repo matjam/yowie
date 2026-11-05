@@ -86,6 +86,8 @@ pub(crate) struct SceneSlot {
     pub(crate) targets: Option<Targets>,
     /// The frame and shadow bind groups and what they were built from.
     pub(crate) groups: Option<(GroupKey, wgpu::BindGroup, wgpu::BindGroup)>,
+    /// Transmission copy, transparency targets, decals, shader uniforms.
+    pub(crate) features: super::features::SlotFeatures,
     /// The post chain's images and block, made on the first frame.
     pub(crate) post: Option<PostTargets>,
     /// The camera this frame rendered with, for the post chain.
@@ -118,6 +120,8 @@ pub(crate) struct GroupKey {
     pub(crate) env: u64,
     pub(crate) buffers: u64,
     pub(crate) grid: u64,
+    /// The transmission copy and decal atlases (`Features::group_key`).
+    pub(crate) features: u64,
 }
 
 impl SceneSlot {
@@ -146,6 +150,7 @@ impl SceneSlot {
             lines: GrowBuffer::new(device, "yowie lines", U::VERTEX),
             targets: None,
             groups: None,
+            features: super::features::SlotFeatures::new(device),
             post: None,
             camera: PostCamera::default(),
             previous: None,
@@ -183,13 +188,15 @@ impl SceneSlot {
         v
     }
 
-    /// The targets at `size` in `format`, recreated when either changed.
-    /// Returns whether they were recreated.
+    /// The targets at `size` in `format`, with depth and stencil in
+    /// `depth_format`, recreated when the size or format changed. Returns
+    /// whether they were recreated.
     pub(crate) fn ensure_targets(
         &mut self,
         device: &wgpu::Device,
         size: UVec2,
         format: SceneFormat,
+        depth_format: wgpu::TextureFormat,
     ) -> bool {
         let size = size.max(UVec2::ONE);
         if self
@@ -199,7 +206,7 @@ impl SceneSlot {
         {
             return false;
         }
-        self.targets = Some(Targets::new(device, size, format));
+        self.targets = Some(Targets::new(device, size, format, depth_format));
         if let Some(post) = &mut self.post {
             // Bind groups naming the old images go with them.
             post.groups.clear();

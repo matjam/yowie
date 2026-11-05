@@ -7,9 +7,13 @@ use crate::Graphics;
 use crate::error::{GfxError, Result};
 use crate::texture::{Filter, Texture, TextureOptions, Wrap};
 
+/// Which images and channels a packed texture was made from.
+type PackedKey = (Vec<(usize, [bool; 4])>, bool);
+
 pub(super) struct TextureCache<'a> {
     images: &'a [gltf::image::Data],
     made: HashMap<(usize, bool), Texture>,
+    packed: HashMap<PackedKey, Texture>,
 }
 
 /// Expands a glTF image to RGBA8.
@@ -81,6 +85,7 @@ impl<'a> TextureCache<'a> {
         Self {
             images,
             made: HashMap::new(),
+            packed: HashMap::new(),
         }
     }
 
@@ -108,25 +113,88 @@ impl<'a> TextureCache<'a> {
                 p[3] = 255;
             }
         }
-        let sampler = tex.sampler();
-        let wrap = match sampler.wrap_s() {
-            gltf::texture::WrappingMode::ClampToEdge => Wrap::Clamp,
-            gltf::texture::WrappingMode::MirroredRepeat => Wrap::Mirror,
-            gltf::texture::WrappingMode::Repeat => Wrap::Repeat,
-        };
-        let filter = match sampler.mag_filter() {
-            Some(gltf::texture::MagFilter::Nearest) => Filter::Nearest,
-            _ => Filter::Linear,
-        };
-        let opts = TextureOptions {
-            filter,
-            wrap,
-            mipmaps: true,
-            premultiplied: false,
-            data: !srgb,
-        };
+        let opts = options(tex, srgb, false);
         let t = Texture::from_pixels(gfx, img.width, img.height, &px, opts)?;
         self.made.insert((source, srgb), t.clone());
         Ok(t)
+    }
+
+    /// One texture holding channels of several glTF textures, for the
+    /// extensions that keep two factors in separate images (clearcoat
+    /// strength and roughness, sheen colour and roughness, specular colour
+    /// and strength, iridescence strength and thickness). Each present
+    /// part supplies the channels its mask selects, resampled to the first
+    /// part's size; the rest stay white. Alpha is kept as data. `None`
+    /// when no part is present.
+    pub(super) fn packed(
+        &mut self,
+        gfx: &Graphics,
+        parts: &[(Option<gltf::Texture>, [bool; 4])],
+        srgb: bool,
+    ) -> Result<Option<Texture>> {
+        let parts: Vec<_> = parts
+            .iter()
+            .filter_map(|(t, mask)| t.as_ref().map(|t| (t, *mask)))
+            .collect();
+        let Some((first, _)) = parts.first() else {
+            return Ok(None);
+        };
+        let key: Vec<(usize, [bool; 4])> = parts
+            .iter()
+            .map(|(t, mask)| (t.source().index(), *mask))
+            .collect();
+        if let Some(t) = self.packed.get(&(key.clone(), srgb)) {
+            return Ok(Some(t.clone()));
+        }
+        let image = |source: usize| {
+            let img = self
+                .images
+                .get(source)
+                .ok_or_else(|| GfxError::Gltf(format!("image {source} is missing")))?;
+            let px =
+                rgba8(img).ok_or_else(|| GfxError::Gltf(format!("image {source} is malformed")))?;
+            Ok::<_, GfxError>((img.width as usize, img.height as usize, px))
+        };
+        let (w, h, _) = image(first.source().index())?;
+        let mut out = vec![255u8; w * h * 4];
+        for (tex, mask) in &parts {
+            let (sw, sh, px) = image(tex.source().index())?;
+            for y in 0..h {
+                for x in 0..w {
+                    let s = ((y * sh / h) * sw + x * sw / w) * 4;
+                    let d = (y * w + x) * 4;
+                    for c in 0..4 {
+                        if mask[c] {
+                            out[d + c] = px[s + c];
+                        }
+                    }
+                }
+            }
+        }
+        let opts = options(first, srgb, true);
+        let t = Texture::from_pixels(gfx, w as u32, h as u32, &out, opts)?;
+        self.packed.insert((key, srgb), t.clone());
+        Ok(Some(t))
+    }
+}
+
+/// Texture options from a glTF texture's sampler.
+fn options(tex: &gltf::Texture, srgb: bool, premultiplied: bool) -> TextureOptions {
+    let sampler = tex.sampler();
+    let wrap = match sampler.wrap_s() {
+        gltf::texture::WrappingMode::ClampToEdge => Wrap::Clamp,
+        gltf::texture::WrappingMode::MirroredRepeat => Wrap::Mirror,
+        gltf::texture::WrappingMode::Repeat => Wrap::Repeat,
+    };
+    let filter = match sampler.mag_filter() {
+        Some(gltf::texture::MagFilter::Nearest) => Filter::Nearest,
+        _ => Filter::Linear,
+    };
+    TextureOptions {
+        filter,
+        wrap,
+        mipmaps: true,
+        premultiplied,
+        data: !srgb,
     }
 }

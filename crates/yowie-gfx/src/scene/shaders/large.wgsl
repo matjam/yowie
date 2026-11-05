@@ -26,6 +26,8 @@ fn plain_surface(base: vec3<f32>, normal: vec3<f32>, roughness: f32, world: vec3
     s.world = world;
     s.view = normalize(frame.camera.xyz - world);
     s.unlit = false;
+    s.geometric = normal;
+    s.layers = no_layers(normal);
     return s;
 }
 

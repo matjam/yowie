@@ -1,8 +1,14 @@
 //! A lit 3D scene with an orbit camera: a checkered floor, a polished
 //! metal sphere, a rough red one, a glowing cube, spinning cubes from
-//! metal to plastic, two translucent panes and an animated glTF creature,
-//! with a 2D panel drawn over the scene. `--model <file.gltf|file.glb>`
-//! shows a glTF file instead and plays its first clip.
+//! metal to plastic, two crossed translucent panes and an animated glTF
+//! creature, with a 2D panel drawn over the scene. `--model
+//! <file.gltf|file.glb>` shows a glTF file instead and plays its first
+//! clip.
+//!
+//! The panes pass through each other, which order-independent
+//! transparency (the default) composites without a seam. `--sorted`
+//! draws them back to front by their centres instead, so one pane covers
+//! the other wholly where they cross.
 //!
 //! Drag with the left mouse button to orbit, with the right to pan; the
 //! wheel zooms. Space pauses the turntable; Escape quits.
@@ -14,7 +20,7 @@ use std::f32::consts::PI;
 
 use yowie::gfx::scene::{
     AlphaMode, Camera3D, DirectionalLight, Material, Mesh, MeshData, Model, ModelInstance,
-    PointLight, Projection, Sky,
+    PointLight, Projection, Sky, Transparency,
 };
 use yowie::gfx::{Font, Sprite, TextStyle, Texture, TextureOptions, Wrap};
 use yowie::input::Key;
@@ -32,6 +38,7 @@ struct Viewer {
     model: ModelInstance,
     loaded: bool,
     spin: bool,
+    transparency: Transparency,
 }
 
 /// The value after `name` on the command line.
@@ -106,6 +113,11 @@ impl Game for Viewer {
             model: inst,
             loaded,
             spin: true,
+            transparency: if std::env::args().any(|a| a == "--sorted") {
+                Transparency::Sorted
+            } else {
+                Transparency::OrderIndependent
+            },
         })
     }
 
@@ -141,6 +153,7 @@ impl Game for Viewer {
             );
             // The sky lights the scene too: metals reflect it.
             s.set_sky(Sky::default());
+            s.set_transparency(self.transparency);
             s.add_point_light(PointLight::new(lamp, Color::rgb(1.0, 0.45, 0.2), 6.0, 8.0));
             if self.loaded {
                 s.draw_model(&self.model, Vec3::ZERO);
@@ -205,7 +218,7 @@ impl Game for Viewer {
                     Mat4::from_scale_rotation_translation(Vec3::splat(0.6), rot, pos),
                 );
             }
-            // Two translucent panes, drawn back to front over the scene.
+            // Two translucent panes crossing through each other.
             for (i, c) in [
                 Color::rgba(0.15, 0.6, 1.0, 0.45),
                 Color::rgba(1.0, 0.4, 0.35, 0.45),
@@ -220,11 +233,10 @@ impl Game for Viewer {
                     roughness: 0.25,
                     ..Material::default()
                 };
-                let x = -1.2 + 2.4 * i as f32;
                 let place = Mat4::from_scale_rotation_translation(
-                    Vec3::new(2.4, 1.0, 1.8),
-                    Quat::from_rotation_y(0.4 - 0.8 * i as f32) * Quat::from_rotation_x(PI / 2.0),
-                    Vec3::new(x, 2.2, -1.5 + i as f32),
+                    Vec3::new(2.8, 1.0, 1.8),
+                    Quat::from_rotation_y(0.25 + 1.3 * i as f32) * Quat::from_rotation_x(PI / 2.0),
+                    Vec3::new(0.0, 2.2, -1.2),
                 );
                 s.draw(&self.pane, &pane, place);
             }

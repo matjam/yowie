@@ -8,13 +8,17 @@ use bytemuck::{Pod, Zeroable};
 use yowie_core::{Color, Mat4, Vec2};
 
 use super::camera::Camera3D;
+use super::decals::Decal;
 use super::environment::Environment;
+use super::layouts::MATERIAL_TEXTURES;
 use super::light::{DirectionalLight, LocalLight};
 use super::material::{Material, MaterialGpu};
 use super::mesh::Mesh;
 use super::morph::GpuMorphWeight;
 use super::post::PostSettings;
 use super::sky::{Fog, Sky};
+use super::stencil::Stencil;
+use super::transparency::Transparency;
 
 /// A small multiplicative hasher for the per-draw lookups; the keys are
 /// ids and material bytes, not attacker input.
@@ -43,12 +47,15 @@ impl Hasher for FastHasher {
 
 pub(crate) type FastMap<K, V> = HashMap<K, V, BuildHasherDefault<FastHasher>>;
 
-/// A material as the intern table compares it: its GPU record's bits and
-/// its texture ids.
+/// A material as the intern table compares it: its GPU record's bits, its
+/// texture ids, its stencil, and its surface shader's id and uniform
+/// version.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(crate) struct MaterialKey {
-    bits: [u32; 48],
-    textures: [u64; 5],
+    bits: [u32; 64],
+    textures: [u64; MATERIAL_TEXTURES as usize],
+    stencil: Stencil,
+    shader: (u64, u32),
 }
 
 /// One mesh draw: which mesh and material, where, and its joint and morph
@@ -106,6 +113,17 @@ pub(crate) struct SceneRecord {
     pub(crate) morph_weights: Vec<GpuMorphWeight>,
     pub(crate) lines: Vec<LineVertex>,
     pub(crate) lines_on_top: Vec<LineVertex>,
+    /// The scene's time in seconds, which shaders read.
+    pub(crate) time: f32,
+    /// How blended surfaces are composited.
+    pub(crate) transparency: Transparency,
+    /// The projected decals and the matrices placing their boxes.
+    pub(crate) decals: Vec<(Decal, Mat4)>,
+    /// Snapshots of surface shader uniform blocks, one per material that
+    /// has one.
+    pub(crate) user_blocks: Vec<Vec<u8>>,
+    /// Each material's uniform block in `user_blocks`, or `u32::MAX`.
+    pub(crate) material_blocks: Vec<u32>,
     /// Custom GPU draws queued with `Scene::draw_gpu`.
     pub(crate) customs: Vec<crate::custom::CustomEntry>,
     /// The colour behind the scene in its viewport, premultiplied linear;
@@ -156,6 +174,11 @@ impl SceneRecord {
         self.morph_weights.clear();
         self.lines.clear();
         self.lines_on_top.clear();
+        self.time = 0.0;
+        self.transparency = Transparency::default();
+        self.decals.clear();
+        self.user_blocks.clear();
+        self.material_blocks.clear();
         self.customs.clear();
         self.background_color = [0.0; 4];
         self.output_clear = None;
@@ -190,15 +213,30 @@ impl SceneRecord {
 
     pub(crate) fn material_slot(&mut self, material: &Material) -> u32 {
         let gpu = material.gpu();
+        let shader = material
+            .shader
+            .as_ref()
+            .map_or((0, 0), |s| (s.id(), s.uniform_version()));
         let key = MaterialKey {
             bits: bytemuck::cast(gpu),
             textures: material.texture_ids(),
+            stencil: material.stencil,
+            shader,
         };
         let next = self.materials.len() as u32;
         let slot = *self.material_slots.entry(key).or_insert(next);
         if slot == next {
             self.materials.push(material.clone());
             self.material_gpu.push(gpu);
+            let block = match &material.shader {
+                Some(s) if s.uniform_size() > 0 => {
+                    let (_, bytes) = s.uniforms();
+                    self.user_blocks.push(bytes);
+                    (self.user_blocks.len() - 1) as u32
+                }
+                _ => u32::MAX,
+            };
+            self.material_blocks.push(block);
         }
         slot
     }

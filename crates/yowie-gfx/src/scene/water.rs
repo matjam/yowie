@@ -235,15 +235,21 @@ pub(crate) fn prepare(ctx: &PrepareContext<'_>, rec: &LargeRecord) {
     }
 }
 
-/// Records the recorded water surfaces.
-pub(crate) fn encode(p: &HdrPipelines, rec: &LargeRecord, pass: &mut wgpu::RenderPass<'_>) -> u32 {
+/// Records the recorded water surfaces: into the order-independent
+/// transparency targets with `oit`, blended over the scene otherwise.
+pub(crate) fn encode(
+    p: &HdrPipelines,
+    rec: &LargeRecord,
+    pass: &mut wgpu::RenderPass<'_>,
+    oit: bool,
+) -> u32 {
     let mut calls = 0;
     for d in &rec.waters {
         let Some(group) = d.water.inner.group.lock().clone() else {
             continue;
         };
         if calls == 0 {
-            pass.set_pipeline(&p.water);
+            pass.set_pipeline(if oit { &p.water_oit } else { &p.water });
         }
         pass.set_bind_group(1, &group, &[]);
         pass.draw(0..6, 0..1);

@@ -7,18 +7,21 @@
 //!   shadow views and uploads its instances into the slot's buffers.
 //!   Probe captures skip the classes.
 //! - `passes.rs` calls [`SceneRenderer::draw_large_opaque`] at the start of
-//!   the HDR pass, [`SceneRenderer::draw_large_blend`] after the blended
-//!   meshes, and [`SceneRenderer::draw_large_shadows`] after the mesh
-//!   casters of the shadow pass.
+//!   the HDR pass, [`SceneRenderer::draw_large_blend`] in the
+//!   order-independent transparency pass when [`SceneRenderer::large_oit`]
+//!   says so and after the sorted blended meshes otherwise, and
+//!   [`SceneRenderer::draw_large_shadows`] after the mesh casters of the
+//!   shadow pass.
 //!
-//! The classes share one shader module, built from the scene's shared
-//! declarations and lighting (`common`, `atmosphere`, `vertex`,
-//! `surface`) followed by their own files. Their resources sit at
-//! bindings 32 and up of group 1, clear of the material bindings.
+//! The classes share one shader module: the engine's mesh program
+//! (`pipelines::engine_source`: shared declarations, probe lookups,
+//! material layers and lighting) followed by their own files. Their
+//! resources sit at bindings 32 and up of group 1, clear of the material
+//! bindings (0 to 19).
 
 use yowie_core::Mat4;
 
-use super::billboard::{self, BillboardRecord};
+use super::billboard::{self, BillboardRecord, SheetPass};
 use super::bounds::Frustum;
 use super::fade::{self, FadeDraw};
 use super::label::LabelDraw;
@@ -27,6 +30,7 @@ use super::prepare::Prepared;
 use super::render::SceneRenderer;
 use super::slot::{GrowBuffer, SlotId};
 use super::terrain::{self, TerrainDraw};
+use super::transparency::Transparency;
 use super::water::{self, WaterDraw};
 use crate::graphics::FrameStats;
 use crate::shared::Shared;
@@ -265,14 +269,31 @@ impl SceneRenderer {
         };
         let rec = &self.records[ri];
         let mut calls = terrain::render::encode(p, &slot.terrain, pass);
-        calls += billboard::encode(p, &slot.billboards, pass, false);
+        calls += billboard::encode(p, &slot.billboards, pass, SheetPass::Cutout);
         calls += fade::encode(self, p, rec, &slot.fades, pass);
         calls
     }
 
+    /// Whether a scene slot blends water or billboards through
+    /// order-independent transparency: its scene uses it and draws some.
+    pub(crate) fn large_oit(&self, id: SlotId) -> bool {
+        let Some((ri, _, slot)) = self.large_slot(id) else {
+            return false;
+        };
+        let rec = &self.records[ri];
+        rec.transparency == Transparency::OrderIndependent
+            && (!rec.large.waters.is_empty() || billboard::has_blend(&slot.billboards))
+    }
+
     /// Records the blended large-scene draws of a scene slot: water and
-    /// blended billboards.
-    pub(crate) fn draw_large_blend(&self, pass: &mut wgpu::RenderPass<'_>, id: SlotId) -> u32 {
+    /// blended billboards, into the order-independent transparency
+    /// targets with `oit`, over the scene otherwise.
+    pub(crate) fn draw_large_blend(
+        &self,
+        pass: &mut wgpu::RenderPass<'_>,
+        id: SlotId,
+        oit: bool,
+    ) -> u32 {
         let Some((ri, large, slot)) = self.large_slot(id) else {
             return 0;
         };
@@ -280,8 +301,13 @@ impl SceneRenderer {
             return 0;
         };
         let rec = &self.records[ri].large;
-        let mut calls = water::encode(p, rec, pass);
-        calls += billboard::encode(p, &slot.billboards, pass, true);
+        let sheets = if oit {
+            SheetPass::Oit
+        } else {
+            SheetPass::Blend
+        };
+        let mut calls = water::encode(p, rec, pass, oit);
+        calls += billboard::encode(p, &slot.billboards, pass, sheets);
         calls
     }
 

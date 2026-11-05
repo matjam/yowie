@@ -4,6 +4,7 @@
 
 use yowie_core::{Color, Rect, UVec2};
 
+use super::features::Features;
 use super::frame_data::{FrameUniform, fill_frame, sky_key};
 use super::ibl::{EnvMaps, IblBaker, cube_view};
 use super::layouts::{HDR_FORMAT, SceneLayouts};
@@ -73,6 +74,8 @@ pub(crate) struct SceneRenderer {
     refreshed: u64,
     /// Bumped whenever a slot buffer is replaced, so bind groups rebuild.
     pub(super) generation: u64,
+    /// Transmission, transparency, decal and surface shader state.
+    pub(super) features: Features,
     /// The multisample counts above 1 the scene targets support.
     sample_counts: Vec<u32>,
     /// Terrain, water, billboard and impostor pipelines and buffers,
@@ -157,6 +160,7 @@ impl SceneRenderer {
                 ..Default::default()
             }),
             morph_none,
+            features: Features::new(device),
             layouts,
             free: Vec::new(),
             records: Vec::new(),
@@ -167,6 +171,11 @@ impl SceneRenderer {
             sample_counts: sample_counts(&shared.gpu.adapter, device),
             large: None,
         }
+    }
+
+    /// The number of frames begun so far.
+    pub(super) fn frame_number(&self) -> u64 {
+        self.frame
     }
 
     pub(crate) fn begin_frame(&mut self) {
@@ -312,7 +321,7 @@ impl SceneRenderer {
         // post chain keeps the steady camera for reprojection.
         let v = self.slots[ri].set_camera(&steady, cut, jitter);
         let format = self.scene_format(ri);
-        self.slots[ri].ensure_targets(device, size, format);
+        self.slots[ri].ensure_targets(device, size, format, self.layouts.depth_format);
         self.prepare_resources(shared, ri);
         let calls = self.render_view(shared, encoder, ri, SlotId::Scene(ri), &v, stats);
         stats.draw_calls_3d += calls;
@@ -362,15 +371,18 @@ impl SceneRenderer {
         fill_frame(&self.records[ri], v, &mut prepared.frame);
         let env = self.choose_env(shared, encoder, ri, slot, &mut prepared.frame);
         let grid = self.write_probes(shared, encoder, ri, slot, v.capture);
+        if matches!(slot, SlotId::Scene(_)) {
+            // Before the features: blended water and billboards decide
+            // whether the slot needs transparency targets.
+            self.prepare_large(shared, ri, &prepared, stats);
+        }
+        self.prepare_features(shared, ri, slot, &mut prepared);
         self.upload(shared, ri, slot, &prepared);
         let any_shadows = !prepared.shadows.is_empty();
         if any_shadows && self.atlas.is_none() {
             self.atlas = Some(ShadowAtlas::new(device));
         }
         self.bind_groups(shared, ri, slot, env, grid, any_shadows);
-        if matches!(slot, SlotId::Scene(_)) {
-            self.prepare_large(shared, ri, &prepared, stats);
-        }
         let calls = super::passes::encode_scene(self, shared, encoder, ri, slot, &prepared, stats);
         stats.culled_3d += prepared.culled;
         stats.lights += prepared.lights.len() as u32;
@@ -385,6 +397,14 @@ impl SceneRenderer {
         match id {
             SlotId::Scene(i) => &self.slots[i],
             SlotId::Capture(i) => &self.captures[i],
+        }
+    }
+
+    /// The slot `id` names, to change.
+    pub(super) fn slot_mut(&mut self, id: SlotId) -> &mut SceneSlot {
+        match id {
+            SlotId::Scene(i) => &mut self.slots[i],
+            SlotId::Capture(i) => &mut self.captures[i],
         }
     }
 

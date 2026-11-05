@@ -5,6 +5,7 @@
 use super::Item;
 use super::bvh::Bvh;
 use crate::scene::bounds::Aabb;
+use crate::scene::classes::bundles_can_draw;
 use crate::scene::material::{AlphaMode, Material};
 use crate::scene::mesh::Mesh;
 use crate::scene::pipelines::{MeshKey, MeshPass};
@@ -45,8 +46,9 @@ pub(crate) struct Layout {
     pub(crate) bvh: Bvh,
     /// The box holding every entry of `order`.
     pub(crate) bounds: Aabb,
-    /// Blended items, drawn as ordinary draws.
-    pub(crate) blended: Vec<u32>,
+    /// Items the bundles cannot draw (`classes::bundles_can_draw`), drawn
+    /// as ordinary draws.
+    pub(crate) ordinary: Vec<u32>,
 }
 
 impl Layout {
@@ -79,10 +81,10 @@ impl Layout {
             l.item_key.push(MeshKey {
                 pass,
                 double_sided: it.material.double_sided,
-                skinned: false,
+                ..MeshKey::default()
             });
-            if pass == MeshPass::Blend {
-                l.blended.push(i as u32);
+            if !bundles_can_draw(&it.material) {
+                l.ordinary.push(i as u32);
             } else {
                 gpu.push(i as u32);
                 boxes.push(it.mesh.bounds().transformed(&it.model));

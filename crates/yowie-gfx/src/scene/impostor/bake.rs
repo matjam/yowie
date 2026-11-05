@@ -15,9 +15,9 @@ use crate::error::{GfxError, Result};
 use crate::scene::billboard::AtlasGrid;
 use crate::scene::camera::Camera3D;
 use crate::scene::frame_data::fill_frame;
-use crate::scene::layouts::DEPTH_FORMAT;
 use crate::scene::model::ModelInstance;
-use crate::scene::prepare::{Prepared, View, prepare};
+use crate::scene::pipelines::MeshPass;
+use crate::scene::prepare::{Batch, Prepared, View, prepare};
 use crate::scene::record::SceneRecord;
 use crate::scene::render::SceneRenderer;
 use crate::scene::slot::{SceneSlot, SlotId};
@@ -195,7 +195,7 @@ impl SceneRenderer {
                 mip_level_count: 1,
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
-                format: DEPTH_FORMAT,
+                format: self.layouts.depth_format,
                 usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
                 view_formats: &[],
             })
@@ -221,7 +221,10 @@ impl SceneRenderer {
                         load: wgpu::LoadOp::Clear(0.0),
                         store: wgpu::StoreOp::Discard,
                     }),
-                    stencil_ops: None,
+                    stencil_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(0),
+                        store: wgpu::StoreOp::Discard,
+                    }),
                 }),
                 timestamp_writes: None,
                 occlusion_query_set: None,
@@ -230,7 +233,20 @@ impl SceneRenderer {
             pass.set_bind_group(0, &frame_group, &[]);
             pass.set_vertex_buffer(1, self.slots[ri].instances.buffer.slice(..));
             let mut skinned = None;
-            for b in p.opaque.iter().chain(&p.blend) {
+            // Every lit draw, however it blends; feature passes (fur
+            // shells, outlines, x-ray) add nothing to the bake.
+            let lit = |b: &&Batch| {
+                matches!(
+                    b.key.pass,
+                    MeshPass::Opaque
+                        | MeshPass::Mask
+                        | MeshPass::Blend
+                        | MeshPass::Oit
+                        | MeshPass::Transmit
+                )
+            };
+            let batches = p.opaque.iter().chain(&p.blend).chain(&p.oit);
+            for b in batches.chain(&p.transmit).filter(lit) {
                 if skinned != Some(b.key.skinned) {
                     pass.set_pipeline(if b.key.skinned {
                         &bake_skinned

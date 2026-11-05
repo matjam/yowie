@@ -1,7 +1,8 @@
 //! The images one scene renders into, and the attachment layout every
 //! pipeline drawing into them must match.
 //!
-//! The HDR pass always writes colour (location 0) and depth. When the
+//! The HDR pass always writes colour (location 0), depth and stencil (in
+//! [`SceneLayouts::depth_format`](super::layouts::SceneLayouts)). When the
 //! post chain needs them it also writes a surface image (location 1:
 //! the octahedral world normal, roughness and the share of the pixel that
 //! is ambient light, for ambient occlusion and reflections) and a
@@ -9,7 +10,11 @@
 //! reflects, for reflections). With multisampling the pass draws into
 //! multisampled images that resolve into the single-sample ones the post
 //! chain reads; depth, which wgpu cannot resolve, is resolved by the
-//! chain's first pass.
+//! chain's first pass, and the stencil is not resolved.
+//!
+//! Depth images have two views: the depth aspect alone for sampling (the
+//! post chain and the static groups' depth pyramid) and both aspects for
+//! attaching to passes.
 //!
 //! A pipeline that draws into the HDR pass takes its colour targets from
 //! [`SceneFormat::color_targets`] and its multisample state from
@@ -17,7 +22,7 @@
 
 use yowie_core::UVec2;
 
-use super::layouts::{DEPTH_FORMAT, HDR_FORMAT};
+use super::layouts::{HDR_FORMAT, scene_depth_format};
 
 /// Format of the surface image: octahedral normal, roughness, ambient
 /// share.
@@ -121,7 +126,9 @@ pub(crate) fn sample_counts(adapter: &wgpu::Adapter, device: &wgpu::Device) -> V
                     ff.sample_count_supported(n)
                         && ff.contains(wgpu::TextureFormatFeatureFlags::MULTISAMPLE_RESOLVE)
                 })
-                && features(DEPTH_FORMAT).flags.sample_count_supported(n)
+                && features(scene_depth_format(device))
+                    .flags
+                    .sample_count_supported(n)
         })
         .collect()
 }
@@ -136,6 +143,34 @@ pub(crate) fn pick_samples(supported: &[u32], requested: u32) -> u32 {
         .unwrap_or(1)
 }
 
+fn image(
+    device: &wgpu::Device,
+    label: &str,
+    size: UVec2,
+    format: wgpu::TextureFormat,
+    samples: u32,
+    sampled: bool,
+) -> wgpu::Texture {
+    let mut usage = wgpu::TextureUsages::RENDER_ATTACHMENT;
+    if sampled {
+        usage |= wgpu::TextureUsages::TEXTURE_BINDING;
+    }
+    device.create_texture(&wgpu::TextureDescriptor {
+        label: Some(label),
+        size: wgpu::Extent3d {
+            width: size.x,
+            height: size.y,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: samples,
+        dimension: wgpu::TextureDimension::D2,
+        format,
+        usage,
+        view_formats: &[],
+    })
+}
+
 fn texture(
     device: &wgpu::Device,
     label: &str,
@@ -144,33 +179,37 @@ fn texture(
     samples: u32,
     sampled: bool,
 ) -> wgpu::TextureView {
-    let mut usage = wgpu::TextureUsages::RENDER_ATTACHMENT;
-    if sampled {
-        usage |= wgpu::TextureUsages::TEXTURE_BINDING;
-    }
-    device
-        .create_texture(&wgpu::TextureDescriptor {
-            label: Some(label),
-            size: wgpu::Extent3d {
-                width: size.x,
-                height: size.y,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: samples,
-            dimension: wgpu::TextureDimension::D2,
-            format,
-            usage,
-            view_formats: &[],
-        })
-        .create_view(&Default::default())
+    image(device, label, size, format, samples, sampled).create_view(&Default::default())
+}
+
+/// A depth and stencil image of `format` with `samples` per pixel: its
+/// depth-only view for sampling and its view of both aspects for
+/// attaching.
+pub(crate) fn depth_views(
+    device: &wgpu::Device,
+    label: &str,
+    size: UVec2,
+    format: wgpu::TextureFormat,
+    samples: u32,
+) -> (wgpu::TextureView, wgpu::TextureView) {
+    let t = image(device, label, size, format, samples, true);
+    let depth = t.create_view(&wgpu::TextureViewDescriptor {
+        label: Some(label),
+        aspect: wgpu::TextureAspect::DepthOnly,
+        ..Default::default()
+    });
+    (depth, t.create_view(&Default::default()))
 }
 
 /// The multisampled images the pass draws into before resolving.
 #[derive(Debug)]
 pub(crate) struct Multisampled {
     pub(crate) color: wgpu::TextureView,
+    /// The depth aspect, which the post chain resolves and the static
+    /// groups' depth pyramid reads.
     pub(crate) depth: wgpu::TextureView,
+    /// Depth and stencil, attached to the pass.
+    pub(crate) depth_stencil: wgpu::TextureView,
     pub(crate) surface: Option<wgpu::TextureView>,
     pub(crate) specular: Option<wgpu::TextureView>,
 }
@@ -184,61 +223,73 @@ pub(crate) struct Targets {
     pub(crate) size: UVec2,
     pub(crate) format: SceneFormat,
     pub(crate) color: wgpu::TextureView,
+    /// The depth aspect of the single-sample depth image.
     pub(crate) depth: wgpu::TextureView,
+    /// Depth and stencil of the single-sample depth image, attached when
+    /// the pass is not multisampled.
+    pub(crate) depth_stencil: wgpu::TextureView,
     pub(crate) surface: Option<wgpu::TextureView>,
     pub(crate) specular: Option<wgpu::TextureView>,
     pub(crate) msaa: Option<Multisampled>,
 }
 
 impl Targets {
-    pub(crate) fn new(device: &wgpu::Device, size: UVec2, format: SceneFormat) -> Self {
+    /// The images of a scene `size` pixels large in `format`, with depth
+    /// and stencil in `depth_format`.
+    pub(crate) fn new(
+        device: &wgpu::Device,
+        size: UVec2,
+        format: SceneFormat,
+        depth_format: wgpu::TextureFormat,
+    ) -> Self {
         let n = format.samples;
         let surface = format.outputs >= Outputs::Surface;
         let specular = format.outputs >= Outputs::Specular;
-        let msaa = (n > 1).then(|| Multisampled {
-            color: texture(
-                device,
-                "yowie scene colour msaa",
-                size,
-                HDR_FORMAT,
-                n,
-                false,
-            ),
-            depth: texture(
-                device,
-                "yowie scene depth msaa",
-                size,
-                DEPTH_FORMAT,
-                n,
-                true,
-            ),
-            surface: surface.then(|| {
-                texture(
+        let msaa = (n > 1).then(|| {
+            let (depth, depth_stencil) =
+                depth_views(device, "yowie scene depth msaa", size, depth_format, n);
+            Multisampled {
+                color: texture(
                     device,
-                    "yowie scene surface msaa",
+                    "yowie scene colour msaa",
                     size,
-                    SURFACE_FORMAT,
+                    HDR_FORMAT,
                     n,
                     false,
-                )
-            }),
-            specular: specular.then(|| {
-                texture(
-                    device,
-                    "yowie scene specular msaa",
-                    size,
-                    SPECULAR_FORMAT,
-                    n,
-                    false,
-                )
-            }),
+                ),
+                depth,
+                depth_stencil,
+                surface: surface.then(|| {
+                    texture(
+                        device,
+                        "yowie scene surface msaa",
+                        size,
+                        SURFACE_FORMAT,
+                        n,
+                        false,
+                    )
+                }),
+                specular: specular.then(|| {
+                    texture(
+                        device,
+                        "yowie scene specular msaa",
+                        size,
+                        SPECULAR_FORMAT,
+                        n,
+                        false,
+                    )
+                }),
+            }
         });
+        let (depth, depth_stencil) =
+            depth_views(device, "yowie scene depth", size, depth_format, 1);
         Self {
             id: crate::texture::next_id(),
             size,
             format,
             color: texture(device, "yowie scene colour", size, HDR_FORMAT, 1, true),
-            depth: texture(device, "yowie scene depth", size, DEPTH_FORMAT, 1, true),
+            depth,
+            depth_stencil,
             surface: surface
                 .then(|| texture(device, "yowie scene surface", size, SURFACE_FORMAT, 1, true)),
             specular: specular.then(|| {
@@ -256,15 +307,22 @@ impl Targets {
     }
 
     /// Targets over images made elsewhere (a probe capture's cube face and
-    /// depth): colour and depth alone, single-sample, so the pass draws
-    /// with the default format and no post chain reads it.
-    pub(crate) fn wrap(size: UVec2, color: wgpu::TextureView, depth: wgpu::TextureView) -> Self {
+    /// its depth image's two views): colour, depth and stencil alone,
+    /// single-sample, so the pass draws with the default format and no
+    /// post chain reads it.
+    pub(crate) fn wrap(
+        size: UVec2,
+        color: wgpu::TextureView,
+        depth: wgpu::TextureView,
+        depth_stencil: wgpu::TextureView,
+    ) -> Self {
         Self {
             id: crate::texture::next_id(),
             size,
             format: SceneFormat::default(),
             color,
             depth,
+            depth_stencil,
             surface: None,
             specular: None,
             msaa: None,
@@ -324,24 +382,41 @@ impl Targets {
         out
     }
 
-    /// The pass's depth attachment: the multisampled depth when there is
-    /// one (the chain resolves it), cleared to the far plane (0, reversed)
-    /// when `first`.
+    /// The depth and stencil view the pass attaches: the multisampled one
+    /// when there is one (the chain resolves its depth).
+    pub(crate) fn attached_depth(&self) -> &wgpu::TextureView {
+        self.msaa
+            .as_ref()
+            .map_or(&self.depth_stencil, |m| &m.depth_stencil)
+    }
+
+    /// The pass's depth and stencil attachment, cleared to the far plane
+    /// (0, reversed) and stencil 0 when `first`, loaded otherwise.
     pub(crate) fn depth_attachment(
         &self,
         first: bool,
     ) -> wgpu::RenderPassDepthStencilAttachment<'_> {
+        let load = |clear| {
+            if first {
+                wgpu::LoadOp::Clear(clear)
+            } else {
+                wgpu::LoadOp::Load
+            }
+        };
         wgpu::RenderPassDepthStencilAttachment {
-            view: self.msaa.as_ref().map_or(&self.depth, |m| &m.depth),
+            view: self.attached_depth(),
             depth_ops: Some(wgpu::Operations {
+                load: load(0.0),
+                store: wgpu::StoreOp::Store,
+            }),
+            stencil_ops: Some(wgpu::Operations {
                 load: if first {
-                    wgpu::LoadOp::Clear(0.0)
+                    wgpu::LoadOp::Clear(0)
                 } else {
                     wgpu::LoadOp::Load
                 },
                 store: wgpu::StoreOp::Store,
             }),
-            stencil_ops: None,
         }
     }
 }

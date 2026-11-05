@@ -218,3 +218,10 @@ fn fs_billboard_blend(in: BillboardOut, @builtin(front_facing) front: bool) -> @
     let a = clamp(c.a * in.fade, 0.0, 1.0);
     return vec4<f32>(c.rgb * a, a);
 }
+
+@fragment
+fn fs_billboard_oit(in: BillboardOut, @builtin(front_facing) front: bool) -> OitOut {
+    let c = billboard_color(in, front);
+    let a = clamp(c.a * in.fade, 0.0, 1.0);
+    return oit_out(c.rgb, a, view_depth_of(in.world));
+}

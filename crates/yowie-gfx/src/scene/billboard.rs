@@ -11,7 +11,9 @@ use super::record::FastMap;
 use super::submit::Scene;
 use crate::texture::Texture;
 
-pub(crate) use super::billboard_render::{BillboardFrame, encode, encode_shadow, prepare};
+pub(crate) use super::billboard_render::{
+    BillboardFrame, SheetPass, encode, encode_shadow, has_blend, prepare,
+};
 
 /// How a billboard turns towards the camera.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
