@@ -8,3 +8,12 @@ repository.workspace = true
 
 [dependencies]
 yowie-core.workspace = true
+rapier2d = { workspace = true, features = ["debug-render"] }
+rapier3d = { workspace = true, features = ["debug-render"] }
+thiserror.workspace = true
+log.workspace = true
+rayon = { workspace = true, optional = true }
+
+[features]
+default = []
+rayon = ["dep:rayon"]
