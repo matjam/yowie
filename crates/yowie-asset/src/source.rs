@@ -72,6 +72,8 @@ impl Source for DirSource {
             ErrorKind::NotFound | ErrorKind::NotADirectory | ErrorKind::IsADirectory => {
                 Error::NotFound(path.to_string())
             }
+            // Windows reports a directory opened as a file as access denied.
+            _ if full.is_dir() => Error::NotFound(path.to_string()),
             _ => Error::io(full, e),
         })
     }
