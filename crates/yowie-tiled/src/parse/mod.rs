@@ -4,6 +4,7 @@
 mod layer;
 mod object;
 mod props;
+mod template;
 mod tileset;
 mod util;
 
@@ -41,7 +42,7 @@ fn document(data: &[u8]) -> Result<Value> {
 /// Parses a map. `resolve` fetches external tilesets, and may be `None`
 /// when every tileset is embedded.
 pub(crate) fn parse_map(data: &[u8], resolve: Option<Resolver<'_>>) -> Result<Map> {
-    let v = document(data)?;
+    let mut v = document(data)?;
     let orientation = match string(&v, "orientation") {
         "" | "orthogonal" => Orientation::Orthogonal,
         "isometric" => Orientation::Isometric,
@@ -66,6 +67,7 @@ pub(crate) fn parse_map(data: &[u8], resolve: Option<Resolver<'_>>) -> Result<Ma
             other => other,
         })?);
     }
+    template::apply(&mut v, &mut tilesets, resolve)?;
     tilesets.sort_by_key(|t| t.first_gid);
     Ok(Map {
         orientation,

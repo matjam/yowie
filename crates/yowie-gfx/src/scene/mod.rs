@@ -91,6 +91,9 @@ pub use submit::{DrawId, Placement, Scene, ScenePick, pick};
 pub use vertex::{MeshData, Vertex3D};
 
 pub(crate) use render::SceneRenderer;
+
+/// Scenes recorded for one output.
+pub(crate) type SceneRecordList = Vec<record::SceneRecord>;
 pub(crate) use resolve::resolve_output;
 
 impl crate::Graphics {

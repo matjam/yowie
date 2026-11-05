@@ -91,6 +91,7 @@ mod texture_gpu;
 mod texture_upload;
 mod transform_stack;
 mod view;
+mod windows;
 
 #[cfg(test)]
 mod gpu_tests;
@@ -112,6 +113,8 @@ mod camera_rig;
 mod color_matrix;
 mod sheet;
 mod tiled_level;
+#[cfg(test)]
+mod tiled_level_tests;
 mod tilemap;
 
 pub use aseprite::{AseSlice, AseSliceKey, AseTag, AsepriteData, AsepriteSheet};
@@ -144,6 +147,7 @@ pub use text::{
 };
 pub use texture::{Filter, Texture, TextureOptions, Wrap};
 pub use view::{ScaleMode, ViewMapping, ViewSettings};
+pub use windows::WindowId;
 
 pub use image;
 pub use wgpu;
