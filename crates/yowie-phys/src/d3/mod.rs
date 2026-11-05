@@ -22,3 +22,5 @@ pub use query::signed_distance_3d;
 pub use ragdoll::{RAGDOLL_PARTS, Ragdoll3D, RagdollBone, RagdollSpec};
 pub use shape::Shape3D;
 pub use world::World3D;
+
+pub(crate) use convert::groups as groups_of;

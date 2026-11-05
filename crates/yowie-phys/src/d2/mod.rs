@@ -20,3 +20,5 @@ pub use joint::{JointDesc2D, JointKind2D};
 pub use query::signed_distance_2d;
 pub use shape::Shape2D;
 pub use world::World2D;
+
+pub(crate) use convert::groups as groups_of;
