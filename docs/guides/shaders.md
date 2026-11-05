@@ -143,8 +143,9 @@ fn draw_flag(gfx: &mut Graphics, wave: &Shader, flag: &Texture) {
 ```
 
 A shader applies to every 2D draw inside its scope: sprites, shapes,
-paths, nine-slices, tilemaps and text. Distance-field text and radial
-gradient fills are the exceptions; they keep the engine's own programs.
+paths, nine-slices, tilemaps and text. Distance-field text, radial
+gradient fills and lit sprites (`Graphics::draw_lit`) are the exceptions;
+they keep the engine's own programs.
 Draws through the same shader, texture, blend mode and view batch into one
 draw call like any other 2D draw. Cloning a `Shader` shares it.
 
@@ -169,6 +170,8 @@ fn fragment(input: SpriteInput) -> vec4<f32> {
 contrast, sepia, invert, tint, or your own 4×5 matrix. Create it with
 `ColorMatrixShader::new(&gfx, &matrix)`, draw through
 `color_shader.shader()`, and change the matrix with `set`.
+[2D graphics](graphics-2d.md#blend-modes-tints-and-colour-matrices) has an
+example.
 
 ### One texture per draw
 
@@ -606,7 +609,7 @@ engine's preludes do not apply to them.
 ## Bounds checks
 
 The engine creates its own shader modules (the default sprite program,
-distance-field text, gradients, the mesh program, the sky,
+distance-field text, gradients, lit sprites, the mesh program, the sky,
 post-processing, culling and GPU particles) with wgpu's runtime bounds
 checks turned off. Game shaders go through wgpu's checked path: 2D shaders
 and surface shaders are compiled with the checks on, so an out-of-range
