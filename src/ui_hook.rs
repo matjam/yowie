@@ -14,6 +14,55 @@ pub(crate) struct UiHook {
     ime: bool,
     /// A screenshot the console asked for, written after the frame renders.
     shot: Option<String>,
+    /// The `time.scale` console variable, once the console is on.
+    #[cfg(feature = "console")]
+    time_var: Option<yowie_console::FloatVar>,
+    /// The scale both sides agreed on at the last sync.
+    time_scale: f32,
+}
+
+/// Lets the `time.scale` variable and `ctx.time` follow each other: a
+/// change on either side since the last sync wins, the console's first.
+pub(crate) fn sync_time_scale(ctx: &mut Context) {
+    #[cfg(feature = "console")]
+    if let Some(var) = &ctx.hook.time_var {
+        let v = var.get();
+        if v != ctx.hook.time_scale {
+            ctx.time.set_scale(v);
+        } else if ctx.time.scale() != ctx.hook.time_scale {
+            var.set(ctx.time.scale());
+        }
+        // The clamp may have changed what the console typed.
+        var.set(ctx.time.scale());
+        ctx.hook.time_scale = ctx.time.scale();
+    }
+    let _ = ctx;
+}
+
+/// Registers the `time.scale` variable and the `timescale` command.
+#[cfg(feature = "console")]
+fn register_time(ctx: &mut Context) {
+    let var = ctx
+        .console
+        .float("time.scale", 1.0, "game speed; 1 is normal, 0 stops game time");
+    let handle = var.clone();
+    ctx.console.register(
+        "timescale",
+        "timescale [factor]: show or set the game speed (1 normal, 0.5 half, 0 stops)",
+        move |args| match args {
+            [] => Ok(format!("timescale {}", handle.get())),
+            [v] => match v.parse::<f32>() {
+                Ok(f) if f.is_finite() && f >= 0.0 => {
+                    handle.set(f);
+                    Ok(format!("timescale {f}"))
+                }
+                _ => Err(format!("timescale wants a number of 0 or more, got {v:?}")),
+            },
+            _ => Err("usage: timescale [factor]".into()),
+        },
+    );
+    ctx.hook.time_var = Some(var);
+    ctx.hook.time_scale = 1.0;
 }
 
 /// The engine's clipboard as the interface toolkit uses it.
@@ -55,6 +104,7 @@ pub(crate) fn setup(ctx: &mut Context, config: &Config) {
         };
         ctx.console = yowie_console::Console::new(options);
         ctx.console.set_clipboard(clipboard(ctx.headless()));
+        register_time(ctx);
     }
     let _ = (ctx, config);
 }

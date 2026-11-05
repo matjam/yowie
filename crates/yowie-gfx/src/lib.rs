@@ -91,6 +91,7 @@ mod texture_gpu;
 mod texture_upload;
 mod transform_stack;
 mod view;
+mod windows;
 
 #[cfg(test)]
 mod gpu_tests;
@@ -144,6 +145,7 @@ pub use text::{
 };
 pub use texture::{Filter, Texture, TextureOptions, Wrap};
 pub use view::{ScaleMode, ViewMapping, ViewSettings};
+pub use windows::WindowId;
 
 pub use image;
 pub use wgpu;

@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use yowie_input::InputEvent;
 
-use crate::{Context, GameResult};
+use crate::{Context, GameResult, WindowId};
 
 /// Something that happened to the window, delivered to [`Game::event`]
 /// as it arrives, before the next update.
@@ -39,6 +39,10 @@ pub enum Event {
     /// [`Config::handle_close`](crate::Config::handle_close) the loop ends
     /// after this event.
     CloseRequested,
+    /// The window no longer exists. Only extra windows send it, to
+    /// [`Game::window_event`], after they were closed by the game or by the
+    /// player.
+    Closed,
 }
 
 /// A game: built once by [`init`](Game::init), then updated at the loop's
@@ -88,5 +92,25 @@ pub trait Game: Sized + 'static {
     fn event(&mut self, ctx: &mut Context, event: &Event) -> GameResult {
         let _ = (ctx, event);
         Ok(())
+    }
+
+    /// Observes an event with the window it happened in. The engine calls
+    /// it for every window, the main one included. The default forwards
+    /// the main window's events to [`event`](Game::event) and ignores the
+    /// rest, so a game with extra windows overrides this method instead.
+    ///
+    /// Pointer events carry that window's own view units; keyboard events
+    /// from every window also reach [`Context::input`].
+    fn window_event(
+        &mut self,
+        ctx: &mut Context,
+        window: WindowId,
+        event: &Event,
+    ) -> GameResult {
+        if window == WindowId::MAIN {
+            self.event(ctx, event)
+        } else {
+            Ok(())
+        }
     }
 }
