@@ -4,7 +4,7 @@
 use super::prepare::Prepared;
 use super::render::SceneRenderer;
 use super::sky::Tonemap;
-use super::slot::GroupKey;
+use super::slot::{GroupKey, SlotId};
 use crate::shared::Shared;
 
 /// Storage bindings may not be empty; pads an empty slice to one word.
@@ -19,11 +19,15 @@ fn buf(b: &wgpu::Buffer) -> wgpu::BindingResource<'_> {
 
 impl SceneRenderer {
     /// Writes the frame block, lights, clusters, materials, joints, morph
-    /// weights, instances, lines and resolve settings of slot `ri`.
-    pub(super) fn upload(&mut self, shared: &Shared, ri: usize, p: &Prepared) {
+    /// weights, instances, lines and resolve settings of record `ri` into
+    /// `slot`.
+    pub(super) fn upload(&mut self, shared: &Shared, ri: usize, slot: SlotId, p: &Prepared) {
         let (device, queue) = (shared.device(), shared.queue());
         let rec = &self.records[ri];
-        let slot = &mut self.slots[ri];
+        let slot = match slot {
+            SlotId::Scene(i) => &mut self.slots[i],
+            SlotId::Capture(i) => &mut self.captures[i],
+        };
         queue.write_buffer(&slot.frame, 0, bytemuck::bytes_of(&p.frame));
         let joints: Vec<[[f32; 4]; 4]> = rec.joints.iter().map(|m| m.to_cols_array_2d()).collect();
         let mut grew = false;
@@ -70,9 +74,18 @@ impl SceneRenderer {
         }
     }
 
-    /// Builds slot `ri`'s frame and shadow-pass bind groups when a buffer,
-    /// the environment or the shadow atlas changed.
-    pub(super) fn bind_groups(&mut self, shared: &Shared, ri: usize, env: u64, shadows: bool) {
+    /// Builds `slot`'s frame and shadow-pass bind groups for record `ri`
+    /// when a buffer, the environment, the light probe grid or the shadow
+    /// atlas changed.
+    pub(super) fn bind_groups(
+        &mut self,
+        shared: &Shared,
+        ri: usize,
+        slot_id: SlotId,
+        env: u64,
+        grid: u64,
+        shadows: bool,
+    ) {
         let atlas = if shadows {
             self.atlas.as_ref().unwrap_or(&self.empty_atlas)
         } else {
@@ -82,12 +95,19 @@ impl SceneRenderer {
             atlas: u64::from(shadows),
             env,
             buffers: self.generation,
+            grid,
         };
-        if self.slots[ri].groups.as_ref().is_some_and(|g| g.0 == key) {
+        if self
+            .slot(slot_id)
+            .groups
+            .as_ref()
+            .is_some_and(|g| g.0 == key)
+        {
             return;
         }
         let maps = self.env_maps(ri, env);
-        let slot = &self.slots[ri];
+        let grid_view = self.grid_view(ri, grid);
+        let slot = self.slot(slot_id);
         let device = shared.device();
         let entry = |binding, resource| wgpu::BindGroupEntry { binding, resource };
         let frame = device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -106,6 +126,12 @@ impl SceneRenderer {
                 entry(9, wgpu::BindingResource::TextureView(&maps.specular)),
                 entry(10, wgpu::BindingResource::TextureView(&maps.irradiance)),
                 entry(11, wgpu::BindingResource::Sampler(&self.linear_sampler)),
+                entry(20, buf(&slot.probes)),
+                entry(
+                    21,
+                    wgpu::BindingResource::TextureView(&self.probes.array_view),
+                ),
+                entry(22, wgpu::BindingResource::TextureView(grid_view)),
             ],
         });
         let shadow = device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -118,6 +144,9 @@ impl SceneRenderer {
                 entry(6, buf(&slot.morph_weights.buffer)),
             ],
         });
-        self.slots[ri].groups = Some((key, frame, shadow));
+        match slot_id {
+            SlotId::Scene(i) => self.slots[i].groups = Some((key, frame, shadow)),
+            SlotId::Capture(i) => self.captures[i].groups = Some((key, frame, shadow)),
+        }
     }
 }

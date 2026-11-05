@@ -27,10 +27,13 @@
 //!   writes the output. Everything before it stays the same.
 //! - **New material features** follow the steps in the `material` module
 //!   documentation; the record has spare vectors and flag bits.
-//! - **Render bundles** for static geometry: `passes.rs` records every
-//!   batch through `SceneRenderer::draw_batches`, which only reads the
-//!   batch list and bind groups, so a bundle encoder can replay a cached
-//!   batch list for meshes the game marks static.
+//! - **Static geometry** ([`StaticGroup`], `statics/`) is culled on the GPU
+//!   and replayed from render bundles; with static groups the HDR pass of
+//!   `passes.rs` splits in two around the depth pyramid build.
+//! - **Reflection probes and the light probe grid** (`probes/`) capture
+//!   the scene through these same passes into cube faces
+//!   (`SceneRenderer::render_view` with a capture slot) and are read by
+//!   `ambient_specular` and `ambient_diffuse` in `probes/probes.wgsl`.
 //! - **GPU particles** draw in the HDR pass after the blended meshes, in
 //!   `passes.rs` (`encode_scene`) beside the lines, with the frame bind
 //!   group bound.
@@ -56,12 +59,14 @@ mod passes;
 mod pipelines;
 mod prepare;
 mod primitives;
+mod probes;
 mod record;
 mod render;
 mod resolve;
 mod shadow;
 mod sky;
 mod slot;
+mod statics;
 mod submit;
 mod textures;
 mod upload;
@@ -85,8 +90,12 @@ pub use mesh::{Mesh, RayHit};
 pub use model::{Model, ModelInstance, ModelPart};
 pub use morph::{MAX_MORPH_WEIGHTS, MorphTarget};
 pub use panorama::Panorama;
+pub use probes::{
+    LightProbeGrid, MAX_LIGHT_PROBES, MAX_REFLECTION_PROBES, ProbeUpdate, ReflectionProbe,
+};
 pub use shadow::{MAX_POINT_SHADOWS, MAX_SPOT_SHADOWS};
 pub use sky::{Atmosphere, Fog, Sky, Tonemap};
+pub use statics::StaticGroup;
 pub use submit::{DrawId, Placement, Scene, ScenePick, pick};
 pub use vertex::{MeshData, Vertex3D};
 

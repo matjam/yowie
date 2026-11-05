@@ -70,8 +70,11 @@ fn depth(write: bool, compare: wgpu::CompareFunction) -> wgpu::DepthStencilState
 const PREMULTIPLIED: wgpu::BlendState = wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING;
 
 impl ScenePipelines {
-    pub(crate) fn new(device: &wgpu::Device) -> Self {
-        let mesh_src = [COMMON, ATMOSPHERE, VERTEX, SURFACE].join("\n");
+    /// Builds the shader modules; `cube_array` picks how the reflection
+    /// probe cubes are bound (see `probes::cube_arrays`).
+    pub(crate) fn new(device: &wgpu::Device, cube_array: bool) -> Self {
+        let probes = super::probes::shader_source(cube_array);
+        let mesh_src = [COMMON, ATMOSPHERE, VERTEX, &probes, SURFACE].join("\n");
         let sky_src = [COMMON, ATMOSPHERE, SKY].join("\n");
         Self {
             mesh_module: trusted_module(device, "yowie mesh", &mesh_src),

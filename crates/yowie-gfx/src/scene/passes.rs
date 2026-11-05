@@ -5,7 +5,8 @@ use super::pipelines::{FixedPipeline, MeshKey};
 use super::prepare::{Batch, Prepared};
 use super::render::SceneRenderer;
 use super::shadow::atlas_rect;
-use super::slot::SceneSlot;
+use super::slot::{SceneSlot, SlotId};
+use crate::graphics::FrameStats;
 use crate::shared::Shared;
 
 /// What the current pass has bound.
@@ -74,12 +75,22 @@ impl SceneRenderer {
 }
 
 /// Begins the HDR scene pass of a slot, clearing colour to transparent and
-/// depth to the far plane (0, reversed).
+/// depth to the far plane (0, reversed), or with `clear` false keeping
+/// what an earlier pass of the same frame drew.
 fn begin_hdr_pass<'e>(
     encoder: &'e mut wgpu::CommandEncoder,
     slot: &SceneSlot,
+    clear: bool,
 ) -> Option<wgpu::RenderPass<'e>> {
     let t = slot.targets.as_ref()?;
+    let (color_load, depth_load) = if clear {
+        (
+            wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+            wgpu::LoadOp::Clear(0.0),
+        )
+    } else {
+        (wgpu::LoadOp::Load, wgpu::LoadOp::Load)
+    };
     Some(encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
         label: Some("yowie scene"),
         color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -87,14 +98,14 @@ fn begin_hdr_pass<'e>(
             depth_slice: None,
             resolve_target: None,
             ops: wgpu::Operations {
-                load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                load: color_load,
                 store: wgpu::StoreOp::Store,
             },
         })],
         depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
             view: &t.depth,
             depth_ops: Some(wgpu::Operations {
-                load: wgpu::LoadOp::Clear(0.0),
+                load: depth_load,
                 store: wgpu::StoreOp::Store,
             }),
             stencil_ops: None,
@@ -147,36 +158,64 @@ fn encode_shadows(
     calls
 }
 
-/// Records the scene in slot `ri` and returns its draw call count.
+/// Records record `ri`'s scene into `slot` and returns its draw call
+/// count. Static groups culled on the GPU split the HDR pass in two: the
+/// draws visible last frame go first, then the rest are tested against
+/// the depth those left (see `statics`).
 pub(crate) fn encode_scene(
     r: &mut SceneRenderer,
     shared: &Shared,
     encoder: &mut wgpu::CommandEncoder,
     ri: usize,
+    slot: SlotId,
     p: &Prepared,
+    stats: &mut FrameStats,
 ) -> u32 {
-    let Some((_, frame_group, shadow_group)) = r.slots[ri].groups.clone() else {
+    let Some((_, frame_group, shadow_group)) = r.slot(slot).groups.clone() else {
         return 0;
     };
-    let instances = r.slots[ri].instances.buffer.clone();
+    let instances = r.slot(slot).instances.buffer.clone();
     let mut calls = 0;
     if !p.shadows.is_empty() {
         calls += encode_shadows(r, shared, encoder, ri, p, &shadow_group, &instances);
     }
-    let lines = r.slots[ri].lines.buffer.clone();
+    let statics = r.statics_early(shared, encoder, ri, slot, &frame_group, &p.frame);
+    let lines = r.slot(slot).lines.buffer.clone();
     let rec = &r.records[ri];
-    let (n_lines, n_top) = (rec.lines.len() as u32, rec.lines_on_top.len() as u32);
+    let (n_lines, n_top) = if matches!(slot, SlotId::Capture(_)) {
+        (0, 0)
+    } else {
+        (rec.lines.len() as u32, rec.lines_on_top.len() as u32)
+    };
     let sky = p.frame.env[3] > 0.5 && (rec.sky.is_some() || rec.environment.is_some());
     let sky_pipe = sky.then(|| r.fixed(shared, FixedPipeline::Sky));
     let lines_pipe = (n_lines > 0).then(|| r.fixed(shared, FixedPipeline::Lines));
     let top_pipe = (n_top > 0).then(|| r.fixed(shared, FixedPipeline::LinesOnTop));
-    let Some(mut pass) = begin_hdr_pass(encoder, &r.slots[ri]) else {
+    let Some(mut pass) = begin_hdr_pass(encoder, r.slot(slot), true) else {
         return calls;
     };
     pass.set_bind_group(0, &frame_group, &[]);
     pass.set_vertex_buffer(1, instances.slice(..));
     let mut state = PassState::default();
     calls += r.draw_batches(shared, &mut pass, ri, &p.opaque, &mut state);
+    if let Some(st) = &statics {
+        pass.execute_bundles(st.early.iter());
+        drop(pass);
+        r.statics_late(encoder, slot, st);
+        let Some(next) = begin_hdr_pass(encoder, r.slot(slot), false) else {
+            return calls;
+        };
+        pass = next;
+        pass.execute_bundles(st.late.iter());
+        // Bundles leave no state behind, so bind the scene again.
+        pass.set_bind_group(0, &frame_group, &[]);
+        pass.set_vertex_buffer(1, instances.slice(..));
+        state = PassState::default();
+        calls += st.draws;
+        stats.bundle_draws += st.draws;
+        stats.culled_3d += st.culled;
+        stats.occluded_3d += st.occluded;
+    }
     if let Some(sky) = &sky_pipe {
         pass.set_pipeline(sky);
         pass.draw(0..3, 0..1);

@@ -26,7 +26,7 @@ use super::vertex::{GpuInstance, affine_rows};
 pub(crate) struct Batch {
     pub(crate) key: MeshKey,
     /// The packed sort key the batch's draws share.
-    sort: u64,
+    pub(crate) sort: u64,
     pub(crate) mesh: u32,
     pub(crate) material: u32,
     pub(crate) first: u32,
@@ -150,6 +150,9 @@ pub(crate) struct View {
     pub(crate) far: f32,
     pub(crate) ortho: bool,
     pub(crate) size: yowie_core::Vec2,
+    /// Set when the view captures a probe face rather than showing the
+    /// scene: draws hidden in probes are skipped.
+    pub(crate) capture: Option<super::probes::Capture>,
 }
 
 impl View {
@@ -167,6 +170,7 @@ impl View {
             far: cam.far.max(cam.near * 1.001),
             ortho: matches!(cam.projection, Projection::Orthographic { .. }),
             size,
+            capture: None,
         }
     }
 }
@@ -192,7 +196,11 @@ pub(crate) fn prepare(rec: &SceneRecord, v: &View, out: &mut Prepared) {
     let mut casters: Vec<Resolved> = Vec::new();
     let sun_shadows = rec.sun.is_some_and(|s| s.shadows);
     let any_shadows = sun_shadows || rec.lights.iter().any(LocalLight::shadows);
+    let hidden = super::probes::hidden_mask(rec, v);
     for (i, d) in rec.draws.iter().enumerate() {
+        if hidden.get(i).copied().unwrap_or(false) {
+            continue;
+        }
         let info = &infos[d.mesh as usize];
         let skinned = info.skinned && d.joints != u32::MAX;
         let material = &rec.materials[d.material as usize];
@@ -326,7 +334,7 @@ fn prepare_shadows(rec: &SceneRecord, v: &View, casters: &[Resolved], out: &mut 
         let reach = casters
             .iter()
             .map(|c| c.sphere.truncate().dot(to_sun) + c.sphere.w)
-            .fold(f32::NEG_INFINITY, f32::max);
+            .fold(super::statics::caster_reach(rec, to_sun), f32::max);
         let distance = sun.shadow_distance.min(v.far);
         let splits = shadow::cascade_splits(v.near, if distance > 0.0 { distance } else { 60.0 });
         let inv = v.view_proj.inverse();
@@ -370,6 +378,13 @@ fn prepare_shadows(rec: &SceneRecord, v: &View, casters: &[Resolved], out: &mut 
             &mut batches,
         );
         out.shadow_instances += pass.len() as u32;
+        out.shadow_instances += super::statics::emit_casters(
+            rec,
+            &view.frustum,
+            view.index as u32,
+            &mut out.instances,
+            &mut batches,
+        );
         out.shadows.push((view.index, batches));
     }
 }

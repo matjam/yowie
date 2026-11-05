@@ -63,6 +63,15 @@ pub struct FrameStats {
     pub lights_dropped: u32,
     /// Instances drawn into shadow maps.
     pub shadow_instances: u32,
+    /// 3D draw calls replayed from render bundles (static groups); they
+    /// are also counted in `draw_calls_3d`.
+    pub bundle_draws: u32,
+    /// Static group instances inside the view but hidden behind nearer
+    /// geometry, so not drawn. The GPU counts them, so the number arrives
+    /// one or two frames late.
+    pub occluded_3d: u32,
+    /// Cube faces rendered this frame to capture reflection probes.
+    pub probe_faces: u32,
 }
 
 /// The renderer for one window or headless image.
