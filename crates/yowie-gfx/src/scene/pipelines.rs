@@ -11,6 +11,7 @@ const COMMON: &str = include_str!("shaders/common.wgsl");
 const ATMOSPHERE: &str = include_str!("shaders/atmosphere.wgsl");
 const VERTEX: &str = include_str!("shaders/vertex.wgsl");
 const LAYERS: &str = include_str!("shaders/layers.wgsl");
+const LOBES: &str = include_str!("shaders/lobes.wgsl");
 const DECALS: &str = include_str!("shaders/decals.wgsl");
 const PASSES: &str = include_str!("shaders/passes.wgsl");
 const SURFACE: &str = include_str!("shaders/surface.wgsl");
@@ -30,7 +31,10 @@ pub(crate) const OIT_REVEAL_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::R
 /// `fn material`. The engine part ends with a newline, so the hook's first
 /// line is the line after the engine's last.
 pub(crate) fn mesh_source(hook: &str) -> String {
-    let mut s = [COMMON, ATMOSPHERE, VERTEX, LAYERS, DECALS, PASSES, SURFACE].join("\n");
+    let mut s = [
+        COMMON, ATMOSPHERE, VERTEX, LAYERS, LOBES, DECALS, PASSES, SURFACE,
+    ]
+    .join("\n");
     if !s.ends_with('\n') {
         s.push('\n');
     }

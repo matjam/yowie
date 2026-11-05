@@ -19,7 +19,8 @@
 //! 2. Pack it in `layers::pack` into free `ext` components (`ext[9]` is
 //!    free) and set a new bit in `flags[2]`.
 //! 3. In `shaders/layers.wgsl`, read it in `read_layers` into a new field
-//!    of `Layers`, and add its lobe in `layer_light` and `layer_ambient`.
+//!    of `Layers`; in `shaders/lobes.wgsl`, add its lobe in `layer_light`
+//!    and `layer_ambient`.
 //! 4. A feature with its own texture appends a slot after the nine layer
 //!    textures (`LAYER_TEXTURES` in `layouts.rs`) and to
 //!    `layers::layer_textures`.

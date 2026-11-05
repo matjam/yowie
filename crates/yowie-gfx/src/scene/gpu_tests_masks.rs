@@ -6,6 +6,7 @@ use yowie_core::{Color, Mat4, Vec3, uvec2};
 
 use super::gpu_tests_materials::{SIZE, dark, facing, front_camera, luma, mesh, px, rgb, unlit};
 use super::*;
+use crate::Graphics;
 use crate::gpu_tests::{headless, render};
 
 #[test]
@@ -135,6 +136,50 @@ fn game_surface_shader_colour_is_lit() {
     );
     let shade = rgb(&img, 30, 64);
     assert!(shade[1] < 10.0, "far side is dark: {shade:?}");
+}
+
+#[test]
+fn surface_shaders_reload_and_take_uniforms() {
+    let Some(mut gfx) = headless(uvec2(SIZE, SIZE)) else {
+        return;
+    };
+    let tint = "struct P { c: vec4<f32> };\n@group(3) @binding(0) var<uniform> p: P;\n\
+                fn material(s: Surface) -> Surface {\n    var o = s;\n    o.base = p.c.rgb;\n    return o;\n}\n";
+    let shader = gfx
+        .compile_surface_shader_with_uniforms(tint, &[1.0f32, 0.0, 0.0, 0.0])
+        .expect("shader");
+    let quad = mesh(&gfx, &MeshData::plane(4.0, 1));
+    let draw = |gfx: &mut Graphics| {
+        gfx.scene(&front_camera(), |s| {
+            dark(s);
+            let m = Material {
+                shader: Some(shader.clone()),
+                ..unlit(Color::WHITE)
+            };
+            s.draw(&quad, &m, facing(Vec3::ZERO));
+        });
+        let img = render(gfx);
+        rgb(&img, SIZE / 2, SIZE / 2)
+    };
+    let red = draw(&mut gfx);
+    assert!(red[0] > 200.0 && red[2] < 20.0, "uniform red: {red:?}");
+    shader
+        .set_uniforms(&[0.0f32, 0.0, 1.0, 0.0])
+        .expect("uniforms");
+    let blue = draw(&mut gfx);
+    assert!(blue[2] > 200.0 && blue[0] < 20.0, "uniform blue: {blue:?}");
+    let green = "struct P { c: vec4<f32> };\n@group(3) @binding(0) var<uniform> p: P;\n\
+                 fn material(s: Surface) -> Surface {\n    var o = s;\n    o.base = vec3<f32>(0.0, 1.0, 0.0);\n    return o;\n}\n";
+    shader.reload_source(&gfx, green).expect("reload");
+    let reloaded = draw(&mut gfx);
+    assert!(
+        reloaded[1] > 200.0 && reloaded[2] < 20.0,
+        "reloaded: {reloaded:?}"
+    );
+    // A broken reload reports an error and keeps the working program.
+    assert!(shader.reload_source(&gfx, "fn material(").is_err());
+    let kept = draw(&mut gfx);
+    assert_eq!(kept, reloaded);
 }
 
 #[test]
