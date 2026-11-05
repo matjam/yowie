@@ -2,10 +2,12 @@
 //! take slots in call order and keep them across frames, so buffers only
 //! grow.
 
-use yowie_core::UVec2;
+use yowie_core::{Mat4, UVec2};
 
 use super::frame_data::FrameUniform;
 use super::layouts::{DEPTH_FORMAT, HDR_FORMAT};
+use super::post::{PostCamera, PostTargets};
+use super::prepare::View;
 
 /// A buffer that grows to fit what is written to it.
 #[derive(Debug)]
@@ -60,6 +62,8 @@ impl GrowBuffer {
 /// The HDR colour and depth images of one scene.
 #[derive(Debug)]
 pub(crate) struct Targets {
+    /// Tells target sets apart for the post chain's bind group cache.
+    pub(crate) id: u64,
     pub(crate) size: UVec2,
     pub(crate) color: wgpu::TextureView,
     pub(crate) depth: wgpu::TextureView,
@@ -87,6 +91,7 @@ impl Targets {
                 .create_view(&Default::default())
         };
         Self {
+            id: crate::texture::next_id(),
             size,
             color: make(HDR_FORMAT, "yowie scene colour"),
             depth: make(DEPTH_FORMAT, "yowie scene depth"),
@@ -106,11 +111,16 @@ pub(crate) struct SceneSlot {
     pub(crate) morph_weights: GrowBuffer,
     pub(crate) instances: GrowBuffer,
     pub(crate) lines: GrowBuffer,
-    pub(crate) resolve: wgpu::Buffer,
     pub(crate) targets: Option<Targets>,
     /// The frame and shadow bind groups and what they were built from.
     pub(crate) groups: Option<(GroupKey, wgpu::BindGroup, wgpu::BindGroup)>,
-    pub(crate) resolve_group: Option<wgpu::BindGroup>,
+    /// The post chain's images and block, made on the first frame.
+    pub(crate) post: Option<PostTargets>,
+    /// The camera this frame rendered with, for the post chain.
+    pub(crate) camera: PostCamera,
+    /// Last frame's steady view-projection, for reprojection; `None`
+    /// until a frame has rendered or after a cut.
+    pub(crate) previous: Option<Mat4>,
 }
 
 /// What a slot's bind groups name besides its own buffers: the atlas and
@@ -140,15 +150,26 @@ impl SceneSlot {
             morph_weights: GrowBuffer::new(device, "yowie morph weights", U::STORAGE),
             instances: GrowBuffer::new(device, "yowie instances", U::VERTEX),
             lines: GrowBuffer::new(device, "yowie lines", U::VERTEX),
-            resolve: device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("yowie resolve"),
-                size: 32,
-                usage: U::UNIFORM | U::COPY_DST,
-                mapped_at_creation: false,
-            }),
             targets: None,
             groups: None,
-            resolve_group: None,
+            post: None,
+            camera: PostCamera::default(),
+            previous: None,
+        }
+    }
+
+    /// Keeps the camera this frame renders with for the post chain; a
+    /// cut forgets the previous frame's.
+    pub(crate) fn set_camera(&mut self, v: &View, cut: bool) {
+        self.camera = PostCamera {
+            view: v.view,
+            proj: v.proj,
+            view_proj: v.view_proj,
+            steady_view_proj: v.view_proj,
+            jitter: yowie_core::Vec2::ZERO,
+        };
+        if cut {
+            self.previous = None;
         }
     }
 
@@ -160,7 +181,6 @@ impl SceneSlot {
             return false;
         }
         self.targets = Some(Targets::new(device, size));
-        self.resolve_group = None;
         true
     }
 }

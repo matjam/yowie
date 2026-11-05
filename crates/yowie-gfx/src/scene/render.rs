@@ -190,6 +190,11 @@ impl SceneRenderer {
         }
     }
 
+    /// Whether any scene was recorded this frame.
+    pub(crate) fn any_records(&self) -> bool {
+        !self.records.is_empty()
+    }
+
     /// Whether any scene renders into list `li`.
     pub(crate) fn has_scenes(&self, li: usize) -> bool {
         self.records.iter().any(|r| r.list == li)
@@ -258,6 +263,8 @@ impl SceneRenderer {
         fill_frame(rec, &v, &mut prepared.frame);
         let env = self.choose_env(shared, encoder, ri, &mut prepared.frame);
         self.slots[ri].ensure_targets(device, size);
+        let cut = self.records[ri].cut;
+        self.slots[ri].set_camera(&v, cut);
         self.upload(shared, ri, &prepared);
         let any_shadows = !prepared.shadows.is_empty();
         if any_shadows && self.atlas.is_none() {

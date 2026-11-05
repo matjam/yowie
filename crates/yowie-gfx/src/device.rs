@@ -19,6 +19,15 @@ fn instance() -> wgpu::Instance {
     wgpu::Instance::new(desc.with_env())
 }
 
+/// The features Yowie turns on when the adapter has them; each has a
+/// fallback when it is missing.
+fn optional_features() -> wgpu::Features {
+    wgpu::Features::TEXTURE_COMPRESSION_BC
+        | wgpu::Features::TIMESTAMP_QUERY
+        | wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES
+        | wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES
+}
+
 impl Gpu {
     /// Creates an instance and, from it, the surface `make_surface` builds,
     /// then picks an adapter that can present to that surface.
@@ -47,8 +56,9 @@ impl Gpu {
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
                 label: Some("yowie device"),
-                // Block-compressed (BC) textures when the GPU has them.
-                required_features: adapter.features() & wgpu::Features::TEXTURE_COMPRESSION_BC,
+                // Block-compressed (BC) textures, GPU timestamps and the
+                // adapter's own multisample counts when the GPU has them.
+                required_features: adapter.features() & optional_features(),
                 required_limits: wgpu::Limits::default().using_resolution(adapter.limits()),
                 experimental_features: wgpu::ExperimentalFeatures::disabled(),
                 memory_hints: wgpu::MemoryHints::Performance,

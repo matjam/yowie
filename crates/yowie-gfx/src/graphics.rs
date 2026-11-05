@@ -98,6 +98,9 @@ pub struct Graphics {
     pub(crate) frame_number: u64,
     /// The 3D renderer, created by the first scene.
     pub(crate) scenes: Option<Box<crate::scene::SceneRenderer>>,
+    /// The post-processing passes, created by the first scene or 2D frame
+    /// that needs them.
+    pub(crate) post: Option<Box<crate::scene::PostRenderer>>,
 }
 
 impl std::fmt::Debug for Graphics {
@@ -187,6 +190,7 @@ impl Graphics {
             stats: FrameStats::default(),
             frame_number: 0,
             scenes: None,
+            post: None,
         };
         gfx.begin_frame();
         Ok(gfx)

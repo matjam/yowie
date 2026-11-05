@@ -10,6 +10,7 @@ use super::light::{DirectionalLight, LocalLight, PointLight, SpotLight};
 use super::material::Material;
 use super::mesh::{Mesh, RayHit};
 use super::morph::pick_weights;
+use super::post::PostSettings;
 use super::record::{DrawRecord, SceneRecord};
 use super::sky::{Fog, Sky, Tonemap};
 use crate::Graphics;
@@ -166,13 +167,34 @@ impl Scene<'_> {
     }
 
     /// Multiplies the scene's light before tone mapping; 1 by default.
+    /// The same as setting [`PostSettings::exposure`].
     pub fn set_exposure(&mut self, exposure: f32) {
-        self.rec.exposure = exposure;
+        self.rec.post.exposure = exposure;
     }
 
-    /// Sets the tone curve; ACES by default.
+    /// Sets the tone curve; ACES by default. The same as setting
+    /// [`PostSettings::tonemap`].
     pub fn set_tonemap(&mut self, tonemap: Tonemap) {
-        self.rec.tonemap = tonemap;
+        self.rec.post.tonemap = tonemap;
+    }
+
+    /// Sets how the scene's HDR image is finished on its way to the
+    /// output: exposure, tone curve, grade and effects. The default turns
+    /// every effect off.
+    pub fn set_post(&mut self, post: PostSettings) {
+        self.rec.post = post;
+    }
+
+    /// The scene's post-processing settings, to change one field.
+    pub fn post_mut(&mut self) -> &mut PostSettings {
+        &mut self.rec.post
+    }
+
+    /// Tells temporal effects that the camera jumped this frame (a cut to
+    /// another shot, a teleport), so the frames before it are not
+    /// blended into this one.
+    pub fn cut(&mut self) {
+        self.rec.cut = true;
     }
 
     /// Adds a point light. A scene keeps up to
@@ -194,6 +216,22 @@ impl Scene<'_> {
     /// same mesh with an equal material become one instanced draw call.
     pub fn draw(&mut self, mesh: &Mesh, material: &Material, placement: impl Placement) -> DrawId {
         self.push(mesh, material, placement.model_matrix(), u32::MAX, &[])
+    }
+
+    /// Draws `mesh` like [`draw`](Self::draw) and says where it was placed
+    /// last frame, so temporal anti-aliasing and motion blur follow its
+    /// own motion as well as the camera's. Skinned and morphed meshes move
+    /// by their placement alone.
+    pub fn draw_moved(
+        &mut self,
+        mesh: &Mesh,
+        material: &Material,
+        placement: impl Placement,
+        previous: impl Placement,
+    ) -> DrawId {
+        let id = self.draw(mesh, material, placement);
+        self.rec.moved.push((id.0, previous.model_matrix()));
+        id
     }
 
     /// Draws `mesh` once per matrix, as one instanced draw call.

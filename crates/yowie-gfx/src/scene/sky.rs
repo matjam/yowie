@@ -263,16 +263,27 @@ impl Fog {
     }
 }
 
-/// The curve that maps the HDR scene to the output's range.
+/// The curve that maps the HDR scene to the output's range. Each curve
+/// is monotone; [`Tonemap::apply`] evaluates it on the processor, and the
+/// variant documentation gives where linear mid-grey (0.18) lands.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum Tonemap {
-    /// Clamps; bright areas clip.
+    /// Clamps; bright areas clip. Mid-grey stays 0.18.
     None,
-    /// The ACES filmic fit: contrasty, saturated highlights.
+    /// The ACES filmic fit (Stephen Hill's RRT and ODT fit): contrasty,
+    /// saturated highlights. Mid-grey lands at 0.106 (the fit includes the
+    /// reference curve's darkening of mid-tones).
     #[default]
     Aces,
-    /// AgX: gentler, desaturates highlights towards white.
+    /// AgX: gentler, desaturates highlights towards white. Mid-grey lands
+    /// at 0.215.
     Agx,
+    /// Reinhard, `c / (1 + c)` per channel: soft, never reaches white.
+    /// Mid-grey lands at 0.153.
+    Reinhard,
+    /// The Khronos PBR Neutral curve: keeps base colours as authored up
+    /// to 0.76 and compresses only the highlights. Mid-grey lands at 0.14.
+    Neutral,
 }
 
 #[cfg(test)]

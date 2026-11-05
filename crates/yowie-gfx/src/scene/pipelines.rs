@@ -11,7 +11,6 @@ const ATMOSPHERE: &str = include_str!("shaders/atmosphere.wgsl");
 const VERTEX: &str = include_str!("shaders/vertex.wgsl");
 const SURFACE: &str = include_str!("shaders/surface.wgsl");
 const SKY: &str = include_str!("shaders/sky.wgsl");
-const RESOLVE: &str = include_str!("shaders/resolve.wgsl");
 
 /// Which pass and alpha mode a mesh pipeline draws.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -38,7 +37,7 @@ impl MeshKey {
     }
 }
 
-/// The fixed pipelines of the background, lines and resolve.
+/// The fixed pipelines of the background and lines.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(crate) enum FixedPipeline {
     Sky,
@@ -51,10 +50,8 @@ pub(crate) enum FixedPipeline {
 pub(crate) struct ScenePipelines {
     mesh_module: wgpu::ShaderModule,
     sky_module: wgpu::ShaderModule,
-    resolve_module: wgpu::ShaderModule,
     mesh: HashMap<MeshKey, wgpu::RenderPipeline>,
     fixed: HashMap<FixedPipeline, wgpu::RenderPipeline>,
-    resolve: HashMap<wgpu::TextureFormat, wgpu::RenderPipeline>,
 }
 
 fn depth(write: bool, compare: wgpu::CompareFunction) -> wgpu::DepthStencilState {
@@ -76,10 +73,8 @@ impl ScenePipelines {
         Self {
             mesh_module: trusted_module(device, "yowie mesh", &mesh_src),
             sky_module: trusted_module(device, "yowie sky", &sky_src),
-            resolve_module: trusted_module(device, "yowie resolve", RESOLVE),
             mesh: HashMap::new(),
             fixed: HashMap::new(),
-            resolve: HashMap::new(),
         }
     }
 
@@ -163,47 +158,6 @@ impl ScenePipelines {
             cache: None,
         });
         self.fixed.insert(which, p.clone());
-        p
-    }
-
-    /// The resolve pipeline writing `format`, blending premultiplied
-    /// colour over what the output holds.
-    pub(crate) fn resolve(
-        &mut self,
-        device: &wgpu::Device,
-        layouts: &SceneLayouts,
-        format: wgpu::TextureFormat,
-    ) -> wgpu::RenderPipeline {
-        if let Some(p) = self.resolve.get(&format) {
-            return p.clone();
-        }
-        let module = &self.resolve_module;
-        let p = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("yowie resolve"),
-            layout: Some(&layouts.resolve_pipeline),
-            vertex: wgpu::VertexState {
-                module,
-                entry_point: Some("vs_resolve"),
-                compilation_options: Default::default(),
-                buffers: &[],
-            },
-            primitive: wgpu::PrimitiveState::default(),
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState::default(),
-            fragment: Some(wgpu::FragmentState {
-                module,
-                entry_point: Some("fs_resolve"),
-                compilation_options: Default::default(),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format,
-                    blend: Some(PREMULTIPLIED),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-            }),
-            multiview_mask: None,
-            cache: None,
-        });
-        self.resolve.insert(format, p.clone());
         p
     }
 }

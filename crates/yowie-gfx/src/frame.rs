@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use std::num::NonZeroU64;
 
 use crate::Graphics;
-use crate::batch::{DEFAULT_SHADER, DrawCall, DrawList, FrameTables, ListTarget, is_engine_shader};
+use crate::batch::{DEFAULT_SHADER, DrawCall, FrameTables, ListTarget, is_engine_shader};
 use crate::engine_shaders::EngineShaders;
 use crate::error::Result;
 use crate::graphics::FrameStats;
@@ -169,12 +169,30 @@ impl Graphics {
 
         let mut vertices: Vec<Vertex2D> = Vec::new();
         let mut indices: Vec<u32> = Vec::new();
-        let mut prepared: Vec<(usize, Vec<DrawCall>)> = Vec::with_capacity(order.len());
+        let mut prepared: Vec<(usize, Vec<DrawCall>, usize)> = Vec::with_capacity(order.len());
         for &li in &order {
             let base = vertices.len() as u32;
             vertices.extend_from_slice(&self.lists[li].vertices);
-            let calls = self.lists[li].flatten(&mut indices, base);
-            prepared.push((li, calls));
+            // A post-processed frame draws the interface layers after the
+            // post pass, so they split from the layers below.
+            let split = if self.lists[li].post.is_some() {
+                crate::layers::UI
+            } else {
+                i32::MAX
+            };
+            let (calls, at) = self.lists[li].flatten(&mut indices, base, split);
+            prepared.push((li, calls, at));
+        }
+        let wants_post = self.scenes.as_ref().is_some_and(|s| s.any_records())
+            || self.lists.iter().any(|l| l.post.is_some());
+        if wants_post && self.post.is_none() {
+            self.post = Some(Box::new(crate::scene::PostRenderer::new(
+                self.shared.device(),
+                self.shared.queue(),
+            )));
+        }
+        if let Some(post) = self.post.as_deref_mut() {
+            post.frames.begin_frame();
         }
         let uniforms = layout_uniforms(&self.tables, self.buffers.align);
         let shared = &self.shared;
@@ -207,36 +225,54 @@ impl Graphics {
             outputs: order.len() as u32,
             ..FrameStats::default()
         };
-        for (li, calls) in &prepared {
+        for (li, calls, split) in &prepared {
             let list = &self.lists[*li];
             let target_gpu;
-            let (view, format) = match &list.target {
-                ListTarget::Screen => (&frame.view, self.output.format()),
+            let (view, format, key) = match &list.target {
+                ListTarget::Screen => (&frame.view, self.output.format(), 0),
                 ListTarget::Texture(t) => {
                     target_gpu = t.gpu();
-                    (&target_gpu.view, target_gpu.texture.format())
+                    (&target_gpu.view, target_gpu.texture.format(), t.id())
                 }
+            };
+            // With frame post-processing, the scenes and the 2D layers
+            // below the interface draw into an HDR image instead.
+            let frame_image = match (&list.post, self.post.as_deref_mut()) {
+                (Some(_), Some(post)) => Some(
+                    post.frame_image(shared.device(), key, list.mapping.output_size)
+                        .view
+                        .clone(),
+                ),
+                _ => None,
+            };
+            let (scene_view, scene_format) = match &frame_image {
+                Some(v) => (v, crate::scene::FRAME_POST_FORMAT),
+                None => (view, format),
             };
             // Pass 1, 3D scene: each scene recorded for this output renders
             // its shadow atlas and its HDR colour and depth targets.
-            // Pass 2, resolve (the place post-processing takes over): the
-            // scenes' HDR images are tone mapped into `view`, which is
-            // cleared first with the colour the list gave up in
-            // `prepare_lists`; the 2D overlay below then loads.
+            // Pass 2, post-processing: each scene's chain ends in its
+            // viewport of the output, which is cleared first with the
+            // colour the list gave up in `prepare_lists`; the 2D overlay
+            // below then loads.
+            let mut scene_drew = false;
             if let Some(scenes) = self.scenes.as_deref_mut()
+                && let Some(post) = self.post.as_deref_mut()
                 && scenes.has_scenes(*li)
             {
+                scene_drew = true;
                 let rendered =
                     scenes.render_list(shared, &mut encoder, *li, &list.mapping, &mut stats);
                 let clear = scenes.output_clear(*li);
-                stats.draw_calls_3d += crate::scene::resolve_output(
+                stats.draw_calls_3d += post.run_scenes(
                     scenes,
                     shared,
                     &mut encoder,
                     &rendered,
-                    view,
-                    format,
+                    scene_view,
+                    scene_format,
                     clear,
+                    self.time,
                 );
             }
             // Pass 3, the 2D overlay, which also carries UI and console
@@ -250,7 +286,28 @@ impl Graphics {
                 engine: &self.engine_shaders,
                 uniforms: &uniforms,
             };
-            stats.draw_calls += pass2d.encode(&mut encoder, view, format, list, calls);
+            let (below, above) = calls.split_at(*split);
+            // An output that is not cleared keeps its last picture, but a
+            // post-processed frame starts from its own image, which then
+            // starts transparent.
+            let clear = match (&frame_image, list.clear) {
+                (Some(_), None) if !scene_drew => Some(yowie_core::Color::TRANSPARENT),
+                (_, c) => c,
+            };
+            stats.draw_calls += pass2d.encode(&mut encoder, scene_view, scene_format, clear, below);
+            if let (Some(settings), Some(post)) = (&list.post, self.post.as_deref_mut()) {
+                stats.draw_calls_3d += post.run_frame(
+                    shared.device(),
+                    shared.queue(),
+                    &mut encoder,
+                    key,
+                    settings,
+                    view,
+                    format,
+                    self.time,
+                );
+                stats.draw_calls += pass2d.encode(&mut encoder, view, format, None, above);
+            }
         }
         let pending = if std::mem::take(&mut self.capture_requested) {
             if self.output.can_capture() {
@@ -293,16 +350,20 @@ struct Pass2D<'a> {
 }
 
 impl Pass2D<'_> {
-    /// Records one output's 2D pass and returns its draw call count.
+    /// Records one output's 2D pass, clearing to `clear` first when it is
+    /// set, and returns its draw call count.
     fn encode(
         &mut self,
         encoder: &mut wgpu::CommandEncoder,
         view: &wgpu::TextureView,
         format: wgpu::TextureFormat,
-        list: &DrawList,
+        clear: Option<yowie_core::Color>,
         calls: &[DrawCall],
     ) -> u32 {
-        let load = match list.clear {
+        if clear.is_none() && calls.is_empty() {
+            return 0;
+        }
+        let load = match clear {
             Some(c) => {
                 let [r, g, b, a] = c.to_linear_premultiplied();
                 wgpu::LoadOp::Clear(wgpu::Color {

@@ -1,31 +1,5 @@
-// The resolve from the HDR scene to the output: exposure, a tone curve
-// (ACES or AgX) and composition over the background colour. The output
-// format is sRGB, so the program writes linear light.
-
-struct Resolve {
-    // Premultiplied linear background drawn behind the scene.
-    background: vec4<f32>,
-    // Exposure, tone curve (0 none, 1 ACES, 2 AgX), 0, 0.
-    params: vec4<f32>,
-}
-
-@group(0) @binding(0) var hdr: texture_2d<f32>;
-@group(0) @binding(1) var hdr_sampler: sampler;
-@group(0) @binding(2) var<uniform> resolve: Resolve;
-
-struct ResolveOut {
-    @builtin(position) clip: vec4<f32>,
-    @location(0) uv: vec2<f32>,
-}
-
-@vertex
-fn vs_resolve(@builtin(vertex_index) i: u32) -> ResolveOut {
-    let p = vec2<f32>(f32((i << 1u) & 2u), f32(i & 2u));
-    var o: ResolveOut;
-    o.clip = vec4<f32>(p * 2.0 - 1.0, 0.0, 1.0);
-    o.uv = vec2<f32>(p.x, 1.0 - p.y);
-    return o;
-}
+// The tone curves, from exposed HDR light to linear display light in
+// 0..1. `tonemap.rs` mirrors them on the processor.
 
 fn aces(c: vec3<f32>) -> vec3<f32> {
     let m_in = mat3x3<f32>(
@@ -67,23 +41,42 @@ fn agx(c: vec3<f32>) -> vec3<f32> {
     return pow(clamp(v, vec3<f32>(0.0), vec3<f32>(1.0)), vec3<f32>(2.2));
 }
 
-fn tonemap(c: vec3<f32>) -> vec3<f32> {
-    let e = c * resolve.params.x;
-    let mode = u32(resolve.params.y);
-    if mode == 1u {
-        return aces(e);
-    }
-    if mode == 2u {
-        return agx(e);
-    }
-    return clamp(e, vec3<f32>(0.0), vec3<f32>(1.0));
+fn reinhard(c: vec3<f32>) -> vec3<f32> {
+    let x = max(c, vec3<f32>(0.0));
+    return x / (1.0 + x);
 }
 
-@fragment
-fn fs_resolve(in: ResolveOut) -> @location(0) vec4<f32> {
-    let s = textureSampleLevel(hdr, hdr_sampler, in.uv, 0.0);
-    let a = clamp(s.a, 0.0, 1.0);
-    let rgb = tonemap(s.rgb / max(a, 1e-4)) * a;
-    let bg = resolve.background;
-    return vec4<f32>(rgb + bg.rgb * (1.0 - a), a + bg.a * (1.0 - a));
+// The Khronos PBR Neutral tone mapper.
+fn neutral(c_in: vec3<f32>) -> vec3<f32> {
+    let start = 0.8 - 0.04;
+    let desaturation = 0.15;
+    var c = max(c_in, vec3<f32>(0.0));
+    let x = min(c.r, min(c.g, c.b));
+    let offset = select(0.04, x - 6.25 * x * x, x < 0.08);
+    c -= offset;
+    let peak = max(c.r, max(c.g, c.b));
+    if peak < start {
+        return c;
+    }
+    let d = 1.0 - start;
+    let new_peak = 1.0 - d * d / (peak + d - start);
+    c *= new_peak / peak;
+    let g = 1.0 - 1.0 / (desaturation * (peak - new_peak) + 1.0);
+    return mix(c, vec3<f32>(new_peak), g);
+}
+
+fn tonemap(c: vec3<f32>, mode: u32) -> vec3<f32> {
+    if mode == 1u {
+        return aces(c);
+    }
+    if mode == 2u {
+        return agx(c);
+    }
+    if mode == 3u {
+        return reinhard(c);
+    }
+    if mode == 4u {
+        return neutral(c);
+    }
+    return clamp(c, vec3<f32>(0.0), vec3<f32>(1.0));
 }

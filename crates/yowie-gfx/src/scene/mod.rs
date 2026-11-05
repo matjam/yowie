@@ -54,11 +54,11 @@ mod morph;
 mod panorama;
 mod passes;
 mod pipelines;
+mod post;
 mod prepare;
 mod primitives;
 mod record;
 mod render;
-mod resolve;
 mod shadow;
 mod sky;
 mod slot;
@@ -85,13 +85,14 @@ pub use mesh::{Mesh, RayHit};
 pub use model::{Model, ModelInstance, ModelPart};
 pub use morph::{MAX_MORPH_WEIGHTS, MorphTarget};
 pub use panorama::Panorama;
+pub use post::{Lut, PostSettings};
 pub use shadow::{MAX_POINT_SHADOWS, MAX_SPOT_SHADOWS};
 pub use sky::{Atmosphere, Fog, Sky, Tonemap};
 pub use submit::{DrawId, Placement, Scene, ScenePick, pick};
 pub use vertex::{MeshData, Vertex3D};
 
+pub(crate) use post::{HDR as FRAME_POST_FORMAT, PostRenderer};
 pub(crate) use render::SceneRenderer;
-pub(crate) use resolve::resolve_output;
 
 impl crate::Graphics {
     /// The scene renderer, created the first time a scene is recorded.

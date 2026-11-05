@@ -138,6 +138,9 @@ pub(crate) struct DrawList {
     pub(crate) vertices: Vec<Vertex2D>,
     pub(crate) indices: Vec<u32>,
     pub(crate) items: Vec<Item>,
+    /// Post-processing of the whole frame below the interface layers,
+    /// set with `Graphics::set_frame_post`.
+    pub(crate) post: Option<crate::scene::PostSettings>,
 }
 
 /// One draw call after sorting and merging.
@@ -157,6 +160,7 @@ impl DrawList {
             vertices: Vec::new(),
             indices: Vec::new(),
             items: Vec::new(),
+            post: None,
         }
     }
 
@@ -197,20 +201,32 @@ impl DrawList {
 
     /// Sorts the items and merges them into draw calls, appending the
     /// sorted indices to `out` (offset by `base_vertex`) and returning the
-    /// calls with index ranges into `out`.
-    pub(crate) fn flatten(&mut self, out: &mut Vec<u32>, base_vertex: u32) -> Vec<DrawCall> {
+    /// calls with index ranges into `out`, and the index of the first call
+    /// at or above layer `split` (the calls' length when there is none).
+    /// No call spans the split.
+    pub(crate) fn flatten(
+        &mut self,
+        out: &mut Vec<u32>,
+        base_vertex: u32,
+        split: i32,
+    ) -> (Vec<DrawCall>, usize) {
         let order = |a: &Item, b: &Item| a.layer.cmp(&b.layer).then(a.key.total_cmp(&b.key));
         if !self.items.is_sorted_by(|a, b| order(a, b).is_le()) {
             // A stable sort keeps submission order between equal keys.
             self.items.sort_by(order);
         }
         let mut calls: Vec<DrawCall> = Vec::new();
+        let mut at = None;
         for item in &self.items {
             let first = out.len() as u32;
             let range = item.first as usize..(item.first + item.count) as usize;
             out.extend(self.indices[range].iter().map(|i| i + base_vertex));
+            let crossing = at.is_none() && item.layer >= split;
+            if crossing {
+                at = Some(calls.len());
+            }
             match calls.last_mut() {
-                Some(c) if c.state == item.state && c.first + c.count == first => {
+                Some(c) if !crossing && c.state == item.state && c.first + c.count == first => {
                     c.count += item.count;
                 }
                 _ => calls.push(DrawCall {
@@ -220,7 +236,8 @@ impl DrawList {
                 }),
             }
         }
-        calls
+        let at = at.unwrap_or(calls.len());
+        (calls, at)
     }
 }
 
@@ -251,14 +268,28 @@ mod tests {
         quad(&mut list, 1, 0, 0.0);
         quad(&mut list, 0, 1, 0.0);
         let mut out = Vec::new();
-        let calls = list.flatten(&mut out, 0);
+        let (calls, split) = list.flatten(&mut out, 0, i32::MAX);
         // Layer 0 (texture 1) first, then both layer-1 runs of texture 0 as
         // one call.
         assert_eq!(calls.len(), 2);
+        assert_eq!(split, 2);
         assert_eq!(calls[0].state.texture, 1);
         assert_eq!(calls[1].count, 18);
         assert_eq!(out.len(), 24);
         assert_eq!(&out[..3], &[8, 9, 10], "the layer-0 quad's vertices");
+    }
+
+    #[test]
+    fn no_call_spans_the_split_layer() {
+        let mut list = DrawList::new(ListTarget::Screen, ViewMapping::default(), None);
+        quad(&mut list, 0, 0, 0.0);
+        quad(&mut list, 0, 5, 0.0);
+        quad(&mut list, 0, 6, 0.0);
+        let mut out = Vec::new();
+        let (calls, split) = list.flatten(&mut out, 0, 5);
+        assert_eq!(calls.len(), 2, "same state merges on either side");
+        assert_eq!(split, 1);
+        assert_eq!(calls[1].count, 12);
     }
 
     #[test]
@@ -268,7 +299,7 @@ mod tests {
         quad(&mut list, 1, 0, 2.0);
         quad(&mut list, 2, 0, 2.0);
         let mut out = Vec::new();
-        let calls = list.flatten(&mut out, 100);
+        let (calls, _) = list.flatten(&mut out, 100, i32::MAX);
         let textures: Vec<u32> = calls.iter().map(|c| c.state.texture).collect();
         assert_eq!(textures, [1, 2, 0], "ties keep submission order");
         assert_eq!(out[0], 104);
