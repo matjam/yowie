@@ -87,6 +87,15 @@ pub struct Context {
     pub input: InputState,
     /// Game time.
     pub time: Time,
+    /// The immediate-mode interface, drawn in `draw` with
+    /// `ctx.ui.draw(&mut ctx.gfx, &ctx.input, |f| ...)`.
+    #[cfg(feature = "ui")]
+    pub ui: yowie_ui::Ui,
+    /// The debug console; it does nothing unless
+    /// [`Config::console`](crate::Config::console) is set.
+    #[cfg(feature = "console")]
+    pub console: yowie_console::Console,
+    pub(crate) hook: crate::ui_hook::Hook,
     /// The audio mixer. Windowed runs play it on the default output device;
     /// headless runs, runs with [`Config::audio`](crate::Config) off and
     /// machines without a device get a mixer that is rendered each frame
@@ -136,6 +145,11 @@ impl Context {
             gfx,
             input: InputState::new(),
             time: Time::default(),
+            #[cfg(feature = "ui")]
+            ui: yowie_ui::Ui::default(),
+            #[cfg(feature = "console")]
+            console: yowie_console::Console::disabled(),
+            hook: crate::ui_hook::Hook::default(),
             #[cfg(feature = "audio")]
             audio,
             assets,

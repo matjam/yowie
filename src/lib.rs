@@ -134,6 +134,7 @@ mod services;
 mod services_tests;
 mod stepper;
 mod time;
+mod ui_hook;
 mod window;
 
 pub use config::{Config, LoopMode};
@@ -182,18 +183,11 @@ pub use yowie_ui as ui;
 /// Call it from `main`: window systems deliver events only to the thread
 /// that created the connection, which on macOS must be the main thread.
 pub fn run<G: Game>(config: Config) -> Result<()> {
-    install_logger();
+    ui_hook::install_logger(&config);
     let args = args::RunArgs::from_env().map_err(Error::Argument)?;
     if args.headless() {
         headless::run_headless::<G>(config, args)
     } else {
         app::run_windowed::<G>(config, args)
     }
-}
-
-/// Installs `env_logger` unless the program already set a logger.
-fn install_logger() {
-    let env = env_logger::Env::default().default_filter_or("warn,yowie=info,yowie_gfx=info");
-    // An existing logger is the game's choice and stays.
-    let _ = env_logger::Builder::from_env(env).try_init();
 }

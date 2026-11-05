@@ -8,3 +8,6 @@ repository.workspace = true
 
 [dependencies]
 yowie-core.workspace = true
+yowie-gfx.workspace = true
+yowie-input.workspace = true
+log.workspace = true

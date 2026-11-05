@@ -19,6 +19,7 @@ const GOLDEN: &[(&str, &[&str])] = &[
     ("audio", &["--seconds", "2"]),
     ("autotile", &[]),
     ("clear", &[]),
+    ("gallery", &["--seconds", "1", "--theme", "nord"]),
     ("inputs", &[]),
     ("particles", &["--seconds", "2"]),
     ("pathfinding", &[]),

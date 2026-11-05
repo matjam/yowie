@@ -5015,7 +5015,14 @@ dependencies = [
 name = "yowie-console"
 version = "0.1.0"
 dependencies = [
+ "log",
+ "yowie-audio",
  "yowie-core",
+ "yowie-ecs",
+ "yowie-gfx",
+ "yowie-input",
+ "yowie-phys",
+ "yowie-ui",
 ]
 
 [[package]]
@@ -5223,7 +5230,10 @@ dependencies = [
 name = "yowie-ui"
 version = "0.1.0"
 dependencies = [
+ "log",
  "yowie-core",
+ "yowie-gfx",
+ "yowie-input",
 ]
 
 [[package]]
