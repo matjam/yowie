@@ -22,7 +22,7 @@ repository = "https://github.com/matjam/yowie"
 [features]
 default = ["audio", "phys", "net", "ui", "console", "particle", "tiled"]
 audio = ["dep:yowie-audio"]
-phys = ["dep:yowie-phys"]
+phys = ["dep:yowie-phys", "yowie-phys/gfx"]
 net = ["dep:yowie-net"]
 ui = ["dep:yowie-ui"]
 console = ["ui", "dep:yowie-console"]

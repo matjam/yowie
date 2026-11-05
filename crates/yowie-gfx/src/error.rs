@@ -69,6 +69,15 @@ pub enum GfxError {
     /// Reading pixels back from the GPU failed.
     #[error("cannot read pixels back: {0}")]
     Readback(String),
+    /// Images did not fit an atlas of the largest allowed size.
+    #[error("atlas: {0}")]
+    Atlas(String),
+    /// An Aseprite file could not be read or used.
+    #[error("aseprite: {0}")]
+    Aseprite(String),
+    /// A Tiled map could not be turned into a drawable level.
+    #[error("tiled level: {0}")]
+    TiledLevel(String),
     /// Font bytes held no font face.
     #[error("font data holds no usable face")]
     NoFontFace,

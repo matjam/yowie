@@ -36,6 +36,8 @@ pub mod soft;
 mod debug;
 mod error;
 mod event;
+#[cfg(feature = "gfx")]
+mod gfx_debug;
 mod ids;
 mod joint;
 mod stepper;
@@ -51,6 +53,8 @@ pub use d3::{
 pub use debug::DebugDraw;
 pub use error::{PhysError, Result};
 pub use event::{Event, RayHit, ShapeHit, SurfaceDistance};
+#[cfg(feature = "gfx")]
+pub use gfx_debug::GfxDebugDraw;
 pub use ids::{BodyId, BodyKind, ColliderId, CollisionLayers, CombineRule, JointId, QueryFilter};
 pub use joint::{Limits, Motor};
 pub use stepper::FixedStepper;

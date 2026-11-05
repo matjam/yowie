@@ -13,7 +13,10 @@ rapier3d = { workspace = true, features = ["debug-render"] }
 thiserror.workspace = true
 log.workspace = true
 rayon = { workspace = true, optional = true }
+yowie-gfx = { workspace = true, optional = true }
 
 [features]
 default = []
 rayon = ["dep:rayon"]
+# Adds `GfxDebugDraw`, which draws a 2D world's debug lines with the renderer.
+gfx = ["dep:yowie-gfx"]

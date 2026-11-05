@@ -9,6 +9,10 @@ repository.workspace = true
 [dependencies]
 yowie-core.workspace = true
 yowie-ktx2.workspace = true
+yowie-anim.workspace = true
+yowie-asset.workspace = true
+yowie-tiled.workspace = true
+asefile.workspace = true
 wgpu.workspace = true
 bytemuck.workspace = true
 pollster.workspace = true
