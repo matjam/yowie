@@ -77,6 +77,7 @@ mod pipelines;
 mod pixels;
 mod readback;
 mod render_texture;
+pub mod scene;
 mod shader;
 mod shapes;
 mod shared;

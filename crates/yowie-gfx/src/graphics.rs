@@ -49,6 +49,19 @@ pub struct FrameStats {
     pub indices: u32,
     /// Outputs rendered: the screen plus each render texture drawn to.
     pub outputs: u32,
+    /// 3D draw calls after instancing, shadow maps and resolves included.
+    pub draw_calls_3d: u32,
+    /// 3D mesh draws recorded; each instance counts once.
+    pub draws_3d: u32,
+    /// 3D draws skipped because they were outside the camera's view.
+    pub culled_3d: u32,
+    /// Point and spot lights kept after culling against the view.
+    pub lights: u32,
+    /// Lights refused for exceeding a limit, and cluster entries dropped
+    /// from full clusters.
+    pub lights_dropped: u32,
+    /// Instances drawn into shadow maps.
+    pub shadow_instances: u32,
 }
 
 /// The renderer for one window or headless image.
@@ -80,6 +93,8 @@ pub struct Graphics {
     pub(crate) capture: Option<Result<RgbaImage>>,
     pub(crate) stats: FrameStats,
     pub(crate) frame_number: u64,
+    /// The 3D renderer, created by the first scene.
+    pub(crate) scenes: Option<Box<crate::scene::SceneRenderer>>,
 }
 
 impl std::fmt::Debug for Graphics {
@@ -165,6 +180,7 @@ impl Graphics {
             capture: None,
             stats: FrameStats::default(),
             frame_number: 0,
+            scenes: None,
         };
         gfx.begin_frame();
         Ok(gfx)
@@ -215,6 +231,9 @@ impl Graphics {
         self.list_stack.clear();
         self.encode_order.clear();
         self.tables.clear();
+        if let Some(scenes) = &mut self.scenes {
+            scenes.begin_frame();
+        }
         self.cursor = Cursor::default();
         let m = self.mapping;
         let bars = m.letterboxed();

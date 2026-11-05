@@ -82,6 +82,16 @@ pub enum GfxError {
     /// one.
     #[error("{0}")]
     FrameState(&'static str),
+    /// Mesh geometry was malformed: no triangles, an index out of range,
+    /// or morph targets that do not match the vertices.
+    #[error("invalid mesh: {0}")]
+    Mesh(String),
+    /// A glTF file could not be read or used.
+    #[error("glTF: {0}")]
+    Gltf(String),
+    /// A panorama could not be decoded or baked.
+    #[error("panorama: {0}")]
+    Panorama(String),
 }
 
 /// Results from the renderer.

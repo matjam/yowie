@@ -113,6 +113,7 @@ mod app;
 mod args;
 #[cfg(feature = "audio")]
 mod audio_backend;
+mod cameras;
 mod clipboard;
 mod clock;
 mod config;
@@ -129,6 +130,8 @@ mod headless;
 mod icon;
 mod keymap;
 mod overlay;
+#[cfg(feature = "phys")]
+mod phys_debug;
 mod services;
 #[cfg(test)]
 mod services_tests;
@@ -136,12 +139,15 @@ mod stepper;
 mod time;
 mod window;
 
+pub use cameras::{FlyCamera, OrbitCamera};
 pub use config::{Config, LoopMode};
 pub use context::{Context, CursorGrab, Waker};
 pub use context_content::TextureLoad;
 pub use error::{BoxError, Error, GameResult, Result};
 pub use game::{Event, Game};
 pub use icon::{Cursor, CursorImage, Icon};
+#[cfg(feature = "phys")]
+pub use phys_debug::SceneDebugDraw;
 pub use time::Time;
 pub use yowie_gfx::ScaleMode;
 

@@ -161,6 +161,10 @@ impl Graphics {
         };
         let mut order = std::mem::take(&mut self.encode_order);
         order.push(0);
+        let clear_color = self.clear_color();
+        if let Some(scenes) = self.scenes.as_deref_mut() {
+            scenes.prepare_lists(&mut self.lists, clear_color);
+        }
 
         let mut vertices: Vec<Vertex2D> = Vec::new();
         let mut indices: Vec<u32> = Vec::new();
@@ -212,11 +216,28 @@ impl Graphics {
                     (&target_gpu.view, target_gpu.texture.format())
                 }
             };
-            // Pass 1, 3D scene: renderer extensions record their scene
-            // passes for the screen here, into their own HDR targets.
-            // Pass 2, post-processing: the chain reads the scene targets and
-            // writes `view`; the 2D overlay below then loads instead of
-            // clearing. Neither exists yet, so the 2D pass clears.
+            // Pass 1, 3D scene: each scene recorded for this output renders
+            // its shadow atlas and its HDR colour and depth targets.
+            // Pass 2, resolve (the place post-processing takes over): the
+            // scenes' HDR images are tone mapped into `view`, which is
+            // cleared first with the colour the list gave up in
+            // `prepare_lists`; the 2D overlay below then loads.
+            if let Some(scenes) = self.scenes.as_deref_mut()
+                && scenes.has_scenes(*li)
+            {
+                let rendered =
+                    scenes.render_list(shared, &mut encoder, *li, &list.mapping, &mut stats);
+                let clear = scenes.output_clear(*li);
+                stats.draw_calls_3d += crate::scene::resolve_output(
+                    scenes,
+                    shared,
+                    &mut encoder,
+                    &rendered,
+                    view,
+                    format,
+                    clear,
+                );
+            }
             // Pass 3, the 2D overlay, which also carries UI and console
             // drawing on their layers.
             let mut pass2d = Pass2D {
