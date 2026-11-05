@@ -54,7 +54,9 @@ impl MusicControl {
     /// the new position is heard after a short delay while the decoder catches up.
     pub fn seek(&self, seconds: f64) {
         if seconds.is_finite() {
-            self.0.seek_to.store(seconds.max(0.0).to_bits(), Ordering::Release);
+            self.0
+                .seek_to
+                .store(seconds.max(0.0).to_bits(), Ordering::Release);
             self.0.generation.fetch_add(1, Ordering::AcqRel);
         }
     }
@@ -89,7 +91,11 @@ impl MusicControl {
 
     /// The decoding error that stopped the music, if any.
     pub fn error(&self) -> Option<String> {
-        self.0.error.lock().unwrap_or_else(PoisonError::into_inner).clone()
+        self.0
+            .error
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
     }
 }
 
@@ -113,13 +119,24 @@ impl Music {
     pub fn open_file(mixer: &Mixer, path: impl AsRef<Path>, opts: MusicOptions) -> Result<Self> {
         let path = path.as_ref();
         let file = std::fs::File::open(path)?;
-        let ext = path.extension().and_then(|e| e.to_str()).map(str::to_ascii_lowercase);
-        Self::start(mixer.rate(), Decoder::open(Box::new(file), ext.as_deref())?, opts)
+        let ext = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(str::to_ascii_lowercase);
+        Self::start(
+            mixer.rate(),
+            Decoder::open(Box::new(file), ext.as_deref())?,
+            opts,
+        )
     }
 
     /// Opens music held in memory.
     pub fn open_bytes(mixer: &Mixer, data: Vec<u8>, opts: MusicOptions) -> Result<Self> {
-        Self::start(mixer.rate(), Decoder::open(Box::new(Cursor::new(data)), None)?, opts)
+        Self::start(
+            mixer.rate(),
+            Decoder::open(Box::new(Cursor::new(data)), None)?,
+            opts,
+        )
     }
 
     /// A handle that controls this music after it has moved to the mixer.
@@ -128,7 +145,9 @@ impl Music {
     }
 
     fn start(rate: u32, dec: Decoder, opts: MusicOptions) -> Result<Self> {
-        let duration = dec.length.map_or(0.0, |n| n as f64 / f64::from(dec.rate.max(1)));
+        let duration = dec
+            .length
+            .map_or(0.0, |n| n as f64 / f64::from(dec.rate.max(1)));
         let (a, b) = opts.loop_range.unwrap_or((0.0, 0.0));
         let shared = Arc::new(Shared {
             generation: AtomicU64::new(0),
@@ -144,8 +163,18 @@ impl Music {
         let (tx, blocks) = bounded(QUEUE_BLOCKS);
         let (recycle, recycle_rx) = bounded(QUEUE_BLOCKS + 2);
         let worker = Worker::new(dec, rate, shared.clone(), tx, recycle_rx);
-        std::thread::Builder::new().name("yowie-music".into()).spawn(move || worker.run())?;
-        Ok(Self { shared, blocks, recycle, cur: Vec::new(), pos: 0, cur_gen: 0, last: false })
+        std::thread::Builder::new()
+            .name("yowie-music".into())
+            .spawn(move || worker.run())?;
+        Ok(Self {
+            shared,
+            blocks,
+            recycle,
+            cur: Vec::new(),
+            pos: 0,
+            cur_gen: 0,
+            last: false,
+        })
     }
 
     fn drop_current(&mut self) {
@@ -217,7 +246,12 @@ struct Resampler {
 
 impl Resampler {
     fn new(from: u32, to: u32) -> Self {
-        Self { step: f64::from(from) / f64::from(to), pos: 0.0, prev: [0.0; 2], have: false }
+        Self {
+            step: f64::from(from) / f64::from(to),
+            pos: 0.0,
+            prev: [0.0; 2],
+            have: false,
+        }
     }
 
     fn reset(&mut self) {
@@ -275,13 +309,34 @@ enum Flow {
 }
 
 impl Worker {
-    fn new(dec: Decoder, rate: u32, shared: Arc<Shared>, tx: Sender<Block>, recycle: Receiver<Vec<f32>>) -> Self {
+    fn new(
+        dec: Decoder,
+        rate: u32,
+        shared: Arc<Shared>,
+        tx: Sender<Block>,
+        recycle: Receiver<Vec<f32>>,
+    ) -> Self {
         let rs = Resampler::new(dec.rate, rate);
-        Self { dec, shared, tx, recycle, rs, generation: 0, src_pos: 0, out: Vec::new(), stereo: Vec::new(), packet: Vec::new() }
+        Self {
+            dec,
+            shared,
+            tx,
+            recycle,
+            rs,
+            generation: 0,
+            src_pos: 0,
+            out: Vec::new(),
+            stereo: Vec::new(),
+            packet: Vec::new(),
+        }
     }
 
     fn fail(&self, e: &Error) {
-        *self.shared.error.lock().unwrap_or_else(PoisonError::into_inner) = Some(e.to_string());
+        *self
+            .shared
+            .error
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = Some(e.to_string());
         self.shared.ended.store(true, Ordering::Release);
     }
 
@@ -344,7 +399,7 @@ impl Worker {
         if more {
             let (ls, le) = self.loop_frames();
             let looping = self.shared.looping.load(Ordering::Acquire);
-            self.to_stereo();
+            self.fill_stereo();
             let mut frames = self.stereo.len() / 2;
             let mut hit_end = false;
             if looping && le > ls && self.src_pos + frames as u64 >= le {
@@ -387,10 +442,11 @@ impl Worker {
         }
     }
 
-    fn to_stereo(&mut self) {
+    fn fill_stereo(&mut self) {
         self.stereo.clear();
         if self.dec.channels == 1 {
-            self.stereo.extend(self.packet.iter().flat_map(|s| [*s, *s]));
+            self.stereo
+                .extend(self.packet.iter().flat_map(|s| [*s, *s]));
         } else {
             self.stereo.extend_from_slice(&self.packet);
         }
@@ -412,9 +468,15 @@ impl Worker {
             data.extend_from_slice(&self.out[..n]);
             self.out.drain(..n);
             let is_last = last && self.out.is_empty();
-            let mut b = Block { generation: self.generation, data, last: is_last };
+            let mut b = Block {
+                generation: self.generation,
+                data,
+                last: is_last,
+            };
             loop {
-                if self.shared.generation.load(Ordering::Acquire) != self.generation || self.shared.closed.load(Ordering::Acquire) {
+                if self.shared.generation.load(Ordering::Acquire) != self.generation
+                    || self.shared.closed.load(Ordering::Acquire)
+                {
                     return false;
                 }
                 match self.tx.try_send(b) {
@@ -471,18 +533,31 @@ mod tests {
         let peak = out.iter().fold(0.0f32, |a, b| a.max(b.abs()));
         assert!(peak > 0.3, "peak {peak}");
         let frames = out.len() / 2;
-        assert!(frames >= 24_000 && frames < 24_000 + 8192 + 4096, "{frames} frames for half a second");
+        assert!(
+            (24_000..24_000 + 8192 + 4096).contains(&frames),
+            "{frames} frames for half a second"
+        );
     }
 
     #[test]
     fn loops_until_stopped() {
-        let (m, mut r, music) = music(48_000, 0.2, MusicOptions { looping: true, ..Default::default() });
+        let (m, mut r, music) = music(
+            48_000,
+            0.2,
+            MusicOptions {
+                looping: true,
+                ..Default::default()
+            },
+        );
         let v = m.play_stream(music, PlayOptions::default());
         let mut out = Vec::new();
         render_until(&mut r, &mut out, 48_000);
         assert!(v.is_playing());
         let tail = &out[out.len() - 4000..];
-        assert!(tail.iter().fold(0.0f32, |a, b| a.max(b.abs())) > 0.2, "still audible after several loops");
+        assert!(
+            tail.iter().fold(0.0f32, |a, b| a.max(b.abs())) > 0.2,
+            "still audible after several loops"
+        );
     }
 
     #[test]
@@ -496,7 +571,10 @@ mod tests {
         out.clear();
         render_until(&mut r, &mut out, 48_000);
         let _ = ctl.duration();
-        assert!(v.is_finished(), "only half a second remained after seeking to 1.5 s");
+        assert!(
+            v.is_finished(),
+            "only half a second remained after seeking to 1.5 s"
+        );
     }
 
     #[test]

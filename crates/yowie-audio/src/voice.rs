@@ -53,7 +53,10 @@ impl Default for Positional {
 impl Positional {
     /// A source at `position` with every other field at its default.
     pub fn at(position: Vec3) -> Self {
-        Self { position, ..Self::default() }
+        Self {
+            position,
+            ..Self::default()
+        }
     }
 
     fn sanitized(mut self) -> Self {
@@ -128,7 +131,11 @@ impl Default for PlayOptions {
 
 /// Clamps a pitch to 0.01..=64, mapping zero and non-finite values to 1.
 pub(crate) fn valid_pitch(p: f32) -> f32 {
-    if p == 0.0 || !p.is_finite() { 1.0 } else { p.clamp(0.01, 64.0) }
+    if p == 0.0 || !p.is_finite() {
+        1.0
+    } else {
+        p.clamp(0.01, 64.0)
+    }
 }
 
 /// Game-visible flags of a voice, shared with its handle.
@@ -213,7 +220,14 @@ pub(crate) struct VoiceState {
 }
 
 impl VoiceState {
-    pub(crate) fn new(id: u64, rate: u32, source: Source, opts: &PlayOptions, bus: usize, shared: Arc<VoiceShared>) -> Self {
+    pub(crate) fn new(
+        id: u64,
+        rate: u32,
+        source: Source,
+        opts: &PlayOptions,
+        bus: usize,
+        shared: Arc<VoiceShared>,
+    ) -> Self {
         let pos = opts.positional.map(Positional::sanitized);
         let p = pos.unwrap_or_default();
         let mut v = Self {
@@ -222,7 +236,11 @@ impl VoiceState {
             source,
             bus,
             pos: 0.0,
-            vol: if opts.volume.is_finite() { opts.volume } else { 1.0 },
+            vol: if opts.volume.is_finite() {
+                opts.volume
+            } else {
+                1.0
+            },
             pan: if opts.pan.is_finite() { opts.pan } else { 0.0 },
             pitch: valid_pitch(opts.pitch),
             looping: opts.looping,
@@ -273,7 +291,13 @@ impl VoiceState {
         v.set_occlusion(opts.occlusion, rate);
         if opts.fade_in > 0.0 {
             let total = (opts.fade_in * rate as f32) as usize;
-            v.fade = Some(Fade { from: 0.0, to: v.vol, left: total, total, stop: false });
+            v.fade = Some(Fade {
+                from: 0.0,
+                to: v.vol,
+                left: total,
+                total,
+                stop: false,
+            });
         }
         v
     }
@@ -302,12 +326,20 @@ impl VoiceState {
     pub(crate) fn start_fade(&mut self, to: f32, seconds: f32, stop: bool, rate: u32) {
         let from = self.fade.as_ref().map_or(self.vol, Fade::value);
         let total = (seconds.max(0.0) * rate as f32) as usize;
-        self.fade = Some(Fade { from, to, left: total, total, stop });
+        self.fade = Some(Fade {
+            from,
+            to,
+            left: total,
+            total,
+            stop,
+        });
     }
 }
 
 impl From<&Sound> for Source {
     fn from(s: &Sound) -> Self {
-        Source::Sound { data: s.data.clone() }
+        Source::Sound {
+            data: s.data.clone(),
+        }
     }
 }

@@ -41,7 +41,11 @@ impl Pcm {
                 env * (2.0 * std::f64::consts::PI * freq * i as f64 / f64::from(rate)).sin() as f32
             })
             .collect();
-        Self { samples, channels: 1, rate }
+        Self {
+            samples,
+            channels: 1,
+            rate,
+        }
     }
 }
 
@@ -69,7 +73,11 @@ impl Sound {
     /// is not 1 or 2, the rate is zero, or the sample count is not a whole number of frames.
     pub fn new(mixer_rate: u32, pcm: &Pcm) -> Result<Self> {
         let ch = usize::from(pcm.channels);
-        if !(1..=2).contains(&ch) || pcm.rate == 0 || mixer_rate == 0 || pcm.samples.len() % ch != 0 {
+        if !(1..=2).contains(&ch)
+            || pcm.rate == 0
+            || mixer_rate == 0
+            || !pcm.samples.len().is_multiple_of(ch)
+        {
             return Err(Error::Unsupported(format!(
                 "{} channels at {} Hz, {} samples",
                 pcm.channels,
@@ -85,8 +93,17 @@ impl Sound {
         if pcm.rate != mixer_rate {
             stereo = resample(&stereo, pcm.rate, mixer_rate);
         }
-        let mono = ch == 1 || stereo.chunks_exact(2).all(|f| f[0].to_bits() == f[1].to_bits());
-        Ok(Self { data: Arc::new(SoundData { samples: stereo, mono }), rate: mixer_rate })
+        let mono = ch == 1
+            || stereo
+                .chunks_exact(2)
+                .all(|f| f[0].to_bits() == f[1].to_bits());
+        Ok(Self {
+            data: Arc::new(SoundData {
+                samples: stereo,
+                mono,
+            }),
+            rate: mixer_rate,
+        })
     }
 
     /// Number of frames at the mixer rate.
@@ -131,8 +148,16 @@ mod tests {
             let s = Sound::new(to, &pcm).unwrap();
             let want = (0.5 * f64::from(to)) as usize;
             assert!(s.frames().abs_diff(want) <= 1, "{to}: {}", s.frames());
-            let crossings = s.data.samples.chunks_exact(2).map(|f| f[0]).collect::<Vec<_>>();
-            let zc = crossings.windows(2).filter(|w| (w[0] >= 0.0) != (w[1] >= 0.0)).count();
+            let crossings = s
+                .data
+                .samples
+                .chunks_exact(2)
+                .map(|f| f[0])
+                .collect::<Vec<_>>();
+            let zc = crossings
+                .windows(2)
+                .filter(|w| (w[0] >= 0.0) != (w[1] >= 0.0))
+                .count();
             // 440 Hz for half a second crosses zero about 440 times.
             assert!(zc.abs_diff(440) < 8, "{to}: {zc}");
         }
@@ -141,9 +166,21 @@ mod tests {
     #[test]
     fn rejects_bad_pcm() {
         let cases = [
-            Pcm { samples: vec![0.0; 6], channels: 3, rate: 44_100 },
-            Pcm { samples: vec![0.0; 3], channels: 2, rate: 44_100 },
-            Pcm { samples: vec![0.0; 4], channels: 2, rate: 0 },
+            Pcm {
+                samples: vec![0.0; 6],
+                channels: 3,
+                rate: 44_100,
+            },
+            Pcm {
+                samples: vec![0.0; 3],
+                channels: 2,
+                rate: 44_100,
+            },
+            Pcm {
+                samples: vec![0.0; 4],
+                channels: 2,
+                rate: 0,
+            },
         ];
         for pcm in cases {
             assert!(Sound::new(44_100, &pcm).is_err());
@@ -152,9 +189,25 @@ mod tests {
 
     #[test]
     fn mono_detection() {
-        let mono = Sound::new(8000, &Pcm { samples: vec![0.1, 0.2], channels: 1, rate: 8000 }).unwrap();
+        let mono = Sound::new(
+            8000,
+            &Pcm {
+                samples: vec![0.1, 0.2],
+                channels: 1,
+                rate: 8000,
+            },
+        )
+        .unwrap();
         assert!(mono.data.mono);
-        let st = Sound::new(8000, &Pcm { samples: vec![0.1, 0.2], channels: 2, rate: 8000 }).unwrap();
+        let st = Sound::new(
+            8000,
+            &Pcm {
+                samples: vec![0.1, 0.2],
+                channels: 2,
+                rate: 8000,
+            },
+        )
+        .unwrap();
         assert!(!st.data.mono);
     }
 }

@@ -100,8 +100,15 @@ impl Mixer {
         let (tx, rx) = bounded(QUEUE);
         let (trash_tx, trash_rx) = bounded(TRASH);
         let names = ["master", "music", "effects"];
-        let shared: Vec<Arc<BusShared>> = names.iter().enumerate().map(|(i, n)| Arc::new(BusShared::new(n, i))).collect();
-        let states = shared.iter().map(|s| BusState::new(s.clone(), CHUNK * 2)).collect();
+        let shared: Vec<Arc<BusShared>> = names
+            .iter()
+            .enumerate()
+            .map(|(i, n)| Arc::new(BusShared::new(n, i)))
+            .collect();
+        let states = shared
+            .iter()
+            .map(|s| BusState::new(s.clone(), CHUNK * 2))
+            .collect();
         let inner = Arc::new(Inner {
             rate,
             tx,
@@ -130,7 +137,10 @@ impl Mixer {
     }
 
     fn state(&self) -> std::sync::MutexGuard<'_, GameState> {
-        self.inner.state.lock().unwrap_or_else(PoisonError::into_inner)
+        self.inner
+            .state
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
     }
 
     /// Runs end-of-voice callbacks and frees what the audio thread has finished with.
@@ -169,7 +179,10 @@ impl Mixer {
 
     /// Starts a stream and returns its voice. The stream moves to the audio thread.
     pub fn play_stream(&self, stream: impl Stream, opts: PlayOptions) -> Voice {
-        self.start(Source::Stream(Box::new(StreamState::new(Box::new(stream)))), opts)
+        self.start(
+            Source::Stream(Box::new(StreamState::new(Box::new(stream)))),
+            opts,
+        )
     }
 
     fn start(&self, source: Source, opts: PlayOptions) -> Voice {
@@ -178,9 +191,18 @@ impl Mixer {
         let shared = Arc::new(VoiceShared::default());
         shared.playing.store(true, Ordering::Relaxed);
         let bus = opts.bus.as_ref().map_or(0, |b| b.shared.index);
-        let state = Box::new(VoiceState::new(id, self.inner.rate, source, &opts, bus, shared.clone()));
-        if let Err(TrySendError::Full(Command::Play(mut v)) | TrySendError::Disconnected(Command::Play(mut v))) =
-            self.inner.tx.try_send(Command::Play(state))
+        let state = Box::new(VoiceState::new(
+            id,
+            self.inner.rate,
+            source,
+            &opts,
+            bus,
+            shared.clone(),
+        ));
+        if let Err(
+            TrySendError::Full(Command::Play(mut v))
+            | TrySendError::Disconnected(Command::Play(mut v)),
+        ) = self.inner.tx.try_send(Command::Play(state))
         {
             v.finish();
         }
@@ -208,13 +230,24 @@ impl Mixer {
 
     fn bus_at(&self, i: usize) -> Bus {
         let shared = self.state().buses[i].clone();
-        Bus { shared, inner: self.inner.clone() }
+        Bus {
+            shared,
+            inner: self.inner.clone(),
+        }
     }
 
     /// Finds a bus by name.
     pub fn bus(&self, name: &str) -> Option<Bus> {
-        let shared = self.state().buses.iter().find(|b| b.name == name).cloned()?;
-        Some(Bus { shared, inner: self.inner.clone() })
+        let shared = self
+            .state()
+            .buses
+            .iter()
+            .find(|b| b.name == name)
+            .cloned()?;
+        Some(Bus {
+            shared,
+            inner: self.inner.clone(),
+        })
     }
 
     /// Makes a bus, or returns the existing one with that name. Fails past [`MAX_BUSES`].
@@ -229,8 +262,14 @@ impl Mixer {
         let shared = Arc::new(BusShared::new(name, st.buses.len()));
         st.buses.push(shared.clone());
         drop(st);
-        self.inner.send(Command::AddBus(Box::new(BusState::new(shared.clone(), CHUNK * 2))));
-        Ok(Bus { shared, inner: self.inner.clone() })
+        self.inner.send(Command::AddBus(Box::new(BusState::new(
+            shared.clone(),
+            CHUNK * 2,
+        ))));
+        Ok(Bus {
+            shared,
+            inner: self.inner.clone(),
+        })
     }
 
     /// Sets the master bus volume; 1 is unity.
@@ -266,7 +305,11 @@ impl Mixer {
 
     /// Sets the Doppler factor; 0 turns Doppler off and 1 is physical.
     pub fn set_doppler(&self, factor: f32) {
-        self.inner.send(Command::Doppler(if factor.is_finite() { factor.max(0.0) } else { 0.0 }));
+        self.inner.send(Command::Doppler(if factor.is_finite() {
+            factor.max(0.0)
+        } else {
+            0.0
+        }));
     }
 
     /// Sets the speed of sound in world units per second (default 343). Ignored unless positive.
@@ -288,7 +331,8 @@ impl Mixer {
     pub fn set_reverb_zones(&self, zones: &[ReverbZone]) {
         let mut st = self.state();
         st.zones = zones.to_vec();
-        self.inner.send(Command::Zones(Box::new(ZoneList(st.zones.clone()))));
+        self.inner
+            .send(Command::Zones(Box::new(ZoneList(st.zones.clone()))));
         self.sync_reverb(&mut st);
     }
 
@@ -297,12 +341,18 @@ impl Mixer {
         let alloc = (needed && !st.reverb_alloc).then(|| Box::new(Reverb::new(self.inner.rate)));
         let drop = !needed && st.reverb_alloc;
         st.reverb_alloc = needed;
-        self.inner.send(Command::Reverb { settings: st.base_reverb, alloc, drop });
+        self.inner.send(Command::Reverb {
+            settings: st.base_reverb,
+            alloc,
+            drop,
+        });
     }
 }
 
 impl std::fmt::Debug for Mixer {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Mixer").field("rate", &self.inner.rate).finish()
+        f.debug_struct("Mixer")
+            .field("rate", &self.inner.rate)
+            .finish()
     }
 }

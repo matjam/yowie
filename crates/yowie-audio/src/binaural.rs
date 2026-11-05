@@ -49,7 +49,11 @@ pub(crate) struct Binaural {
 
 /// Head radius in metres, clamped to what the delay line has room for.
 pub(crate) fn head_radius(r: f32) -> f32 {
-    if r <= 0.0 { DEFAULT_HEAD_RADIUS } else { r.min(MAX_HEAD_RADIUS) }
+    if r <= 0.0 {
+        DEFAULT_HEAD_RADIUS
+    } else {
+        r.min(MAX_HEAD_RADIUS)
+    }
 }
 
 /// Works out the head model for a source at `p`.
@@ -70,7 +74,8 @@ pub(crate) fn head_model(l: &Listener, p: Vec3, radius: f32, rate: u32) -> EarPa
     }
     // Woodworth: the extra path around a sphere, about 0.66 ms at the ear for an average head.
     let theta = f64::from(x).asin();
-    let itd = (f64::from(radius) / f64::from(AIR_SPEED) * (theta + theta.sin()) * f64::from(rate)) as f32;
+    let itd =
+        (f64::from(radius) / f64::from(AIR_SPEED) * (theta + theta.sin()) * f64::from(rate)) as f32;
     let far = 10f32.powf(-SHADOW_LEVEL_DB / 20.0 * x.abs());
     let centre = std::f32::consts::FRAC_1_SQRT_2;
     let (mut gain_l, mut gain_r) = (centre, centre);
@@ -83,7 +88,10 @@ pub(crate) fn head_model(l: &Listener, p: Vec3, radius: f32, rate: u32) -> EarPa
         delay_l: itd.max(0.0),
         delay_r: (-itd).max(0.0),
         shadow_l: one_pole(SHADOW_OPEN_HZ * SHADOW_CLOSED_RATIO.powf(x.max(0.0)), rate),
-        shadow_r: one_pole(SHADOW_OPEN_HZ * SHADOW_CLOSED_RATIO.powf((-x).max(0.0)), rate),
+        shadow_r: one_pole(
+            SHADOW_OPEN_HZ * SHADOW_CLOSED_RATIO.powf((-x).max(0.0)),
+            rate,
+        ),
         tilt: 1.0 + ELEVATION_DEPTH * y,
         gain_l,
         gain_r,
@@ -104,7 +112,10 @@ fn tap(ring: &[f32], w: usize, d: f32) -> f32 {
 
 impl Binaural {
     pub(crate) fn new(rate: u32) -> Self {
-        let frames = (MAX_HEAD_RADIUS / AIR_SPEED * (std::f32::consts::FRAC_PI_2 + 1.0) * rate as f32) as usize + 4;
+        let frames = (MAX_HEAD_RADIUS / AIR_SPEED
+            * (std::f32::consts::FRAC_PI_2 + 1.0)
+            * rate as f32) as usize
+            + 4;
         Self {
             ring: vec![0.0; frames],
             w: 0,
@@ -241,7 +252,9 @@ mod tests {
         let mut send = vec![0.0; 512];
         b.render(&mono, target, [(1.0, 1.0); 2], &mut out, &mut send, 0.0);
         let peak = |ch: usize| {
-            (0..256).max_by(|a, c| out[a * 2 + ch].abs().total_cmp(&out[c * 2 + ch].abs())).unwrap_or(0)
+            (0..256)
+                .max_by(|a, c| out[a * 2 + ch].abs().total_cmp(&out[c * 2 + ch].abs()))
+                .unwrap_or(0)
         };
         assert!(peak(0) > peak(1), "left {} right {}", peak(0), peak(1));
     }

@@ -31,6 +31,9 @@ pub(crate) struct Core {
     rate: u32,
     rx: Receiver<Command>,
     trash: Trash,
+    // Boxed because voices arrive boxed and leave boxed through the trash channel; moving
+    // the large state in and out would copy it on the audio thread.
+    #[allow(clippy::vec_box)]
     voices: Vec<Box<VoiceState>>,
     max_voices: usize,
     buses: Vec<BusState>,
@@ -50,7 +53,12 @@ pub(crate) struct Core {
 }
 
 impl Core {
-    pub(crate) fn new(rate: u32, rx: Receiver<Command>, trash: Trash, mut buses: Vec<BusState>) -> Self {
+    pub(crate) fn new(
+        rate: u32,
+        rx: Receiver<Command>,
+        trash: Trash,
+        mut buses: Vec<BusState>,
+    ) -> Self {
         buses.reserve(crate::bus::MAX_BUSES);
         Self {
             rate,
@@ -110,16 +118,19 @@ impl Core {
             Command::SpeedOfSound(c) => self.speed_of_sound = c,
             Command::MaxVoices(n) => self.max_voices = n.clamp(1, MAX_VOICES),
             Command::Paused(p) => self.paused = p,
-            Command::Reverb { settings, alloc, drop } => {
+            Command::Reverb {
+                settings,
+                alloc,
+                drop,
+            } => {
                 self.base_reverb = settings;
-                if drop {
-                    if let Some(old) = self.reverb.take() {
-                        self.discard(old);
-                    }
-                } else if let Some(r) = alloc {
-                    if let Some(old) = self.reverb.replace(r) {
-                        self.discard(old);
-                    }
+                let old = if drop {
+                    self.reverb.take()
+                } else {
+                    alloc.and_then(|r| self.reverb.replace(r))
+                };
+                if let Some(old) = old {
+                    self.discard(old);
                 }
                 self.reverb_dirty = true;
             }
@@ -133,7 +144,11 @@ impl Core {
                     self.buses.push(*b);
                 }
             }
-            Command::BusReverb { bus, reverb, settings } => {
+            Command::BusReverb {
+                bus,
+                reverb,
+                settings,
+            } => {
                 if let Some(b) = self.buses.get_mut(bus) {
                     let old = match reverb {
                         Some(mut r) => {
@@ -168,7 +183,8 @@ impl Core {
                 }
                 let better = victim.is_none_or(|b| {
                     let w = &self.voices[b];
-                    o.priority < w.priority || (o.priority == w.priority && o.cur_l + o.cur_r < w.cur_l + w.cur_r)
+                    o.priority < w.priority
+                        || (o.priority == w.priority && o.cur_l + o.cur_r < w.cur_l + w.cur_r)
                 });
                 if better {
                     victim = Some(i);
@@ -195,7 +211,9 @@ impl Core {
     }
 
     fn update_reverb(&mut self) {
-        let Some(rv) = self.reverb.as_mut() else { return };
+        let Some(rv) = self.reverb.as_mut() else {
+            return;
+        };
         let s = reverb::effective(self.base_reverb, &self.zones.0, self.listener.position);
         if self.reverb_dirty || s != self.applied_reverb {
             rv.set(s);
@@ -226,7 +244,13 @@ impl Core {
         };
         let mut i = 0;
         while i < self.voices.len() {
-            if mix_voice(&mut self.voices[i], &cx, &mut self.buses, &mut self.scratch, n) {
+            if mix_voice(
+                &mut self.voices[i],
+                &cx,
+                &mut self.buses,
+                &mut self.scratch,
+                n,
+            ) {
                 i += 1;
             } else {
                 let v = self.voices.swap_remove(i);
@@ -267,7 +291,11 @@ impl Core {
         for (o, s) in out.iter_mut().zip(&master.dry[..n2]) {
             // A NaN or infinity from a decoder or game stream would reach the device as
             // a click or worse, so it becomes silence; clamp alone would pass a NaN on.
-            *o = if s.is_finite() { s.clamp(-1.0, 1.0) } else { 0.0 };
+            *o = if s.is_finite() {
+                s.clamp(-1.0, 1.0)
+            } else {
+                0.0
+            };
         }
     }
 }

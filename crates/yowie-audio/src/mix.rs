@@ -89,7 +89,13 @@ fn read_sound(
 }
 
 /// Mixes up to `n` frames of the voice into its bus. Returns false once the voice has ended.
-pub(crate) fn mix_voice(v: &mut VoiceState, cx: &Ctx, buses: &mut [BusState], scratch: &mut [f32], n: usize) -> bool {
+pub(crate) fn mix_voice(
+    v: &mut VoiceState,
+    cx: &Ctx,
+    buses: &mut [BusState],
+    scratch: &mut [f32],
+    n: usize,
+) -> bool {
     if v.done {
         return false;
     }
@@ -142,7 +148,9 @@ pub(crate) fn mix_voice(v: &mut VoiceState, cx: &Ctx, buses: &mut [BusState], sc
         }
         let mut pan = v.pan;
         if v.positional {
-            gain *= v.attenuation.gain(position.distance(l.position), v.min_dist, v.max_dist);
+            gain *= v
+                .attenuation
+                .gain(position.distance(l.position), v.min_dist, v.max_dist);
             gain *= v.cone.gain(direction, l.position - position);
             pan = l.pan_for(position, v.min_dist);
         }
@@ -167,8 +175,21 @@ pub(crate) fn mix_voice(v: &mut VoiceState, cx: &Ctx, buses: &mut [BusState], sc
     let mono_src = matches!(&v.source, Source::Sound { data } if data.mono);
     let (read, more) = match &mut v.source {
         Source::Sound { data } => {
-            let dst = if mono_src { &mut scratch[..frames] } else { &mut scratch[..frames * 2] };
-            read_sound(data, &mut v.pos, step, v.looping, v.loop_start, v.loop_end, dst, mono_src)
+            let dst = if mono_src {
+                &mut scratch[..frames]
+            } else {
+                &mut scratch[..frames * 2]
+            };
+            read_sound(
+                data,
+                &mut v.pos,
+                step,
+                v.looping,
+                v.loop_start,
+                v.loop_end,
+                dst,
+                mono_src,
+            )
         }
         Source::Stream(st) => {
             let (k, used) = st.read(&mut scratch[..frames * 2], step);
@@ -247,7 +268,14 @@ fn advance_fade(v: &mut VoiceState, frames: usize) {
 }
 
 /// Adds a mono or stereo chunk to `dry`, ramping gains across it, and to `send` scaled by `rev`.
-fn ramp_into(buf: &[f32], mono: bool, ramp: [(f32, f32); 2], dry: &mut [f32], send: &mut [f32], rev: f32) {
+fn ramp_into(
+    buf: &[f32],
+    mono: bool,
+    ramp: [(f32, f32); 2],
+    dry: &mut [f32],
+    send: &mut [f32],
+    rev: f32,
+) {
     let n = dry.len() / 2;
     let inv = 1.0 / n as f32;
     let [(mut l, mut r), (tl, tr)] = ramp;
@@ -255,7 +283,11 @@ fn ramp_into(buf: &[f32], mono: bool, ramp: [(f32, f32); 2], dry: &mut [f32], se
     for i in 0..n {
         l += dl;
         r += dr;
-        let (x, y) = if mono { (buf[i], buf[i]) } else { (buf[i * 2], buf[i * 2 + 1]) };
+        let (x, y) = if mono {
+            (buf[i], buf[i])
+        } else {
+            (buf[i * 2], buf[i * 2 + 1])
+        };
         let (sl, sr) = (x * l, y * r);
         dry[i * 2] += sl;
         dry[i * 2 + 1] += sr;

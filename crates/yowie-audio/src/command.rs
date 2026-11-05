@@ -43,10 +43,18 @@ pub(crate) enum Command {
     SpeedOfSound(f32),
     MaxVoices(usize),
     Paused(bool),
-    Reverb { settings: ReverbSettings, alloc: Option<Box<Reverb>>, drop: bool },
+    Reverb {
+        settings: ReverbSettings,
+        alloc: Option<Box<Reverb>>,
+        drop: bool,
+    },
     Zones(Box<crate::core::ZoneList>),
     AddBus(Box<BusState>),
-    BusReverb { bus: usize, reverb: Option<Box<Reverb>>, settings: ReverbSettings },
+    BusReverb {
+        bus: usize,
+        reverb: Option<Box<Reverb>>,
+        settings: ReverbSettings,
+    },
 }
 
 impl VoiceState {
@@ -115,6 +123,8 @@ impl VoiceState {
                 self.pos = seconds * f64::from(rate);
             }
         }
-        self.shared.position.store(self.pos.to_bits(), std::sync::atomic::Ordering::Relaxed);
+        self.shared
+            .position
+            .store(self.pos.to_bits(), std::sync::atomic::Ordering::Relaxed);
     }
 }

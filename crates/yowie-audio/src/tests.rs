@@ -13,7 +13,13 @@ fn setup() -> (Mixer, Renderer) {
 
 /// A mono sound holding a constant level.
 fn dc(mixer: &Mixer, level: f32, frames: u32) -> crate::Sound {
-    mixer.sound(&Pcm { samples: vec![level; frames as usize], channels: 1, rate: RATE }).expect("sound")
+    mixer
+        .sound(&Pcm {
+            samples: vec![level; frames as usize],
+            channels: 1,
+            rate: RATE,
+        })
+        .expect("sound")
 }
 
 fn left(out: &[f32]) -> Vec<f32> {
@@ -25,7 +31,9 @@ fn right(out: &[f32]) -> Vec<f32> {
 }
 
 fn max_step(x: &[f32]) -> f32 {
-    x.windows(2).map(|w| (w[1] - w[0]).abs()).fold(0.0, f32::max)
+    x.windows(2)
+        .map(|w| (w[1] - w[0]).abs())
+        .fold(0.0, f32::max)
 }
 
 #[test]
@@ -33,11 +41,20 @@ fn gain_scales_with_volume_and_centre_pan_law() {
     for volume in [1.0f32, 0.5, 0.25] {
         let (m, mut r) = setup();
         let s = dc(&m, 0.8, RATE);
-        m.play(&s, PlayOptions { volume, ..Default::default() });
+        m.play(
+            &s,
+            PlayOptions {
+                volume,
+                ..Default::default()
+            },
+        );
         let out = r.render_frames(2048);
         let want = 0.8 * volume * std::f32::consts::FRAC_1_SQRT_2;
         let got = left(&out)[1500];
-        assert!((got - want).abs() < 1e-3, "volume {volume}: {got} vs {want}");
+        assert!(
+            (got - want).abs() < 1e-3,
+            "volume {volume}: {got} vs {want}"
+        );
         assert!((right(&out)[1500] - want).abs() < 1e-3);
     }
 }
@@ -47,7 +64,13 @@ fn pan_law_is_constant_power() {
     for pan in [-1.0f32, -0.5, 0.0, 0.5, 1.0] {
         let (m, mut r) = setup();
         let s = dc(&m, 1.0, RATE);
-        m.play(&s, PlayOptions { pan, ..Default::default() });
+        m.play(
+            &s,
+            PlayOptions {
+                pan,
+                ..Default::default()
+            },
+        );
         let out = r.render_frames(2048);
         let (l, rr) = (left(&out)[1800], right(&out)[1800]);
         assert!((l * l + rr * rr - 1.0).abs() < 1e-3, "pan {pan}: {l} {rr}");
@@ -58,7 +81,13 @@ fn pan_law_is_constant_power() {
         }
     }
     let (m, mut r) = setup();
-    m.play(&dc(&m, 1.0, RATE), PlayOptions { pan: -1.0, ..Default::default() });
+    m.play(
+        &dc(&m, 1.0, RATE),
+        PlayOptions {
+            pan: -1.0,
+            ..Default::default()
+        },
+    );
     let out = r.render_frames(2048);
     assert!(right(&out)[1800].abs() < 1e-3 && (left(&out)[1800] - 1.0).abs() < 1e-3);
 }
@@ -68,9 +97,17 @@ fn pitch_doubles_frequency() {
     let crossings = |pitch: f32| {
         let (m, mut r) = setup();
         let s = m.sound(&Pcm::sine(100.0, 1.0, RATE)).expect("sound");
-        m.play(&s, PlayOptions { pitch, ..Default::default() });
+        m.play(
+            &s,
+            PlayOptions {
+                pitch,
+                ..Default::default()
+            },
+        );
         let out = left(&r.render_frames(RATE as usize / 4));
-        out.windows(2).filter(|w| (w[0] >= 0.0) != (w[1] >= 0.0)).count()
+        out.windows(2)
+            .filter(|w| (w[0] >= 0.0) != (w[1] >= 0.0))
+            .count()
     };
     let base = crossings(1.0);
     let doubled = crossings(2.0);
@@ -104,7 +141,13 @@ fn done_callback_runs_on_update() {
 fn loop_points_repeat_the_region() {
     let (m, mut r) = setup();
     let ramp: Vec<f32> = (0..1000).map(|i| i as f32 / 1000.0).collect();
-    let s = m.sound(&Pcm { samples: ramp, channels: 1, rate: RATE }).expect("sound");
+    let s = m
+        .sound(&Pcm {
+            samples: ramp,
+            channels: 1,
+            rate: RATE,
+        })
+        .expect("sound");
     let v = m.play(
         &s,
         PlayOptions {
@@ -123,7 +166,10 @@ fn loop_points_repeat_the_region() {
 #[test]
 fn stop_ramps_without_click() {
     let (m, mut r) = setup();
-    let v = m.play(&m.sound(&Pcm::sine(200.0, 2.0, RATE)).expect("sound"), PlayOptions::default());
+    let v = m.play(
+        &m.sound(&Pcm::sine(200.0, 2.0, RATE)).expect("sound"),
+        PlayOptions::default(),
+    );
     let mut out = r.render_frames(2000);
     v.stop();
     out.extend(r.render_frames(2000));
@@ -131,25 +177,45 @@ fn stop_ramps_without_click() {
     assert!(!v.is_playing() && v.is_finished());
     assert!(l[3999].abs() < 1e-6, "silent after the ramp");
     let tone_step = max_step(&l[..2000]);
-    assert!(max_step(&l[1900..]) < tone_step * 1.2 + 0.01, "stop clicked: {}", max_step(&l[1900..]));
+    assert!(
+        max_step(&l[1900..]) < tone_step * 1.2 + 0.01,
+        "stop clicked: {}",
+        max_step(&l[1900..])
+    );
 }
 
 #[test]
 fn fade_out_is_smooth_and_ends_voice() {
     let (m, mut r) = setup();
-    let v = m.play(&dc(&m, 1.0, RATE * 2), PlayOptions { pan: -1.0, ..Default::default() });
+    let v = m.play(
+        &dc(&m, 1.0, RATE * 2),
+        PlayOptions {
+            pan: -1.0,
+            ..Default::default()
+        },
+    );
     r.render_frames(512);
     v.fade_out(0.1);
     let l = left(&r.render_frames(RATE as usize / 5));
     assert!(v.is_finished());
     assert!(max_step(&l) < 0.02, "fade stepped by {}", max_step(&l));
-    assert!(l.windows(2).filter(|w| w[1] > w[0] + 1e-4).count() < 3, "fade is monotonic");
+    assert!(
+        l.windows(2).filter(|w| w[1] > w[0] + 1e-4).count() < 3,
+        "fade is monotonic"
+    );
 }
 
 #[test]
 fn fade_in_starts_from_silence() {
     let (m, mut r) = setup();
-    m.play(&dc(&m, 1.0, RATE), PlayOptions { fade_in: 0.1, pan: -1.0, ..Default::default() });
+    m.play(
+        &dc(&m, 1.0, RATE),
+        PlayOptions {
+            fade_in: 0.1,
+            pan: -1.0,
+            ..Default::default()
+        },
+    );
     let l = left(&r.render_frames(RATE as usize / 5));
     assert!(l[0].abs() < 0.01 && l[l.len() - 1] > 0.99);
     assert!(max_step(&l) < 0.01);
@@ -158,7 +224,13 @@ fn fade_in_starts_from_silence() {
 #[test]
 fn volume_changes_ramp_across_a_chunk() {
     let (m, mut r) = setup();
-    let v = m.play(&dc(&m, 1.0, RATE), PlayOptions { pan: -1.0, ..Default::default() });
+    let v = m.play(
+        &dc(&m, 1.0, RATE),
+        PlayOptions {
+            pan: -1.0,
+            ..Default::default()
+        },
+    );
     r.render_frames(1024);
     v.set_volume(0.0);
     let l = left(&r.render_frames(1024));
@@ -171,12 +243,36 @@ fn voice_limit_steals_by_priority() {
     let (m, mut r) = setup();
     m.set_max_voices(2);
     let long = dc(&m, 0.1, RATE);
-    let a = m.play(&long, PlayOptions { priority: 5, ..Default::default() });
-    let b = m.play(&long, PlayOptions { priority: 1, ..Default::default() });
-    let low = m.play(&long, PlayOptions { priority: 0, ..Default::default() });
+    let a = m.play(
+        &long,
+        PlayOptions {
+            priority: 5,
+            ..Default::default()
+        },
+    );
+    let b = m.play(
+        &long,
+        PlayOptions {
+            priority: 1,
+            ..Default::default()
+        },
+    );
+    let low = m.play(
+        &long,
+        PlayOptions {
+            priority: 0,
+            ..Default::default()
+        },
+    );
     r.render_frames(512);
     assert!(low.is_finished(), "lowest priority is refused");
-    let high = m.play(&long, PlayOptions { priority: 3, ..Default::default() });
+    let high = m.play(
+        &long,
+        PlayOptions {
+            priority: 3,
+            ..Default::default()
+        },
+    );
     r.render_frames(512);
     assert!(b.is_finished() && !a.is_finished() && !high.is_finished());
 }
@@ -185,7 +281,14 @@ fn voice_limit_steals_by_priority() {
 fn bus_volume_mute_and_solo() {
     let (m, mut r) = setup();
     let bus = m.new_bus("sfx2").expect("bus");
-    m.play(&dc(&m, 1.0, RATE), PlayOptions { bus: Some(bus.clone()), pan: -1.0, ..Default::default() });
+    m.play(
+        &dc(&m, 1.0, RATE),
+        PlayOptions {
+            bus: Some(bus.clone()),
+            pan: -1.0,
+            ..Default::default()
+        },
+    );
     bus.set_volume(0.5);
     let l = left(&r.render_frames(2048));
     assert!((l[2000] - 0.5).abs() < 1e-3);
@@ -205,7 +308,13 @@ fn bus_low_pass_darkens_the_bus() {
         let (m, mut r) = setup();
         let bus = m.effects();
         bus.set_low_pass(cutoff);
-        m.play(&m.sound(&Pcm::sine(8000.0, 1.0, RATE)).expect("sound"), PlayOptions { bus: Some(bus), ..Default::default() });
+        m.play(
+            &m.sound(&Pcm::sine(8000.0, 1.0, RATE)).expect("sound"),
+            PlayOptions {
+                bus: Some(bus),
+                ..Default::default()
+            },
+        );
         let out = left(&r.render_frames(8192));
         out[4096..].iter().map(|v| v * v).sum::<f32>()
     };
@@ -215,14 +324,33 @@ fn bus_low_pass_darkens_the_bus() {
 #[test]
 fn reverb_send_leaves_a_decaying_tail() {
     let (m, mut r) = setup();
-    m.set_reverb(ReverbSettings { room_size: 0.6, wet: 0.5, ..Default::default() });
-    let click = m.sound(&Pcm { samples: vec![1.0; 64], channels: 1, rate: RATE }).expect("sound");
-    m.play(&click, PlayOptions { reverb: 1.0, ..Default::default() });
+    m.set_reverb(ReverbSettings {
+        room_size: 0.6,
+        wet: 0.5,
+        ..Default::default()
+    });
+    let click = m
+        .sound(&Pcm {
+            samples: vec![1.0; 64],
+            channels: 1,
+            rate: RATE,
+        })
+        .expect("sound");
+    m.play(
+        &click,
+        PlayOptions {
+            reverb: 1.0,
+            ..Default::default()
+        },
+    );
     let out = r.render_frames(RATE as usize * 2);
     let e = |a: usize, b: usize| out[a * 2..b * 2].iter().map(|v| v * v).sum::<f32>();
     let early = e(2000, 12_000);
     let late = e(80_000, 90_000);
-    assert!(early > 1e-4 && late < early * 0.5, "early {early} late {late}");
+    assert!(
+        early > 1e-4 && late < early * 0.5,
+        "early {early} late {late}"
+    );
     assert!(out.iter().all(|v| v.abs() <= 1.0));
 }
 
@@ -232,7 +360,10 @@ fn positional_voice_pans_toward_its_side_and_fades_with_distance() {
         let (m, mut r) = setup();
         m.play(
             &dc(&m, 0.5, RATE),
-            PlayOptions { positional: Some(Positional::at(pos)), ..Default::default() },
+            PlayOptions {
+                positional: Some(Positional::at(pos)),
+                ..Default::default()
+            },
         );
         let out = r.render_frames(4096);
         (left(&out)[4000], right(&out)[4000])
@@ -249,23 +380,51 @@ fn positional_voice_pans_toward_its_side_and_fades_with_distance() {
 #[test]
 fn binaural_delays_the_far_ear() {
     let (m, mut r) = setup();
-    m.set_spatial(SpatialSettings { binaural: true, head_radius: 0.0 });
+    m.set_spatial(SpatialSettings {
+        binaural: true,
+        head_radius: 0.0,
+    });
     let mut samples = vec![0.0; 400];
     samples[3] = 1.0;
-    let click = m.sound(&Pcm { samples, channels: 1, rate: RATE }).expect("sound");
-    m.play(&click, PlayOptions { positional: Some(Positional::at(Vec3::new(2.0, 0.0, 0.0))), ..Default::default() });
+    let click = m
+        .sound(&Pcm {
+            samples,
+            channels: 1,
+            rate: RATE,
+        })
+        .expect("sound");
+    m.play(
+        &click,
+        PlayOptions {
+            positional: Some(Positional::at(Vec3::new(2.0, 0.0, 0.0))),
+            ..Default::default()
+        },
+    );
     let out = r.render_frames(512);
     let first_over = |x: &[f32]| x.iter().position(|v| v.abs() > 0.02).unwrap_or(usize::MAX);
     let (fl, fr) = (first_over(&left(&out)), first_over(&right(&out)));
-    assert!(fl > fr, "a source on the right reaches the left ear later: left {fl} right {fr}");
-    assert!(fl - fr >= 20 && fl - fr <= 45, "delay of {} frames", fl - fr);
+    assert!(
+        fl > fr,
+        "a source on the right reaches the left ear later: left {fl} right {fr}"
+    );
+    assert!(
+        fl - fr >= 20 && fl - fr <= 45,
+        "delay of {} frames",
+        fl - fr
+    );
 }
 
 #[test]
 fn occlusion_dims_and_muffles() {
     let energy = |occ: f32| {
         let (m, mut r) = setup();
-        m.play(&m.sound(&Pcm::sine(5000.0, 1.0, RATE)).expect("sound"), PlayOptions { occlusion: occ, ..Default::default() });
+        m.play(
+            &m.sound(&Pcm::sine(5000.0, 1.0, RATE)).expect("sound"),
+            PlayOptions {
+                occlusion: occ,
+                ..Default::default()
+            },
+        );
         let out = left(&r.render_frames(8192));
         out[4096..].iter().map(|v| v * v).sum::<f32>()
     };
@@ -281,10 +440,18 @@ fn doppler_raises_pitch_for_an_approaching_source() {
         let s = m.sound(&Pcm::sine(200.0, 2.0, RATE)).expect("sound");
         m.play(
             &s,
-            PlayOptions { positional: Some(Positional { velocity: vel, ..Positional::at(Vec3::new(0.0, 0.0, -30.0)) }), ..Default::default() },
+            PlayOptions {
+                positional: Some(Positional {
+                    velocity: vel,
+                    ..Positional::at(Vec3::new(0.0, 0.0, -30.0))
+                }),
+                ..Default::default()
+            },
         );
         let out = left(&r.render_frames(RATE as usize / 2));
-        out.windows(2).filter(|w| (w[0] >= 0.0) != (w[1] >= 0.0)).count()
+        out.windows(2)
+            .filter(|w| (w[0] >= 0.0) != (w[1] >= 0.0))
+            .count()
     };
     assert!(crossings(Vec3::new(0.0, 0.0, 60.0)) > crossings(Vec3::ZERO) + 10);
 }
@@ -301,7 +468,13 @@ fn output_is_clamped_and_nan_is_silenced() {
     }
     let (m, mut r) = setup();
     m.play_stream(Bad, PlayOptions::default());
-    m.play(&dc(&m, 1.0, RATE), PlayOptions { volume: 8.0, ..Default::default() });
+    m.play(
+        &dc(&m, 1.0, RATE),
+        PlayOptions {
+            volume: 8.0,
+            ..Default::default()
+        },
+    );
     let out = r.render_frames(512);
     assert!(out.iter().all(|v| v.is_finite() && v.abs() <= 1.0));
 }
@@ -321,8 +494,18 @@ fn stream_voice_plays_and_seeks() {
         }
     }
     let (m, mut r) = setup();
-    let v = m.play_stream(Counter(0), PlayOptions { pan: -1.0, ..Default::default() });
+    let v = m.play_stream(
+        Counter(0),
+        PlayOptions {
+            pan: -1.0,
+            ..Default::default()
+        },
+    );
     let out = left(&r.render_frames(2000));
     assert!(out[1500] > 0.0 || out[1501] > 0.0);
-    assert!((v.position() - 2000.0 / f64::from(RATE)).abs() < 0.002, "{}", v.position());
+    assert!(
+        (v.position() - 2000.0 / f64::from(RATE)).abs() < 0.002,
+        "{}",
+        v.position()
+    );
 }

@@ -44,6 +44,9 @@
 //! * Tracker music: [`tracker`].
 
 #![warn(missing_docs)]
+// Interleaved stereo is walked with `chunks_exact(2)` throughout; the slice-of-arrays
+// form clippy suggests would change every buffer type for no gain.
+#![allow(clippy::chunks_exact_to_as_chunks)]
 
 mod binaural;
 mod bus;
@@ -55,9 +58,9 @@ mod dsp;
 mod error;
 mod handle;
 mod mix;
+mod mixer;
 mod music;
 mod output;
-mod mixer;
 mod reverb;
 mod sound;
 mod spatial;
@@ -65,6 +68,7 @@ mod stream;
 pub mod synth;
 #[cfg(test)]
 mod tests;
+pub mod tracker;
 mod voice;
 mod wav;
 
@@ -73,8 +77,8 @@ pub use capture::{Capture, Level, Recorder, list_inputs};
 pub use error::{Error, Result};
 pub use handle::Voice;
 pub use mixer::{Mixer, Renderer};
-pub use output::{DeviceInfo, Output, list_outputs};
 pub use music::{Music, MusicControl, MusicOptions};
+pub use output::{DeviceInfo, Output, list_outputs};
 pub use reverb::{ReverbSettings, ReverbZone};
 pub use sound::{Pcm, Sound};
 pub use spatial::{Attenuation, AttenuationModel, Cone, Listener, SpatialSettings};

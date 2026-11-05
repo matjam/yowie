@@ -83,7 +83,9 @@ impl StreamState {
     /// than asked for means the stream ended.
     pub(crate) fn read(&mut self, dst: &mut [f32], step: f64) -> (usize, f64) {
         if !self.started {
-            let Some(a) = self.next_frame() else { return (0, 0.0) };
+            let Some(a) = self.next_frame() else {
+                return (0, 0.0);
+            };
             self.a = a;
             match self.next_frame() {
                 Some(b) => {

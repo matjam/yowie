@@ -21,19 +21,34 @@ pub struct Listener {
 
 impl Default for Listener {
     fn default() -> Self {
-        Self { position: Vec3::ZERO, forward: Vec3::NEG_Z, up: Vec3::Y, velocity: Vec3::ZERO }
+        Self {
+            position: Vec3::ZERO,
+            forward: Vec3::NEG_Z,
+            up: Vec3::Y,
+            velocity: Vec3::ZERO,
+        }
     }
 }
 
 impl Listener {
     /// A listener at the transform's position facing along its forward axis.
     pub fn from_transform(t: &Transform) -> Self {
-        Self { position: t.translation, forward: t.forward(), up: t.rotation * Vec3::Y, velocity: Vec3::ZERO }
+        Self {
+            position: t.translation,
+            forward: t.forward(),
+            up: t.rotation * Vec3::Y,
+            velocity: Vec3::ZERO,
+        }
     }
 
     /// A listener for a 2D game on the XY plane, y down, facing into the screen.
     pub fn new_2d(x: f32, y: f32) -> Self {
-        Self { position: Vec3::new(x, y, 0.0), forward: Vec3::Z, up: Vec3::NEG_Y, velocity: Vec3::ZERO }
+        Self {
+            position: Vec3::new(x, y, 0.0),
+            forward: Vec3::Z,
+            up: Vec3::NEG_Y,
+            velocity: Vec3::ZERO,
+        }
     }
 
     pub(crate) fn sanitized(mut self) -> Self {
@@ -74,7 +89,11 @@ impl Listener {
         }
         // Never fully silence an ear.
         let pan = (d / dist).dot(self.right()) * 0.8;
-        if dist < min_dist { pan * dist / min_dist } else { pan }
+        if dist < min_dist {
+            pan * dist / min_dist
+        } else {
+            pan
+        }
     }
 
     /// The pitch factor Doppler shift applies to a source at `p` moving at `vel`.
@@ -113,7 +132,11 @@ pub struct Cone {
 
 impl Cone {
     /// A cone that is omnidirectional.
-    pub const OMNI: Self = Self { inner: TAU, outer: TAU, outer_gain: 1.0 };
+    pub const OMNI: Self = Self {
+        inner: TAU,
+        outer: TAU,
+        outer_gain: 1.0,
+    };
 
     /// Makes a cone, or fails when the angles or gain are out of range.
     pub fn new(inner: f32, outer: f32, outer_gain: f32) -> Result<Self> {
@@ -124,7 +147,15 @@ impl Cone {
             && outer >= inner
             && outer <= TAU
             && (0.0..=1.0).contains(&outer_gain);
-        if ok { Ok(Self { inner, outer, outer_gain }) } else { Err(Error::Invalid("source cone")) }
+        if ok {
+            Ok(Self {
+                inner,
+                outer,
+                outer_gain,
+            })
+        } else {
+            Err(Error::Invalid("source cone"))
+        }
     }
 
     /// Gain for a listener at `toward` (from the source) given the source `direction`.
@@ -132,7 +163,10 @@ impl Cone {
         if self.inner >= TAU || toward.length() <= 1e-6 {
             return 1.0;
         }
-        let cos = direction.normalize_or_zero().dot(toward.normalize_or_zero()).clamp(-1.0, 1.0);
+        let cos = direction
+            .normalize_or_zero()
+            .dot(toward.normalize_or_zero())
+            .clamp(-1.0, 1.0);
         let angle = cos.acos() * 2.0;
         if angle <= self.inner {
             1.0
@@ -177,7 +211,10 @@ pub struct Attenuation {
 
 impl Default for Attenuation {
     fn default() -> Self {
-        Self { model: AttenuationModel::Standard, rolloff: 1.0 }
+        Self {
+            model: AttenuationModel::Standard,
+            rolloff: 1.0,
+        }
     }
 }
 
@@ -185,7 +222,10 @@ impl Attenuation {
     /// Makes an attenuation, or fails when the rolloff is negative or not finite.
     pub fn new(model: AttenuationModel, rolloff: f32) -> Result<Self> {
         if rolloff.is_finite() && rolloff >= 0.0 {
-            Ok(Self { model, rolloff: if rolloff == 0.0 { 1.0 } else { rolloff } })
+            Ok(Self {
+                model,
+                rolloff: if rolloff == 0.0 { 1.0 } else { rolloff },
+            })
         } else {
             Err(Error::Invalid("attenuation rolloff"))
         }
@@ -231,14 +271,33 @@ mod tests {
             (std, 0.5, 1.0),
             (std, 1.0, 1.0),
             (std, 100.0, 0.0),
-            (Attenuation::new(AttenuationModel::None, 1.0).unwrap(), 50.0, 1.0),
-            (Attenuation::new(AttenuationModel::Linear, 1.0).unwrap(), 50.5, 0.5),
-            (Attenuation::new(AttenuationModel::Inverse, 1.0).unwrap(), 2.0, 0.5),
-            (Attenuation::new(AttenuationModel::Exponential, 2.0).unwrap(), 2.0, 0.25),
+            (
+                Attenuation::new(AttenuationModel::None, 1.0).unwrap(),
+                50.0,
+                1.0,
+            ),
+            (
+                Attenuation::new(AttenuationModel::Linear, 1.0).unwrap(),
+                50.5,
+                0.5,
+            ),
+            (
+                Attenuation::new(AttenuationModel::Inverse, 1.0).unwrap(),
+                2.0,
+                0.5,
+            ),
+            (
+                Attenuation::new(AttenuationModel::Exponential, 2.0).unwrap(),
+                2.0,
+                0.25,
+            ),
         ];
         for (a, dist, want) in cases {
             let got = a.gain(dist, 1.0, 100.0);
-            assert!((got - want).abs() < 0.02, "{a:?} at {dist}: {got} want {want}");
+            assert!(
+                (got - want).abs() < 0.02,
+                "{a:?} at {dist}: {got} want {want}"
+            );
         }
     }
 

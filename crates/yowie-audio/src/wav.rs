@@ -25,7 +25,11 @@ fn header(rate: u32, channels: u16, data_bytes: u32) -> [u8; 44] {
 
 /// Converts a sample to 16-bit with clipping; NaN becomes silence.
 pub(crate) fn to_i16(s: f32) -> i16 {
-    if s.is_nan() { 0 } else { (s.clamp(-1.0, 1.0) * 32767.0).round() as i16 }
+    if s.is_nan() {
+        0
+    } else {
+        (s.clamp(-1.0, 1.0) * 32767.0).round() as i16
+    }
 }
 
 /// Encodes PCM as a 16-bit WAV file in memory. Clips samples outside `-1..=1`.
@@ -73,7 +77,12 @@ pub(crate) struct WavWriter<W: Write + Seek> {
 impl<W: Write + Seek> WavWriter<W> {
     pub(crate) fn new(mut w: W, rate: u32, channels: u16) -> Result<Self> {
         w.write_all(&header(rate, channels, 0))?;
-        Ok(Self { w, rate, channels, bytes: 0 })
+        Ok(Self {
+            w,
+            rate,
+            channels,
+            bytes: 0,
+        })
     }
 
     pub(crate) fn write(&mut self, samples: &[f32]) -> Result<()> {
@@ -91,7 +100,8 @@ impl<W: Write + Seek> WavWriter<W> {
 
     pub(crate) fn finish(mut self) -> Result<W> {
         self.w.seek(SeekFrom::Start(0))?;
-        self.w.write_all(&header(self.rate, self.channels, self.bytes as u32))?;
+        self.w
+            .write_all(&header(self.rate, self.channels, self.bytes as u32))?;
         self.w.seek(SeekFrom::End(0))?;
         self.w.flush()?;
         Ok(self.w)
@@ -105,12 +115,22 @@ mod tests {
 
     #[test]
     fn header_fields() {
-        let pcm = Pcm { samples: vec![0.0, 1.0, -1.0, 0.5], channels: 2, rate: 44_100 };
+        let pcm = Pcm {
+            samples: vec![0.0, 1.0, -1.0, 0.5],
+            channels: 2,
+            rate: 44_100,
+        };
         let bytes = encode_wav(&pcm);
         assert_eq!(&bytes[0..4], b"RIFF");
-        assert_eq!(u32::from_le_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]), 36 + 8);
+        assert_eq!(
+            u32::from_le_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]),
+            36 + 8
+        );
         assert_eq!(u16::from_le_bytes([bytes[22], bytes[23]]), 2);
-        assert_eq!(u32::from_le_bytes([bytes[24], bytes[25], bytes[26], bytes[27]]), 44_100);
+        assert_eq!(
+            u32::from_le_bytes([bytes[24], bytes[25], bytes[26], bytes[27]]),
+            44_100
+        );
         assert_eq!(i16::from_le_bytes([bytes[46], bytes[47]]), 32767);
         assert_eq!(i16::from_le_bytes([bytes[48], bytes[49]]), -32767);
     }
@@ -128,6 +148,9 @@ mod tests {
         w.write(&[0.5; 100]).expect("write");
         let bytes = w.finish().expect("finish").into_inner();
         assert_eq!(bytes.len(), 44 + 200);
-        assert_eq!(u32::from_le_bytes([bytes[40], bytes[41], bytes[42], bytes[43]]), 200);
+        assert_eq!(
+            u32::from_le_bytes([bytes[40], bytes[41], bytes[42], bytes[43]]),
+            200
+        );
     }
 }

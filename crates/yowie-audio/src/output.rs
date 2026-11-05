@@ -19,23 +19,39 @@ pub struct DeviceInfo {
 
 pub(crate) fn describe(d: &Device, default_id: Option<&str>) -> DeviceInfo {
     let id = d.id().map(|i| i.to_string()).unwrap_or_default();
-    let name = d.description().map(|x| x.name().to_string()).unwrap_or_else(|_| id.clone());
+    let name = d
+        .description()
+        .map(|x| x.name().to_string())
+        .unwrap_or_else(|_| id.clone());
     let is_default = default_id.is_some_and(|x| x == id);
-    DeviceInfo { id, name, is_default }
+    DeviceInfo {
+        id,
+        name,
+        is_default,
+    }
 }
 
 /// Lists the output devices of the default host.
 pub fn list_outputs() -> Result<Vec<DeviceInfo>> {
     let host = cpal::default_host();
-    let default_id = host.default_output_device().and_then(|d| d.id().ok()).map(|i| i.to_string());
-    Ok(host.output_devices()?.map(|d| describe(&d, default_id.as_deref())).collect())
+    let default_id = host
+        .default_output_device()
+        .and_then(|d| d.id().ok())
+        .map(|i| i.to_string());
+    Ok(host
+        .output_devices()?
+        .map(|d| describe(&d, default_id.as_deref()))
+        .collect())
 }
 
 /// Finds an output device by id or by name.
 pub(crate) fn find_device(inputs: bool, which: &str) -> Result<Device> {
     let host = cpal::default_host();
-    let devices: Vec<Device> =
-        if inputs { host.input_devices()?.collect() } else { host.output_devices()?.collect() };
+    let devices: Vec<Device> = if inputs {
+        host.input_devices()?.collect()
+    } else {
+        host.output_devices()?.collect()
+    };
     devices
         .into_iter()
         .find(|d| {
@@ -61,7 +77,9 @@ pub struct Output {
 impl Output {
     /// Opens the system's default output device.
     pub fn open_default() -> Result<Self> {
-        let device = cpal::default_host().default_output_device().ok_or(Error::NoDevice)?;
+        let device = cpal::default_host()
+            .default_output_device()
+            .ok_or(Error::NoDevice)?;
         Self::build(&device)
     }
 
@@ -75,20 +93,29 @@ impl Output {
         let config = supported.config();
         let (mixer, core) = Mixer::with_core(config.sample_rate)?;
         let stream = match supported.sample_format() {
-            SampleFormat::F32 => run::<f32>(device, config.clone(), core)?,
-            SampleFormat::F64 => run::<f64>(device, config.clone(), core)?,
-            SampleFormat::I16 => run::<i16>(device, config.clone(), core)?,
-            SampleFormat::U16 => run::<u16>(device, config.clone(), core)?,
-            SampleFormat::I32 => run::<i32>(device, config.clone(), core)?,
-            SampleFormat::U32 => run::<u32>(device, config.clone(), core)?,
-            SampleFormat::I8 => run::<i8>(device, config.clone(), core)?,
-            SampleFormat::U8 => run::<u8>(device, config.clone(), core)?,
+            SampleFormat::F32 => run::<f32>(device, config, core)?,
+            SampleFormat::F64 => run::<f64>(device, config, core)?,
+            SampleFormat::I16 => run::<i16>(device, config, core)?,
+            SampleFormat::U16 => run::<u16>(device, config, core)?,
+            SampleFormat::I32 => run::<i32>(device, config, core)?,
+            SampleFormat::U32 => run::<u32>(device, config, core)?,
+            SampleFormat::I8 => run::<i8>(device, config, core)?,
+            SampleFormat::U8 => run::<u8>(device, config, core)?,
             other => return Err(Error::Unsupported(format!("sample format {other}"))),
         };
         stream.play()?;
         let name = describe(device, None).name;
-        log::info!("audio output {name}: {} Hz, {} channels", config.sample_rate, config.channels);
-        Ok(Self { mixer, stream, device_name: name, channels: config.channels })
+        log::info!(
+            "audio output {name}: {} Hz, {} channels",
+            config.sample_rate,
+            config.channels
+        );
+        Ok(Self {
+            mixer,
+            stream,
+            device_name: name,
+            channels: config.channels,
+        })
     }
 
     /// The mixer this output plays. Clone it freely.

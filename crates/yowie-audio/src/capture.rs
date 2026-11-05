@@ -1,7 +1,7 @@
 //! Microphone capture, a level meter and bounded recording.
 
 use crate::error::{Error, Result};
-use crate::output::{describe, DeviceInfo, find_device};
+use crate::output::{DeviceInfo, describe, find_device};
 use crate::sound::Pcm;
 use crate::wav::WavWriter;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
@@ -20,8 +20,14 @@ const BLOCKS: usize = 16;
 /// Lists the input devices of the default host.
 pub fn list_inputs() -> Result<Vec<DeviceInfo>> {
     let host = cpal::default_host();
-    let default_id = host.default_input_device().and_then(|d| d.id().ok()).map(|i| i.to_string());
-    Ok(host.input_devices()?.map(|d| describe(&d, default_id.as_deref())).collect())
+    let default_id = host
+        .default_input_device()
+        .and_then(|d| d.id().ok())
+        .map(|i| i.to_string());
+    Ok(host
+        .input_devices()?
+        .map(|d| describe(&d, default_id.as_deref()))
+        .collect())
 }
 
 /// Loudness of the most recent audio block.
@@ -68,7 +74,9 @@ pub struct Capture {
 impl Capture {
     /// Opens the default input device.
     pub fn open_default() -> Result<Self> {
-        let device = cpal::default_host().default_input_device().ok_or(Error::NoDevice)?;
+        let device = cpal::default_host()
+            .default_input_device()
+            .ok_or(Error::NoDevice)?;
         Self::build(&device)
     }
 
@@ -97,7 +105,10 @@ impl Capture {
 
     /// A capture with no device, fed through the returned sender. Used by tests and by
     /// programs that produce input some other way.
-    pub(crate) fn detached(rate: u32, channels: u16) -> (Self, Sender<Vec<f32>>, Receiver<Vec<f32>>) {
+    pub(crate) fn detached(
+        rate: u32,
+        channels: u16,
+    ) -> (Self, Sender<Vec<f32>>, Receiver<Vec<f32>>) {
         let (tx, rx) = bounded(BLOCKS);
         let (free, free_rx) = bounded(BLOCKS + 2);
         for _ in 0..BLOCKS {
@@ -180,14 +191,18 @@ where
         move |data: &[T], _| {
             for piece in data.chunks(BLOCK_SAMPLES) {
                 let Ok(mut block) = free.try_recv() else {
-                    shared.dropped.fetch_add(piece.len() as u64, Ordering::Relaxed);
+                    shared
+                        .dropped
+                        .fetch_add(piece.len() as u64, Ordering::Relaxed);
                     continue;
                 };
                 block.clear();
                 block.extend(piece.iter().map(|s| f32::from_sample(*s)));
                 shared.update(&block);
                 if let Err(e) = tx.try_send(block) {
-                    shared.dropped.fetch_add(piece.len() as u64, Ordering::Relaxed);
+                    shared
+                        .dropped
+                        .fetch_add(piece.len() as u64, Ordering::Relaxed);
                     let _ = e;
                 }
             }
@@ -233,11 +248,20 @@ impl Recorder {
         if !(max_seconds.is_finite() && max_seconds > 0.0) {
             return Err(Error::Invalid("recording length must be positive"));
         }
-        let limit = (f64::from(max_seconds) * f64::from(capture.rate)).round() as usize * usize::from(capture.channels);
+        let limit = (f64::from(max_seconds) * f64::from(capture.rate)).round() as usize
+            * usize::from(capture.channels);
         if limit == 0 || limit as u64 * 2 > u64::from(u32::MAX) - 36 {
-            return Err(Error::Invalid("recording length is outside the supported range"));
+            return Err(Error::Invalid(
+                "recording length is outside the supported range",
+            ));
         }
-        Ok(Self { capture, sink, limit, recorded: 0, scratch: vec![0.0; BLOCK_SAMPLES] })
+        Ok(Self {
+            capture,
+            sink,
+            limit,
+            recorded: 0,
+            scratch: vec![0.0; BLOCK_SAMPLES],
+        })
     }
 
     /// Moves waiting audio into the recording. Returns the samples added.
@@ -280,7 +304,11 @@ impl Recorder {
         self.update()?;
         let (rate, channels) = (self.capture.rate, self.capture.channels);
         match self.sink {
-            Sink::Memory(samples) => Ok(Some(Pcm { samples, channels, rate })),
+            Sink::Memory(samples) => Ok(Some(Pcm {
+                samples,
+                channels,
+                rate,
+            })),
             Sink::Wav(w) => {
                 w.finish()?;
                 Ok(None)

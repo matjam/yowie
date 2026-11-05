@@ -67,7 +67,11 @@ pub struct ReverbZone {
 }
 
 /// The shared reverb settings in force at `listener`: `base`, or the best zone blended over it.
-pub(crate) fn effective(base: ReverbSettings, zones: &[ReverbZone], listener: Vec3) -> ReverbSettings {
+pub(crate) fn effective(
+    base: ReverbSettings,
+    zones: &[ReverbZone],
+    listener: Vec3,
+) -> ReverbSettings {
     let b = base.with_defaults();
     let mut best: Option<(&ReverbZone, f32)> = None;
     for z in zones {
@@ -78,7 +82,11 @@ pub(crate) fn effective(base: ReverbSettings, zones: &[ReverbZone], listener: Ve
         if dist >= z.radius {
             continue;
         }
-        let fade = if z.fade <= 0.0 || z.fade > z.radius { z.radius } else { z.fade };
+        let fade = if z.fade <= 0.0 || z.fade > z.radius {
+            z.radius
+        } else {
+            z.fade
+        };
         let w = ((z.radius - dist) / fade).min(1.0);
         if best.is_none_or(|(_, bw)| w > bw) {
             best = Some((z, w));
@@ -220,7 +228,11 @@ mod tests {
     fn tail_decays() {
         let rate = 44_100;
         let mut r = Reverb::new(rate);
-        r.set(ReverbSettings { room_size: 0.5, wet: 0.5, ..Default::default() });
+        r.set(ReverbSettings {
+            room_size: 0.5,
+            wet: 0.5,
+            ..Default::default()
+        });
         let frames = rate as usize / 2;
         let mut send = vec![0.0; frames * 2];
         send[0] = 1.0;
@@ -243,7 +255,11 @@ mod tests {
     fn bigger_rooms_ring_longer() {
         let tail = |room| {
             let mut r = Reverb::new(44_100);
-            r.set(ReverbSettings { room_size: room, wet: 1.0, ..Default::default() });
+            r.set(ReverbSettings {
+                room_size: room,
+                wet: 1.0,
+                ..Default::default()
+            });
             let mut send = vec![0.0; 88_200];
             send[0] = 1.0;
             let mut out = vec![0.0; 88_200];
@@ -259,10 +275,18 @@ mod tests {
             center: Vec3::ZERO,
             radius: 10.0,
             fade: 5.0,
-            settings: ReverbSettings { room_size: 0.9, wet: 0.8, ..Default::default() },
+            settings: ReverbSettings {
+                room_size: 0.9,
+                wet: 0.8,
+                ..Default::default()
+            },
         };
         let base = ReverbSettings::default();
-        let cases = [(Vec3::new(20.0, 0.0, 0.0), 0.0), (Vec3::new(7.5, 0.0, 0.0), 0.4), (Vec3::ZERO, 0.8)];
+        let cases = [
+            (Vec3::new(20.0, 0.0, 0.0), 0.0),
+            (Vec3::new(7.5, 0.0, 0.0), 0.4),
+            (Vec3::ZERO, 0.8),
+        ];
         for (pos, wet) in cases {
             let s = effective(base, &[zone], pos);
             assert!((s.wet - wet).abs() < 1e-5, "{pos:?}: {}", s.wet);

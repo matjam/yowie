@@ -65,7 +65,10 @@ pub struct Bus {
 
 impl std::fmt::Debug for Bus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Bus").field("name", &self.shared.name).field("index", &self.shared.index).finish()
+        f.debug_struct("Bus")
+            .field("name", &self.shared.name)
+            .field("index", &self.shared.index)
+            .finish()
     }
 }
 
@@ -118,7 +121,11 @@ impl Bus {
 
     /// Sets a low-pass cutoff in Hz over the whole bus; zero or less removes the filter.
     pub fn set_low_pass(&self, cutoff_hz: f32) {
-        let c = if cutoff_hz.is_finite() { cutoff_hz.max(0.0) } else { 0.0 };
+        let c = if cutoff_hz.is_finite() {
+            cutoff_hz.max(0.0)
+        } else {
+            0.0
+        };
         self.shared.cutoff.store(c.to_bits(), Ordering::Relaxed);
     }
 
@@ -126,7 +133,11 @@ impl Bus {
     /// the mixer's shared one. Settings with `wet` of zero remove it.
     pub fn set_reverb(&self, settings: ReverbSettings) {
         let alloc = (settings.wet > 0.0).then(|| Box::new(Reverb::new(self.inner.rate)));
-        self.inner.send(Command::BusReverb { bus: self.shared.index, reverb: alloc, settings });
+        self.inner.send(Command::BusReverb {
+            bus: self.shared.index,
+            reverb: alloc,
+            settings,
+        });
     }
 }
 

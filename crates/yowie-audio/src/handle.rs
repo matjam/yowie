@@ -117,18 +117,28 @@ impl Voice {
 
     /// Sets the low-pass cutoff in Hz; `None` removes the filter.
     pub fn set_low_pass(&self, cutoff: Option<f32>) {
-        let c = cutoff.filter(|c| *c > 0.0).map(|c| Biquad::lowpass(c, self.inner.rate));
+        let c = cutoff
+            .filter(|c| *c > 0.0)
+            .map(|c| Biquad::lowpass(c, self.inner.rate));
         self.cmd(VoiceCmd::LowPass(c));
     }
 
     /// Moves the volume to `volume` over `seconds`.
     pub fn fade_to(&self, volume: f32, seconds: f32) {
-        self.cmd(VoiceCmd::Fade { to: volume, seconds, stop: false });
+        self.cmd(VoiceCmd::Fade {
+            to: volume,
+            seconds,
+            stop: false,
+        });
     }
 
     /// Fades to silence over `seconds`, then stops the voice.
     pub fn fade_out(&self, seconds: f32) {
-        self.cmd(VoiceCmd::Fade { to: 0.0, seconds, stop: true });
+        self.cmd(VoiceCmd::Fade {
+            to: 0.0,
+            seconds,
+            stop: true,
+        });
     }
 
     /// Interprets the voice's position, velocity and direction in the listener's frame.

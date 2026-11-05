@@ -28,7 +28,10 @@ pub fn decode(data: Vec<u8>) -> Result<Pcm> {
 pub fn decode_file(path: impl AsRef<Path>) -> Result<Pcm> {
     let path = path.as_ref();
     let file = std::fs::File::open(path)?;
-    let ext = path.extension().and_then(|e| e.to_str()).map(str::to_ascii_lowercase);
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(str::to_ascii_lowercase);
     decode_source(Box::new(file), ext.as_deref())
 }
 
@@ -36,7 +39,11 @@ fn decode_source(src: Box<dyn MediaSource>, ext: Option<&str>) -> Result<Pcm> {
     let mut dec = Decoder::open(src, ext)?;
     let mut samples = Vec::new();
     while dec.read_more(&mut samples)? {}
-    Ok(Pcm { samples, channels: dec.channels, rate: dec.rate })
+    Ok(Pcm {
+        samples,
+        channels: dec.channels,
+        rate: dec.rate,
+    })
 }
 
 /// A streaming decoder that yields mono or stereo interleaved `f32`.
@@ -60,9 +67,16 @@ impl Decoder {
             hint.with_extension(e);
         }
         let format = symphonia::default::get_probe()
-            .probe(&hint, mss, FormatOptions::default(), MetadataOptions::default())
+            .probe(
+                &hint,
+                mss,
+                FormatOptions::default(),
+                MetadataOptions::default(),
+            )
             .map_err(err)?;
-        let track = format.default_track(TrackType::Audio).ok_or_else(|| Error::Decode("no audio track".into()))?;
+        let track = format
+            .default_track(TrackType::Audio)
+            .ok_or_else(|| Error::Decode("no audio track".into()))?;
         let params = track
             .codec_params
             .as_ref()
@@ -105,7 +119,9 @@ impl Decoder {
             let packet = match self.format.next_packet() {
                 Ok(Some(p)) => p,
                 Ok(None) => return Ok(false),
-                Err(SymError::IoError(e)) if e.kind() == std::io::ErrorKind::UnexpectedEof => return Ok(false),
+                Err(SymError::IoError(e)) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
+                    return Ok(false);
+                }
                 Err(SymError::ResetRequired) => return Ok(false),
                 Err(e) => return Err(err(e)),
             };
@@ -136,7 +152,13 @@ impl Decoder {
     pub(crate) fn seek(&mut self, seconds: f64) -> Result<()> {
         let time = Time::try_from_secs_f64(seconds.max(0.0)).unwrap_or(Time::ZERO);
         self.format
-            .seek(SeekMode::Accurate, SeekTo::Time { time, track_id: Some(self.track_id) })
+            .seek(
+                SeekMode::Accurate,
+                SeekTo::Time {
+                    time,
+                    track_id: Some(self.track_id),
+                },
+            )
             .map_err(err)?;
         self.decoder.reset();
         self.first.clear();
@@ -179,8 +201,16 @@ mod tests {
 
     fn tone(channels: u16, rate: u32) -> Pcm {
         let mono = Pcm::sine(440.0, 0.25, rate);
-        let samples = if channels == 2 { mono.samples.iter().flat_map(|s| [*s, s * 0.5]).collect() } else { mono.samples };
-        Pcm { samples, channels, rate }
+        let samples = if channels == 2 {
+            mono.samples.iter().flat_map(|s| [*s, s * 0.5]).collect()
+        } else {
+            mono.samples
+        };
+        Pcm {
+            samples,
+            channels,
+            rate,
+        }
     }
 
     #[test]
@@ -190,14 +220,26 @@ mod tests {
             let out = decode(wav_bytes(&src)).expect("decode");
             assert_eq!((out.channels, out.rate), (channels, rate));
             assert_eq!(out.samples.len(), src.samples.len());
-            let worst = out.samples.iter().zip(&src.samples).map(|(a, b)| (a - b).abs()).fold(0.0, f32::max);
-            assert!(worst < 1.0 / 16_000.0, "{channels} ch at {rate}: error {worst}");
+            let worst = out
+                .samples
+                .iter()
+                .zip(&src.samples)
+                .map(|(a, b)| (a - b).abs())
+                .fold(0.0, f32::max);
+            assert!(
+                worst < 1.0 / 16_000.0,
+                "{channels} ch at {rate}: error {worst}"
+            );
         }
     }
 
     #[test]
     fn garbage_is_rejected() {
-        for data in [vec![], vec![1, 2, 3, 4, 5, 6, 7, 8], b"RIFFxxxxWAVEjunk".to_vec()] {
+        for data in [
+            vec![],
+            vec![1, 2, 3, 4, 5, 6, 7, 8],
+            b"RIFFxxxxWAVEjunk".to_vec(),
+        ] {
             assert!(decode(data).is_err());
         }
     }
@@ -212,7 +254,8 @@ mod tests {
     #[test]
     fn seek_restarts_decoding() {
         let src = tone(1, 22_050);
-        let mut d = Decoder::open(Box::new(Cursor::new(wav_bytes(&src))), Some("wav")).expect("open");
+        let mut d =
+            Decoder::open(Box::new(Cursor::new(wav_bytes(&src))), Some("wav")).expect("open");
         let mut a = Vec::new();
         while d.read_more(&mut a).expect("read") {}
         d.seek(0.0).expect("seek");
