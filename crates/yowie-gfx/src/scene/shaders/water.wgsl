@@ -62,9 +62,17 @@ fn ground_height(p: vec2<f32>) -> f32 {
     return water.origin.y + mix(a, b, f.y);
 }
 
+// How much of a wave of angular frequency freq a pixel covering
+// `footprint` world units shows: waves shorter than about two pixels
+// fade out instead of aliasing into stripes.
+fn wave_filter(freq: f32, footprint: f32) -> f32 {
+    return clamp(1.5 - footprint * freq * 0.5, 0.0, 1.0);
+}
+
 // The slope of a sum of travelling waves at p: four long ones in
-// different directions and four short ones for ripples.
-fn wave_slope(p: vec2<f32>, t: f32) -> vec2<f32> {
+// different directions and four short ones for ripples, each faded out
+// where the pixel's footprint is too coarse to show it.
+fn wave_slope(p: vec2<f32>, t: f32, footprint: f32) -> vec2<f32> {
     let k = water.waves.y * 6.2831853;
     let speed = water.waves.z;
     var slope = vec2<f32>(0.0);
@@ -77,17 +85,19 @@ fn wave_slope(p: vec2<f32>, t: f32) -> vec2<f32> {
         let freq = k * (1.0 + fi * 0.37);
         let amp = 1.0 / (1.0 + fi * 0.6);
         let phase = dot(d, p) * freq + t * speed * freq * (1.0 + 0.1 * fi);
-        slope += d * cos(phase) * amp;
+        slope += d * cos(phase) * amp * wave_filter(freq, footprint);
         let rd = vec2<f32>(d.y, -d.x);
         let rfreq = freq * 4.3;
         let rphase = dot(rd, p) * rfreq + t * speed * rfreq * 0.7 + fi;
-        slope += rd * cos(rphase) * amp * 0.35;
+        slope += rd * cos(rphase) * amp * 0.35 * wave_filter(rfreq, footprint);
     }
     return slope * 0.25;
 }
 
 @fragment
 fn fs_water(in: WaterOut) -> @location(0) vec4<f32> {
+    let fw = fwidth(in.world.xz);
+    let footprint = max(fw.x, fw.y);
     var depth = water.level.w;
     if water.grid.z != 0u {
         depth = water.level.x - ground_height(in.world.xz);
@@ -96,7 +106,7 @@ fn fs_water(in: WaterOut) -> @location(0) vec4<f32> {
         discard;
     }
     let t = clamp(depth / water.level.z, 0.0, 1.0);
-    let slope = wave_slope(in.world.xz, water.level.y) * water.waves.x * (0.3 + 0.7 * t);
+    let slope = wave_slope(in.world.xz, water.level.y, footprint) * water.waves.x * (0.3 + 0.7 * t);
     let n = normalize(vec3<f32>(-slope.x, 1.0, -slope.y));
     var body = mix(water.shallow.rgb, water.deep.rgb, sqrt(t));
     var alpha = mix(0.08, water.shallow.w, t);
