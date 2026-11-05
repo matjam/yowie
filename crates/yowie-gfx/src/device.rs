@@ -79,6 +79,19 @@ impl Gpu {
 /// Whether this machine has a GPU adapter Yowie can render with. Tests and
 /// tools call it to skip GPU work on machines without a driver.
 pub fn adapter_available() -> bool {
+    default_adapter_info().is_some()
+}
+
+/// The name, backend and type of the adapter a headless renderer would
+/// use, or `None` when there is none. The examples test compares golden
+/// images only on the adapter they were recorded with.
+pub fn default_adapter_info() -> Option<wgpu::AdapterInfo> {
     let instance = instance();
-    pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default())).is_ok()
+    let options = wgpu::RequestAdapterOptions {
+        power_preference: wgpu::PowerPreference::HighPerformance,
+        ..Default::default()
+    };
+    pollster::block_on(instance.request_adapter(&options))
+        .ok()
+        .map(|a| a.get_info())
 }

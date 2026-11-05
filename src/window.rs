@@ -1,0 +1,271 @@
+//! One window's state: the winit window, its context and game, and the
+//! translation of its events. The app holds one today; more windows would
+//! each get their own.
+
+use std::sync::Arc;
+
+use winit::event::{ElementState, Ime, MouseScrollDelta, WindowEvent};
+use winit::event_loop::{ActiveEventLoop, EventLoopProxy};
+use winit::keyboard::PhysicalKey;
+use winit::window::{Fullscreen, Window};
+use yowie_core::{UVec2, Vec2, vec2};
+use yowie_gfx::{Graphics, GraphicsSettings};
+use yowie_input::InputEvent;
+
+use crate::context::{Host, UserEvent};
+use crate::stepper::{Stepper, Tick};
+use crate::{Config, Context, Error, Event, Game, Result, keymap};
+
+/// Logical points of pixel scrolling that count as one line.
+const POINTS_PER_LINE: f64 = 20.0;
+
+/// A window and the game drawing into it.
+pub(crate) struct WindowState<G: Game> {
+    pub(crate) window: Arc<Window>,
+    pub(crate) ctx: Context,
+    pub(crate) game: G,
+    stepper: Stepper,
+    occluded: bool,
+    /// Whether something happened that runs a turn in a turn-based loop.
+    pub(crate) turn_pending: bool,
+    handle_close: bool,
+}
+
+fn window_attributes(config: &Config) -> winit::window::WindowAttributes {
+    let attrs = Window::default_attributes()
+        .with_title(config.title.clone())
+        .with_inner_size(winit::dpi::LogicalSize::new(
+            config.width.max(1),
+            config.height.max(1),
+        ))
+        .with_resizable(config.resizable)
+        .with_fullscreen(config.fullscreen.then_some(Fullscreen::Borderless(None)));
+    #[cfg(all(
+        unix,
+        not(any(target_os = "macos", target_os = "ios", target_os = "android"))
+    ))]
+    let attrs = {
+        // Wayland compositors match the app id to a desktop entry; X11 uses
+        // the same name for WM_CLASS.
+        let id: String = config
+            .title
+            .chars()
+            .map(|c| {
+                if c.is_ascii_alphanumeric() {
+                    c.to_ascii_lowercase()
+                } else {
+                    '-'
+                }
+            })
+            .collect();
+        winit::platform::wayland::WindowAttributesExtWayland::with_name(attrs, id.clone(), id)
+    };
+    attrs
+}
+
+impl<G: Game> WindowState<G> {
+    /// Opens the window, creates its renderer and context, and builds the
+    /// game.
+    pub(crate) fn create(
+        el: &ActiveEventLoop,
+        config: &Config,
+        fixed_clock: bool,
+        proxy: EventLoopProxy<UserEvent>,
+    ) -> Result<Self> {
+        let window = Arc::new(
+            el.create_window(window_attributes(config))
+                .map_err(|e| Error::CreateWindow(e.to_string()))?,
+        );
+        let size = window.inner_size();
+        let gfx = Graphics::new_windowed(
+            window.clone(),
+            UVec2::new(size.width.max(1), size.height.max(1)),
+            window.scale_factor() as f32,
+            GraphicsSettings {
+                vsync: config.vsync,
+                view: config.view_settings(),
+                clear_color: config.clear_color,
+            },
+        )?;
+        let host = Host::Window {
+            window: window.clone(),
+            proxy,
+        };
+        let mut ctx = Context::new(gfx, host, config.debug_overlay);
+        ctx.focused = window.has_focus();
+        let game = G::init(&mut ctx).map_err(Error::Game)?;
+        window.request_redraw();
+        Ok(Self {
+            window,
+            ctx,
+            game,
+            stepper: Stepper::new(config, fixed_clock),
+            occluded: false,
+            turn_pending: false,
+            handle_close: config.handle_close,
+        })
+    }
+
+    /// Whether the window cannot be seen, so frames update without drawing.
+    pub(crate) fn hidden(&self) -> bool {
+        let s = self.window.inner_size();
+        self.occluded || s.width == 0 || s.height == 0
+    }
+
+    /// Seconds per update.
+    pub(crate) fn step(&self) -> f64 {
+        self.stepper.step()
+    }
+
+    /// Runs one frame: the updates due, and the draw unless `draw` is false.
+    pub(crate) fn frame(&mut self, draw: bool) -> Result<()> {
+        let turn = std::mem::take(&mut self.turn_pending);
+        self.stepper
+            .tick(&mut self.ctx, &mut self.game, Tick { turn, draw })
+    }
+
+    fn deliver(&mut self, event: Event) -> Result<()> {
+        self.game.event(&mut self.ctx, &event).map_err(Error::Game)
+    }
+
+    /// Applies an input event to the input state and shows it to the game.
+    pub(crate) fn input(&mut self, event: InputEvent) -> Result<()> {
+        self.ctx.input.apply(&event);
+        self.turn_pending = true;
+        self.deliver(Event::Input(event))
+    }
+
+    fn pointer(&self, pos: winit::dpi::PhysicalPosition<f64>) -> InputEvent {
+        let window = vec2(pos.x as f32, pos.y as f32);
+        InputEvent::MouseMoved {
+            view: self.ctx.gfx.window_to_view(window),
+            window,
+        }
+    }
+
+    /// Handles every window event except redraw requests.
+    pub(crate) fn window_event(&mut self, event: WindowEvent) -> Result<()> {
+        match event {
+            WindowEvent::CloseRequested => {
+                self.deliver(Event::CloseRequested)?;
+                if !self.handle_close {
+                    self.ctx.quit();
+                }
+            }
+            WindowEvent::Resized(size) => {
+                let scale = self.window.scale_factor() as f32;
+                self.ctx
+                    .gfx
+                    .resize(UVec2::new(size.width.max(1), size.height.max(1)), scale);
+                self.window.request_redraw();
+                self.deliver(Event::Resized {
+                    width: size.width,
+                    height: size.height,
+                    scale_factor: scale,
+                })?;
+            }
+            WindowEvent::Focused(focused) => {
+                self.ctx.focused = focused;
+                if !focused {
+                    self.input(InputEvent::FocusLost)?;
+                }
+                self.turn_pending = true;
+                self.deliver(Event::Focused(focused))?;
+            }
+            WindowEvent::Occluded(occluded) => {
+                self.occluded = occluded;
+                self.deliver(Event::Occluded(occluded))?;
+            }
+            WindowEvent::KeyboardInput {
+                event,
+                is_synthetic,
+                ..
+            } => {
+                // Synthetic presses replay held keys when focus returns; the
+                // release on focus loss already reset them.
+                if is_synthetic {
+                    return Ok(());
+                }
+                let pressed = event.state == ElementState::Pressed;
+                if let PhysicalKey::Code(code) = event.physical_key
+                    && let Some(key) = keymap::key(code)
+                {
+                    self.input(if pressed {
+                        InputEvent::KeyDown {
+                            key,
+                            repeat: event.repeat,
+                        }
+                    } else {
+                        InputEvent::KeyUp { key }
+                    })?;
+                }
+                if pressed
+                    && let Some(text) = event.text
+                    && text.chars().any(|c| !c.is_control())
+                {
+                    self.input(InputEvent::Text(text.to_string()))?;
+                }
+            }
+            WindowEvent::ModifiersChanged(m) => {
+                self.input(InputEvent::Modifiers(keymap::modifiers(m.state())))?;
+            }
+            WindowEvent::Ime(ime) => match ime {
+                Ime::Preedit(text, cursor) => {
+                    self.input(InputEvent::Composition { text, cursor })?;
+                }
+                Ime::Commit(text) => {
+                    self.input(InputEvent::Composition {
+                        text: String::new(),
+                        cursor: None,
+                    })?;
+                    self.input(InputEvent::Text(text))?;
+                }
+                Ime::Disabled => {
+                    self.input(InputEvent::Composition {
+                        text: String::new(),
+                        cursor: None,
+                    })?;
+                }
+                Ime::Enabled => {}
+            },
+            WindowEvent::CursorMoved { position, .. } => {
+                let ev = self.pointer(position);
+                self.input(ev)?;
+            }
+            WindowEvent::CursorLeft { .. } => self.input(InputEvent::MouseLeft)?,
+            WindowEvent::MouseInput { state, button, .. } => {
+                if let Some(button) = keymap::mouse_button(button) {
+                    self.input(InputEvent::MouseButton {
+                        button,
+                        pressed: state == ElementState::Pressed,
+                    })?;
+                }
+            }
+            WindowEvent::MouseWheel { delta, .. } => {
+                let lines = match delta {
+                    MouseScrollDelta::LineDelta(x, y) => vec2(x, y),
+                    MouseScrollDelta::PixelDelta(p) => {
+                        let l = p.to_logical::<f64>(self.window.scale_factor());
+                        vec2(
+                            (l.x / POINTS_PER_LINE) as f32,
+                            (l.y / POINTS_PER_LINE) as f32,
+                        )
+                    }
+                };
+                self.input(InputEvent::Wheel { lines })?;
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    /// Raw pointer motion, reported while the window has focus.
+    pub(crate) fn mouse_motion(&mut self, delta: (f64, f64)) -> Result<()> {
+        if !self.ctx.focused {
+            return Ok(());
+        }
+        self.input(InputEvent::MouseMotion {
+            delta: Vec2::new(delta.0 as f32, delta.1 as f32),
+        })
+    }
+}

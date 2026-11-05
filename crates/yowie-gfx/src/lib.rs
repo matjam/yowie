@@ -91,7 +91,7 @@ mod gpu_tests_text;
 
 pub use blend::BlendMode;
 pub use camera::Camera2D;
-pub use device::adapter_available;
+pub use device::{adapter_available, default_adapter_info};
 pub use error::{GfxError, Result};
 pub use geometry::Vertex;
 pub use graphics::{FrameStats, Graphics, GraphicsSettings};
