@@ -36,8 +36,8 @@
 //! # Drawing
 //!
 //! Widgets draw through the [`Painter`] trait. [`Ui::draw`] uses
-//! [`GfxPainter`], which feeds the 2D batch on [`layers::UI`]
-//! (yowie_gfx::layers::UI) in screen space. Within a window, backgrounds,
+//! [`GfxPainter`], which feeds the 2D batch on
+//! [`layers::UI`](yowie_gfx::layers::UI) in screen space. Within a window, backgrounds,
 //! images and text are drawn in separate passes, so consecutive widgets
 //! share textures and batch into a few draw calls.
 //!

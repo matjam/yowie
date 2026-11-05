@@ -1,29 +1,4 @@
-//! Particles simulated and drawn on the GPU.
-//!
-//! A [`GpuSystem`] runs the same [`Emitter`] as the CPU
-//! [`System`](crate::System) with the same birth code and the same API
-//! shape, but keeps its particles in GPU buffers:
-//!
-//! - Births are made on the CPU with the shared birth code (so shapes,
-//!   palettes and ranges behave identically) and uploaded once a frame.
-//! - A compute pass moves them into free slots taken from a dead stack,
-//!   then ages, accelerates and kills every slot: gravity, drag, radial
-//!   and tangential acceleration, up to eight attractors, speed over life.
-//! - Size, colour and alpha over life are sampled from 128-entry tables
-//!   built from the emitter's curves.
-//! - One instanced draw per emitter, with the instance count written by
-//!   the GPU (an indirect draw), expands each live particle into a quad in
-//!   the vertex shader.
-//!
-//! The simulation advances when the system is drawn: [`GpuSystem::update`]
-//! records the step and the frame's compute pass runs it, so a system that
-//! is never drawn does not simulate. Live counts come back from the GPU
-//! asynchronously, so [`alive`](GpuSystem::alive) lags by a few frames.
-//!
-//! A device that lacks compute shaders, vertex-stage storage buffers or
-//! four storage buffers per stage cannot run this path;
-//! [`GpuSystem::new`] reports why. [`Particles`](crate::Particles) falls
-//! back to the CPU system in that case.
+//! Particles simulated and drawn on the GPU. [`GpuSystem`] documents how.
 
 mod draw;
 mod layout;
@@ -75,8 +50,32 @@ pub fn gpu_supported(gfx: &Graphics) -> bool {
     check(gfx).is_ok()
 }
 
-/// One emitter simulated and drawn on the GPU. See the
-/// [module documentation](self).
+/// One emitter simulated and drawn on the GPU.
+///
+/// A `GpuSystem` runs the same [`Emitter`] as the CPU
+/// [`System`](crate::System) with the same birth code and the same API
+/// shape, but keeps its particles in GPU buffers:
+///
+/// - Births are made on the CPU with the shared birth code (so shapes,
+///   palettes and ranges behave identically) and uploaded once a frame.
+/// - A compute pass moves them into free slots taken from a dead stack,
+///   then ages, accelerates and kills every slot: gravity, drag, radial
+///   and tangential acceleration, up to eight attractors, speed over life.
+/// - Size, colour and alpha over life are sampled from 128-entry tables
+///   built from the emitter's curves.
+/// - One instanced draw per emitter, with the instance count written by
+///   the GPU (an indirect draw), expands each live particle into a quad in
+///   the vertex shader.
+///
+/// The simulation advances when the system is drawn: [`GpuSystem::update`]
+/// records the step and the frame's compute pass runs it, so a system that
+/// is never drawn does not simulate. Live counts come back from the GPU
+/// asynchronously, so [`alive`](GpuSystem::alive) lags by a few frames.
+///
+/// A device that lacks compute shaders, vertex-stage storage buffers or
+/// four storage buffers per stage cannot run this path;
+/// [`GpuSystem::new`] reports why. [`Particles`](crate::Particles) falls
+/// back to the CPU system in that case.
 ///
 /// ```no_run
 /// # use yowie_core::vec2;

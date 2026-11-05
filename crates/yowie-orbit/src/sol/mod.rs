@@ -18,7 +18,7 @@
 //! with [`Elements::node`](crate::Elements::node) and the other angles if
 //! you want them spread out. Moon orbits are not rotated into the ecliptic.
 //!
-//! Load the whole system into a [`System`](crate::System) with [`load`].
+//! Load the whole system into a [`crate::System`] with [`load`].
 
 mod moons;
 mod planets;
