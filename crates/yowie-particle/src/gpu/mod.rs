@@ -111,7 +111,7 @@ impl GpuSystem {
     pub fn at(gfx: &Graphics, emitter: Emitter, position: Vec2) -> Result<Self> {
         let indirect = check(gfx)?;
         let device = gfx.device();
-        let limit = u64::from(device.limits().max_storage_buffer_binding_size) / 48;
+        let limit = device.limits().max_storage_buffer_binding_size / 48;
         let capacity = (emitter.max as u64).clamp(1, limit.min(u64::from(MAX_CAPACITY))) as u32;
         let core = Core::new(device, gfx.queue(), Programs::get(gfx), capacity);
         let mut s = Self {
@@ -308,8 +308,10 @@ impl GpuSystem {
         let core = self.inner.lock();
         let bytes = core.read_blocking(&core.particles, 0, u64::from(core.capacity) * 48);
         bytes
-            .chunks_exact(48)
-            .map(bytemuck::pod_read_unaligned::<GpuParticle>)
+            .as_chunks::<48>()
+            .0
+            .iter()
+            .map(|c| bytemuck::pod_read_unaligned::<GpuParticle>(c))
             .filter(|p| p.life > 0.0)
             .map(GpuParticle::to_particle)
             .collect()

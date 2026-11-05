@@ -51,9 +51,12 @@
 //! Particles and tilemaps draw through the same batch with
 //! [`Graphics::draw_sprite`] and [`Graphics::draw_triangles`] on whatever
 //! layer the game picks; a run of them sharing one texture is one draw
-//! call. Static geometry that should skip the per-frame upload (render
-//! bundles, instanced particles) belongs in its own pass beside the 2D
-//! one.
+//! call. Work that records its own GPU commands, such as the compute and
+//! instanced draws of GPU particles, queues a [`GpuDraw`] with
+//! [`Graphics::draw_gpu`]; it is ordered by layer and sort key like a
+//! sprite and records inside the 2D pass. Lit sprites
+//! ([`Graphics::draw_lit`]) with point and spot [`Light2D`]s and shadow
+//! casting occluders sort the same way.
 //!
 //! Render textures run the same pass list, so a 3D scene rendered into a
 //! texture (a minimap, a portrait) uses the same hooks.

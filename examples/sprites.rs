@@ -271,13 +271,24 @@ impl LitFloor {
         Ok(Self {
             bricks: Texture::from_pixels(gfx, w, h, &colors, TextureOptions::default())?,
             normals: Texture::from_pixels(gfx, w, h, &normals, data)?,
-            crate_tex: Texture::from_pixels(gfx, 40, 40, &crate_pixels(40), TextureOptions::default())?,
+            crate_tex: Texture::from_pixels(
+                gfx,
+                40,
+                40,
+                &crate_pixels(40),
+                TextureOptions::default(),
+            )?,
         })
     }
 
     fn rect(view: Vec2) -> Rect {
         let size = vec2(FLOOR_W as f32, FLOOR_H as f32);
-        Rect::new((view.x - size.x) * 0.5, view.y - size.y - 14.0, size.x, size.y)
+        Rect::new(
+            (view.x - size.x) * 0.5,
+            view.y - size.y - 14.0,
+            size.x,
+            size.y,
+        )
     }
 
     fn draw(&self, g: &mut yowie::gfx::Graphics, t: f32) {
@@ -294,9 +305,13 @@ impl LitFloor {
                         .intensity(1.5)
                         .shadows(true)
                         .softness(10.0),
-                    Light2D::point(floor.min() + vec2(300.0, 28.0), 120.0, Color::rgb8(90, 120, 255))
-                        .height(30.0)
-                        .intensity(0.7),
+                    Light2D::point(
+                        floor.min() + vec2(300.0, 28.0),
+                        120.0,
+                        Color::rgb8(90, 120, 255),
+                    )
+                    .height(30.0)
+                    .intensity(0.7),
                 ],
             );
             let sprites = CRATES.map(|c| {
@@ -311,7 +326,7 @@ impl LitFloor {
             // Crates are plain sprites, tinted by how near the lamp is.
             for s in &sprites {
                 let near = (1.0 - (s.position - lamp).length() / 250.0).clamp(0.0, 1.0);
-                let k = 0.28 + 0.72 * near * near;
+                let k = 0.42 + 0.58 * near * near;
                 let tint = Color::rgb(k * 1.0, k * 0.92, k * 0.85);
                 g.draw_sprite(&self.crate_tex, &s.tint(tint));
             }

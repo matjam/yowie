@@ -31,9 +31,10 @@
 //!   batch through `SceneRenderer::draw_batches`, which only reads the
 //!   batch list and bind groups, so a bundle encoder can replay a cached
 //!   batch list for meshes the game marks static.
-//! - **GPU particles** draw in the HDR pass after the blended meshes, in
-//!   `passes.rs` (`encode_scene`) beside the lines, with the frame bind
-//!   group bound.
+//! - **GPU particles** and other extensions queue a [`GpuDraw`](crate::GpuDraw)
+//!   with [`Scene::draw_gpu`]; `passes.rs` (`encode_scene`) runs their
+//!   compute work before the HDR pass and their draws after the blended
+//!   meshes, beside the lines, with the frame bind group bound.
 //! - **Order-independent transparency** replaces the sorted blended
 //!   batches (`Prepared::blend`, built in `prepare.rs`, drawn in
 //!   `passes.rs`) with an accumulation pass and a composite before the

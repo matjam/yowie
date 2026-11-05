@@ -12,7 +12,9 @@
 
 use yowie::gfx::{Font, TextStyle, Texture, TextureOptions};
 use yowie::input::{Key, MouseButton};
-use yowie::particle::{Backend, ColorKey, Curve, Emitter, Particles as Effect, Range, Shape, presets};
+use yowie::particle::{
+    Backend, ColorKey, Curve, Emitter, Particles as Effect, Range, Shape, presets,
+};
 use yowie::{Color, Config, Context, Game, GameResult, Rect, Vec2, vec2};
 
 const HEARTH: Vec2 = vec2(480.0, 430.0);

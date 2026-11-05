@@ -616,7 +616,11 @@ impl Editor {
             f.checkbox("GPU", &mut gpu);
             save = f.button("Save JSON").clicked;
         });
-        e.blend = if additive { Blend::Additive } else { Blend::Alpha };
+        e.blend = if additive {
+            Blend::Additive
+        } else {
+            Blend::Alpha
+        };
         self.gpu = gpu;
         if save {
             self.save();
