@@ -1,6 +1,9 @@
 //! Writing a prepared scene into its slot's buffers and building the
 //! slot's frame bind groups.
 
+use super::layouts::{
+    DECAL_COLOR_BINDING, DECAL_NORMAL_BINDING, DECALS_BINDING, SCENE_COPY_BINDING,
+};
 use super::prepare::Prepared;
 use super::render::SceneRenderer;
 use super::sky::Tonemap;
@@ -82,6 +85,7 @@ impl SceneRenderer {
             atlas: u64::from(shadows),
             env,
             buffers: self.generation,
+            features: self.features.group_key(&self.slots[ri].features),
         };
         if self.slots[ri].groups.as_ref().is_some_and(|g| g.0 == key) {
             return;
@@ -90,6 +94,8 @@ impl SceneRenderer {
         let slot = &self.slots[ri];
         let device = shared.device();
         let entry = |binding, resource| wgpu::BindGroupEntry { binding, resource };
+        let (decal_color, decal_normal) = self.features.atlas_views();
+        let view = wgpu::BindingResource::TextureView;
         let frame = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("yowie scene frame"),
             layout: &self.layouts.frame,
@@ -106,6 +112,13 @@ impl SceneRenderer {
                 entry(9, wgpu::BindingResource::TextureView(&maps.specular)),
                 entry(10, wgpu::BindingResource::TextureView(&maps.irradiance)),
                 entry(11, wgpu::BindingResource::Sampler(&self.linear_sampler)),
+                entry(
+                    SCENE_COPY_BINDING,
+                    view(self.features.copy_view(&slot.features)),
+                ),
+                entry(DECALS_BINDING, buf(&slot.features.decals.buffer)),
+                entry(DECAL_COLOR_BINDING, view(decal_color)),
+                entry(DECAL_NORMAL_BINDING, view(decal_normal)),
             ],
         });
         let shadow = device.create_bind_group(&wgpu::BindGroupDescriptor {

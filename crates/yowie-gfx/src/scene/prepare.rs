@@ -12,10 +12,10 @@ use yowie_core::{Mat4, Vec3, Vec4};
 
 use super::bounds::{Aabb, Frustum};
 use super::camera::{Camera3D, Projection};
+use super::classes::{Extras, PassLists, classify};
 use super::cluster::{ClusterGrid, MAX_LIGHTS, assign};
 use super::frame_data::FrameUniform;
 use super::light::{GpuLight, LocalLight};
-use super::material::AlphaMode;
 use super::pipelines::{MeshKey, MeshPass};
 use super::record::{DrawRecord, SceneRecord};
 use super::shadow::{self, MAX_POINT_SHADOWS, MAX_SPOT_SHADOWS, POINT_BASE, SPOT_BASE, ShadowView};
@@ -26,7 +26,7 @@ use super::vertex::{GpuInstance, affine_rows};
 pub(crate) struct Batch {
     pub(crate) key: MeshKey,
     /// The packed sort key the batch's draws share.
-    sort: u64,
+    pub(crate) sort: u64,
     pub(crate) mesh: u32,
     pub(crate) material: u32,
     pub(crate) first: u32,
@@ -39,7 +39,18 @@ pub(crate) struct Prepared {
     pub(crate) frame: FrameUniform,
     pub(crate) instances: Vec<GpuInstance>,
     pub(crate) opaque: Vec<Batch>,
+    /// Sorted blended batches, back to front.
     pub(crate) blend: Vec<Batch>,
+    /// Transmissive batches, drawn after the scene copy.
+    pub(crate) transmit: Vec<Batch>,
+    /// Order-independent blended batches.
+    pub(crate) oit: Vec<Batch>,
+    /// Outline hulls and x-ray tints, drawn after the opaque scene.
+    pub(crate) outline: Vec<Batch>,
+    pub(crate) xray: Vec<Batch>,
+    /// The scene's decals, written by the renderer once their images have
+    /// atlas cells.
+    pub(crate) decals: Vec<super::decals::GpuDecal>,
     /// Shadow views in render order, each with its batches.
     pub(crate) shadows: Vec<(usize, Vec<Batch>)>,
     pub(crate) lights: Vec<GpuLight>,
@@ -54,20 +65,12 @@ pub(crate) struct Prepared {
 
 /// One draw after culling: its sort key, depth and sphere.
 #[derive(Clone, Copy, Debug)]
-struct Resolved {
-    key: u64,
-    depth: f32,
-    sphere: Vec4,
-    draw: u32,
-    mesh_key: MeshKey,
-}
-
-fn pass_of(alpha: AlphaMode) -> MeshPass {
-    match alpha {
-        AlphaMode::Opaque => MeshPass::Opaque,
-        AlphaMode::Mask(_) => MeshPass::Mask,
-        AlphaMode::Blend => MeshPass::Blend,
-    }
+pub(crate) struct Resolved {
+    pub(crate) key: u64,
+    pub(crate) depth: f32,
+    pub(crate) sphere: Vec4,
+    pub(crate) draw: u32,
+    pub(crate) mesh_key: MeshKey,
 }
 
 pub(crate) fn pack_key(key: &MeshKey, material: u32, mesh: u32) -> u64 {
@@ -92,7 +95,7 @@ fn world_bounds(rec: &SceneRecord, d: &DrawRecord, local: Aabb, skinned: bool) -
 }
 
 /// The instance record of a draw, for shadow view `view`.
-fn instance(d: &DrawRecord, view: u32) -> GpuInstance {
+pub(crate) fn instance(d: &DrawRecord, view: u32) -> GpuInstance {
     GpuInstance {
         rows: affine_rows(&d.model),
         params: [
@@ -106,7 +109,7 @@ fn instance(d: &DrawRecord, view: u32) -> GpuInstance {
 
 /// Builds batches from resolved draws already in draw order, merging
 /// neighbours with equal keys, and appends their instances.
-fn emit(
+pub(crate) fn emit(
     rec: &SceneRecord,
     order: &[Resolved],
     view: u32,
@@ -176,8 +179,13 @@ pub(crate) fn prepare(rec: &SceneRecord, v: &View, out: &mut Prepared) {
     out.instances.clear();
     out.opaque.clear();
     out.blend.clear();
+    out.transmit.clear();
+    out.oit.clear();
+    out.outline.clear();
+    out.xray.clear();
     out.shadows.clear();
     out.culled = 0;
+    let mut extras = Extras::default();
     let frustum = Frustum::from_view_proj(&v.view_proj);
     let infos: Vec<MeshInfo> = rec
         .meshes
@@ -196,22 +204,25 @@ pub(crate) fn prepare(rec: &SceneRecord, v: &View, out: &mut Prepared) {
         let info = &infos[d.mesh as usize];
         let skinned = info.skinned && d.joints != u32::MAX;
         let material = &rec.materials[d.material as usize];
-        let pass = pass_of(material.alpha_mode);
+        let class = classify(material, rec.transparency);
+        let pass = class.pass;
         let mesh_key = MeshKey {
             pass,
             double_sided: material.double_sided,
             skinned,
+            stencil: class.stencil,
+            shader: class.shader,
         };
         let b = world_bounds(rec, d, info.bounds, skinned);
-        let sphere = b.center().extend(b.radius());
-        let mut r = Resolved {
+        let sphere = b.center().extend(b.radius() + class.reach());
+        let r = Resolved {
             key: pack_key(&mesh_key, d.material, d.mesh),
             depth: (b.center() - v.position).dot(v.forward),
             sphere,
             draw: i as u32,
             mesh_key,
         };
-        if any_shadows && pass != MeshPass::Blend {
+        if any_shadows && class.casts_shadow() {
             let shadow_pass = if pass == MeshPass::Mask {
                 MeshPass::ShadowMask
             } else {
@@ -221,6 +232,7 @@ pub(crate) fn prepare(rec: &SceneRecord, v: &View, out: &mut Prepared) {
                 pass: shadow_pass,
                 double_sided: true,
                 skinned,
+                ..MeshKey::default()
             };
             // Opaque casters ignore the material, so they batch by mesh.
             let mat = if shadow_pass == MeshPass::ShadowMask {
@@ -238,12 +250,12 @@ pub(crate) fn prepare(rec: &SceneRecord, v: &View, out: &mut Prepared) {
             out.culled += 1;
             continue;
         }
-        if pass == MeshPass::Blend {
-            blend.push(r);
-        } else {
-            r.mesh_key = mesh_key;
-            lit.push(r);
+        match pass {
+            MeshPass::Blend => blend.push(r),
+            MeshPass::Opaque | MeshPass::Mask => lit.push(r),
+            _ => {}
         }
+        extras.add(rec, &class, r);
     }
     // Opaque: group by key with instances front to back, then order the
     // batches front to back within each pipeline.
@@ -260,6 +272,17 @@ pub(crate) fn prepare(rec: &SceneRecord, v: &View, out: &mut Prepared) {
     for (_, _, range) in groups {
         emit(rec, &lit[range], 0, &mut out.instances, &mut out.opaque);
     }
+    extras.emit(
+        rec,
+        &mut out.instances,
+        &mut PassLists {
+            opaque: &mut out.opaque,
+            transmit: &mut out.transmit,
+            oit: &mut out.oit,
+            outline: &mut out.outline,
+            xray: &mut out.xray,
+        },
+    );
     blend.sort_by(|a, b| b.depth.total_cmp(&a.depth));
     emit(rec, &blend, 0, &mut out.instances, &mut out.blend);
     prepare_lights(rec, v, &frustum, out);

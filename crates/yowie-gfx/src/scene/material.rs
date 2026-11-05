@@ -6,28 +6,33 @@
 //! materials share one record) and uploaded as an array of
 //! [`MaterialGpu`] in a storage buffer at group 0, binding 4, indexed by
 //! the instance stream. The textures of a material live in a bind group at
-//! group 1 (bindings 0 to 4 are the textures, 5 to 9 their samplers),
-//! cached across frames by the five texture ids.
+//! group 1 (the five core textures at bindings 0 to 4 with their samplers
+//! at 5 to 9, the layered feature textures at 10 to 18 sharing the sampler
+//! at 19), cached across frames by the texture ids.
 //!
-//! To add a layered feature (clearcoat, sheen, transmission, iridescence,
-//! anisotropy, specular tint, subsurface, fur shells):
+//! The layered features (clearcoat, sheen, transmission and the rest, in
+//! `layers.rs`) pack into the record's `ext` vectors with a bit each in
+//! `flags[2]`; `flags[3]` says which feature textures are present. To add
+//! another:
 //!
-//! 1. Add its fields to [`Material`] with defaults that switch it off.
-//! 2. Pack them into one or more of the `ext` vectors of [`MaterialGpu`]
-//!    in [`Material::gpu`] and set a bit in `flags[2]` (the
-//!    [`EXT_CLEARCOAT`]-style constants below reserve the bits). The record
-//!    keeps its size, so the storage layout and every shader stay valid.
-//! 3. In `shaders/surface.wgsl`, read the vectors in `surface()` into new
-//!    fields of `Surface`, and add the lobe in `shade_light()` and
-//!    `shade_ambient()` behind the flag bit.
-//! 4. A feature with its own texture appends a binding pair after 9 to
-//!    `MATERIAL_TEXTURES` in `layouts.rs` and a slot in the cache key in
-//!    `textures.rs`. Fur shells, which draw a mesh several times, add a
-//!    draw class in `prepare.rs` beside the blended one.
+//! 1. Add its type to `layers.rs` and an `Option` of it to [`Material`].
+//! 2. Pack it in `layers::pack` into free `ext` components (`ext[9]` is
+//!    free) and set a new bit in `flags[2]`.
+//! 3. In `shaders/layers.wgsl`, read it in `read_layers` into a new field
+//!    of `Layers`, and add its lobe in `layer_light` and `layer_ambient`.
+//! 4. A feature with its own texture appends a slot after the nine layer
+//!    textures (`LAYER_TEXTURES` in `layouts.rs`) and to
+//!    `layers::layer_textures`.
 
 use bytemuck::{Pod, Zeroable};
 use yowie_core::{Color, Vec2};
 
+use super::layers::{
+    self, Anisotropy, Clearcoat, Fur, Iridescence, Outline, Sheen, Specular, Transmission,
+};
+use super::layouts::MATERIAL_TEXTURES;
+use super::stencil::Stencil;
+use super::surface_shader::SurfaceShader;
 use crate::texture::Texture;
 
 /// How a material's alpha is used.
@@ -40,8 +45,10 @@ pub enum AlphaMode {
     /// and the shadow pass, giving hard edges and cut-out shadows (leaves,
     /// fences, grass).
     Mask(f32),
-    /// The surface is drawn after the opaque scene, sorted back to front,
-    /// and alpha fades the whole shaded result (glass, smoke, water).
+    /// The surface is drawn after the opaque scene and alpha fades the
+    /// whole shaded result (glass, smoke, water). Blended surfaces are
+    /// composited order-independently unless the scene asks for sorting
+    /// (see [`Transparency`](super::Transparency)).
     Blend,
 }
 
@@ -86,7 +93,8 @@ impl TextureTransform {
     }
 }
 
-/// Which texture coordinate set (0 or 1) each texture reads.
+/// Which texture coordinate set (0 or 1) each core texture reads. The
+/// layered feature textures read the first set.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct UvSets {
     /// For the base colour texture.
@@ -101,14 +109,32 @@ pub struct UvSets {
     pub emissive: u8,
 }
 
-/// A metallic-roughness physically based material, as glTF defines it.
+/// A metallic-roughness physically based material, as glTF defines it,
+/// with the layered features of its material extensions.
 ///
 /// Every texture is optional; the factors alone are a complete material.
 /// Colours are sRGB with straight alpha. Textures that hold data
-/// (metallic-roughness, normal, occlusion) must be created with
-/// [`TextureOptions::data`](crate::TextureOptions::data) set; colour ones
-/// (base colour, emissive) without it. The default is a white, fully rough
-/// dielectric.
+/// (metallic-roughness, normal, occlusion and the feature maps) must be
+/// created with [`TextureOptions::data`](crate::TextureOptions::data) set;
+/// colour ones (base colour, emissive) without it. The default is a white,
+/// fully rough dielectric with every layered feature off.
+///
+/// ```no_run
+/// # use yowie_gfx::scene::*;
+/// # use yowie_core::Color;
+/// let car_paint = Material {
+///     clearcoat: Some(Clearcoat::new(1.0, 0.05)),
+///     ..Material::color(Color::rgb8(150, 20, 30), 0.0, 0.6)
+/// };
+/// let glass = Material {
+///     transmission: Some(Transmission {
+///         attenuation_color: Color::rgb8(120, 200, 255),
+///         attenuation_distance: 1.0,
+///         ..Transmission::glass(0.8)
+///     }),
+///     ..Material::color(Color::WHITE, 0.0, 0.05)
+/// };
+/// ```
 #[derive(Clone, Debug, PartialEq)]
 pub struct Material {
     /// Multiplies the base colour texture and the vertex colour; its alpha
@@ -147,8 +173,47 @@ pub struct Material {
     pub vertex_colors: bool,
     /// Moves every texture's coordinates.
     pub uv_transform: TextureTransform,
-    /// Which coordinate set each texture reads.
+    /// Which coordinate set each core texture reads.
     pub uv_sets: UvSets,
+    /// The index of refraction (KHR_materials_ior): 1.5 for glass and most
+    /// plastics, 1.33 for water. It sets how strongly a dielectric
+    /// reflects and how much transmission bends light.
+    pub ior: f32,
+    /// Scales and tints a dielectric's reflection.
+    pub specular: Option<Specular>,
+    /// A clear varnish layer with its own roughness and normal.
+    pub clearcoat: Option<Clearcoat>,
+    /// Soft grazing light, the look of cloth.
+    pub sheen: Option<Sheen>,
+    /// Light let through thin parts and tinted by the base colour (leaves,
+    /// wax, skin), 0 to 1; 0 is off. `thickness_texture` shapes it.
+    pub subsurface: f32,
+    /// Thickness in green (KHR_materials_volume), 0 thin to 1 thick: it
+    /// scales the transmission thickness and keeps subsurface light out
+    /// of thick parts; data. Without it subsurface treats the surface as
+    /// thin everywhere.
+    pub thickness_texture: Option<Texture>,
+    /// Refracting glass with absorption.
+    pub transmission: Option<Transmission>,
+    /// A thin film whose colour turns with the angle.
+    pub iridescence: Option<Iridescence>,
+    /// A highlight stretched along the surface.
+    pub anisotropy: Option<Anisotropy>,
+    /// Shells of fur over the mesh.
+    pub fur: Option<Fur>,
+    /// A line around the mesh's silhouette.
+    pub outline: Option<Outline>,
+    /// A tint, sRGB with alpha as strength, drawn over the parts of the
+    /// mesh hidden behind other geometry, so it shows through walls.
+    /// Applies to opaque and cut-out materials.
+    pub xray: Option<Color>,
+    /// The stencil test and write; the default draws everywhere.
+    pub stencil: Stencil,
+    /// Whether decals project onto the surface.
+    pub receive_decals: bool,
+    /// A game-written surface program that adjusts the surface before the
+    /// engine lights it.
+    pub shader: Option<SurfaceShader>,
 }
 
 impl Default for Material {
@@ -172,6 +237,21 @@ impl Default for Material {
             vertex_colors: true,
             uv_transform: TextureTransform::default(),
             uv_sets: UvSets::default(),
+            ior: 1.5,
+            specular: None,
+            clearcoat: None,
+            sheen: None,
+            subsurface: 0.0,
+            thickness_texture: None,
+            transmission: None,
+            iridescence: None,
+            anisotropy: None,
+            fur: None,
+            outline: None,
+            xray: None,
+            stencil: Stencil::default(),
+            receive_decals: true,
+            shader: None,
         }
     }
 }
@@ -182,25 +262,9 @@ pub(crate) const FLAG_VERTEX_COLORS: u32 = 2;
 pub(crate) const FLAG_DOUBLE_SIDED: u32 = 4;
 pub(crate) const FLAG_BLEND: u32 = 8;
 pub(crate) const FLAG_NORMAL_MAP: u32 = 16;
+pub(crate) const FLAG_DECALS: u32 = 32;
 
-/// Bits of `MaterialGpu::flags[2]` reserved for the layered features.
-pub const EXT_CLEARCOAT: u32 = 1;
-/// Reserved for sheen.
-pub const EXT_SHEEN: u32 = 2;
-/// Reserved for transmission.
-pub const EXT_TRANSMISSION: u32 = 4;
-/// Reserved for iridescence.
-pub const EXT_IRIDESCENCE: u32 = 8;
-/// Reserved for anisotropy.
-pub const EXT_ANISOTROPY: u32 = 16;
-/// Reserved for specular tint.
-pub const EXT_SPECULAR: u32 = 32;
-/// Reserved for subsurface scattering.
-pub const EXT_SUBSURFACE: u32 = 64;
-/// Reserved for fur shells.
-pub const EXT_FUR: u32 = 128;
-
-/// The material record the shaders read: 192 bytes, matching `Material`
+/// The material record the shaders read: 256 bytes, matching `Material`
 /// in `shaders/common.wgsl`.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Pod, Zeroable)]
@@ -216,11 +280,11 @@ pub struct MaterialGpu {
     pub uv_row0: [f32; 4],
     /// The texture transform's second row (`c d ty`).
     pub uv_row1: [f32; 4],
-    /// Feature flags, texture coordinate sets (one bit per texture),
-    /// extension flags, reserved.
+    /// Feature flags, texture coordinate sets (one bit per core texture),
+    /// layered feature flags, layered feature textures present.
     pub flags: [u32; 4],
-    /// Free vectors for the layered features; zero means off.
-    pub ext: [[f32; 4]; 6],
+    /// The layered features' parameters; zero where a feature is off.
+    pub ext: [[f32; 4]; 10],
 }
 
 impl Material {
@@ -242,6 +306,9 @@ impl Material {
         if self.normal_texture.is_some() {
             flags |= FLAG_NORMAL_MAP;
         }
+        if self.receive_decals {
+            flags |= FLAG_DECALS;
+        }
         let u = &self.uv_sets;
         let uv_bits = [
             u.base_color,
@@ -260,7 +327,7 @@ impl Material {
         let e = self.emissive.to_linear();
         let k = self.emissive_strength;
         let [row0, row1] = self.uv_transform.rows();
-        MaterialGpu {
+        let mut g = MaterialGpu {
             base_color: self.base_color.to_linear(),
             emissive: [e[0] * k, e[1] * k, e[2] * k, self.normal_scale],
             params: [
@@ -272,31 +339,34 @@ impl Material {
             uv_row0: row0,
             uv_row1: row1,
             flags: [flags, uv_bits, 0, 0],
-            ext: [[0.0; 4]; 6],
-        }
+            ext: [[0.0; 4]; 10],
+        };
+        layers::pack(self, &mut g);
+        g
     }
 
-    /// The ids of the five textures, 0 for none, in binding order.
-    pub(crate) fn texture_ids(&self) -> [u64; 5] {
-        [
-            &self.base_color_texture,
-            &self.metallic_roughness_texture,
-            &self.normal_texture,
-            &self.occlusion_texture,
-            &self.emissive_texture,
-        ]
-        .map(|t| t.as_ref().map_or(0, Texture::id))
+    /// The ids of the material's textures, 0 for none, in binding order.
+    pub(crate) fn texture_ids(&self) -> [u64; MATERIAL_TEXTURES as usize] {
+        self.textures().map(|t| t.map_or(0, Texture::id))
     }
 
-    /// The textures in binding order.
-    pub(crate) fn textures(&self) -> [Option<&Texture>; 5] {
-        [
+    /// The textures in binding order: the five core textures, then the
+    /// layered feature textures.
+    pub(crate) fn textures(&self) -> [Option<&Texture>; MATERIAL_TEXTURES as usize] {
+        let core = [
             self.base_color_texture.as_ref(),
             self.metallic_roughness_texture.as_ref(),
             self.normal_texture.as_ref(),
             self.occlusion_texture.as_ref(),
             self.emissive_texture.as_ref(),
-        ]
+        ];
+        let ext = layers::layer_textures(self);
+        std::array::from_fn(|i| if i < 5 { core[i] } else { ext[i - 5] })
+    }
+
+    /// Whether the material draws in the transmission pass.
+    pub(crate) fn transmits(&self) -> bool {
+        self.transmission.as_ref().is_some_and(|t| t.strength > 0.0)
     }
 
     /// A plain coloured material with the given metallic and roughness.
@@ -326,8 +396,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn record_is_192_bytes_and_flags_pack() {
-        assert_eq!(std::mem::size_of::<MaterialGpu>(), 192);
+    fn record_is_256_bytes_and_flags_pack() {
+        assert_eq!(std::mem::size_of::<MaterialGpu>(), 256);
         let m = Material {
             alpha_mode: AlphaMode::Mask(0.4),
             double_sided: true,

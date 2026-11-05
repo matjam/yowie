@@ -27,7 +27,9 @@ struct SkinIn {
 }
 
 struct VertexOut {
-    @builtin(position) clip: vec4<f32>,
+    // Invariant, so the x-ray pass's depth matches the opaque pass's
+    // exactly where a mesh covers itself.
+    @builtin(position) @invariant clip: vec4<f32>,
     @location(0) world: vec3<f32>,
     @location(1) normal: vec3<f32>,
     @location(2) tangent: vec4<f32>,
@@ -36,6 +38,8 @@ struct VertexOut {
     @location(5) color: vec4<f32>,
     @location(6) @interpolate(flat) material: u32,
     @location(7) view_depth: f32,
+    // A fur shell's height from 0 (the surface) to 1 (the outermost).
+    @location(8) @interpolate(flat) shell: f32,
 }
 
 struct Placed {

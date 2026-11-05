@@ -25,6 +25,15 @@ struct Surface {
     world: vec3<f32>,
     view: vec3<f32>,
     unlit: bool,
+    // The mesh's texture coordinates and vertex colour.
+    uv: vec2<f32>,
+    uv2: vec2<f32>,
+    color: vec4<f32>,
+    // The mesh normal before normal mapping, and a unit tangent.
+    geometric: vec3<f32>,
+    tangent: vec3<f32>,
+    // Clearcoat, sheen, transmission and the other layered features.
+    layers: Layers,
 }
 
 fn uv_of(m: Material, slot: u32, uv: vec2<f32>, uv2: vec2<f32>) -> vec2<f32> {
@@ -65,6 +74,8 @@ fn surface(in: VertexOut, front: bool) -> Surface {
         n = -n;
         t = -t;
     }
+    let geometric = n;
+    let tangent = t;
     if (m.flags.x & MAT_NORMAL_MAP) != 0u && dot(t, t) > 1e-8 {
         t = normalize(t - n * dot(n, t));
         let b = cross(n, t) * in.tangent.w;
@@ -75,6 +86,7 @@ fn surface(in: VertexOut, front: bool) -> Surface {
     s.world = in.world;
     s.view = normalize(frame.camera.xyz - in.world);
     s.unlit = (m.flags.x & MAT_UNLIT) != 0u;
+    finish_surface(&s, in, geometric, tangent);
     return s;
 }
 
@@ -151,18 +163,18 @@ fn shade_light(s: Surface, l: vec3<f32>, radiance: vec3<f32>) -> vec3<f32> {
     let n = s.normal;
     let nl = dot(n, l);
     if nl <= 0.0 {
-        return vec3<f32>(0.0);
+        return layer_back_light(s, l, radiance);
     }
     let h = normalize(l + s.view);
     let nv = max(dot(n, s.view), 1e-4);
     let nh = max(dot(n, h), 0.0);
     let vh = max(dot(s.view, h), 0.0);
     let a = s.roughness * s.roughness;
-    let f0 = mix(vec3<f32>(0.04), s.base, s.metallic);
-    let f = f_schlick(f0, vh);
-    let spec = f * d_ggx(nh, a) * v_smith(nv, nl, a);
-    let diffuse = (1.0 - f) * (1.0 - s.metallic) * s.base / PI;
-    return (diffuse + spec) * radiance * nl;
+    let f0 = base_f0(s);
+    let f = layer_fresnel(s, f0, vh);
+    let spec = f * specular_dv(s, l, h, nv, nl, nh, a);
+    let diffuse = (1.0 - f) * (1.0 - s.metallic) * (1.0 - s.layers.transmission) * s.base / PI;
+    return layer_light(s, l, radiance, (diffuse + spec) * radiance * nl);
 }
 
 fn env_brdf(f0: vec3<f32>, roughness: f32, nv: f32) -> vec3<f32> {
@@ -179,17 +191,19 @@ fn env_brdf(f0: vec3<f32>, roughness: f32, nv: f32) -> vec3<f32> {
 fn shade_ambient(s: Surface) -> vec3<f32> {
     let n = s.normal;
     let nv = max(dot(n, s.view), 1e-4);
-    let f0 = mix(vec3<f32>(0.04), s.base, s.metallic);
-    let spec_weight = env_brdf(f0, s.roughness, nv);
-    let diffuse_weight = (1.0 - spec_weight) * (1.0 - s.metallic) * s.base;
+    let f0 = base_f0(s);
+    let spec_weight = env_weight(s, f0, nv);
+    let diffuse_weight = (1.0 - spec_weight) * (1.0 - s.metallic) * (1.0 - s.layers.transmission) * s.base;
     if frame.env.z > 0.5 {
-        let r = reflect(-s.view, n);
+        let r = layer_reflect(s, n);
         let lod = s.roughness * (frame.env.y - 1.0);
         let spec = textureSampleLevel(env_specular, env_sampler, r, lod).rgb;
         let irr = textureSampleLevel(env_irradiance, env_sampler, n, 0.0).rgb;
-        return (irr * diffuse_weight + spec * spec_weight) * frame.env.x * s.occlusion;
+        let c = (irr * diffuse_weight + spec * spec_weight) * frame.env.x * s.occlusion;
+        return layer_ambient(s, c, irr * frame.env.x);
     }
-    return frame.ambient.rgb * (diffuse_weight + spec_weight) * s.occlusion;
+    let c = frame.ambient.rgb * (diffuse_weight + spec_weight) * s.occlusion;
+    return layer_ambient(s, c, frame.ambient.rgb);
 }
 
 fn cluster_index(frag: vec4<f32>, view_depth: f32) -> u32 {
@@ -270,7 +284,7 @@ fn apply_fog(color: vec3<f32>, world: vec3<f32>) -> vec3<f32> {
 }
 
 fn lit(in: VertexOut, front: bool) -> vec4<f32> {
-    let s = surface(in, front);
+    let s = material(surface(in, front));
     let c = apply_fog(shade(s, in.clip, in.view_depth), in.world);
     return vec4<f32>(c, s.alpha);
 }

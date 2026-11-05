@@ -4,6 +4,7 @@
 
 use yowie_core::{Color, Rect, UVec2};
 
+use super::features::Features;
 use super::frame_data::{FrameUniform, fill_frame, sky_key};
 use super::ibl::{EnvMaps, IblBaker, cube_view};
 use super::layouts::{HDR_FORMAT, SceneLayouts};
@@ -62,6 +63,8 @@ pub(crate) struct SceneRenderer {
     frame: u64,
     /// Bumped whenever a slot buffer is replaced, so bind groups rebuild.
     pub(super) generation: u64,
+    /// Transmission, transparency, decal and surface shader state.
+    pub(super) features: Features,
 }
 
 fn black_cube(device: &wgpu::Device) -> wgpu::TextureView {
@@ -135,6 +138,7 @@ impl SceneRenderer {
                 ..Default::default()
             }),
             morph_none,
+            features: Features::new(device),
             layouts,
             free: Vec::new(),
             records: Vec::new(),
@@ -143,6 +147,11 @@ impl SceneRenderer {
             frame: 0,
             generation: 0,
         }
+    }
+
+    /// The number of frames begun so far.
+    pub(super) fn frame_number(&self) -> u64 {
+        self.frame
     }
 
     pub(crate) fn begin_frame(&mut self) {
@@ -257,7 +266,8 @@ impl SceneRenderer {
         prepare(rec, &v, &mut prepared);
         fill_frame(rec, &v, &mut prepared.frame);
         let env = self.choose_env(shared, encoder, ri, &mut prepared.frame);
-        self.slots[ri].ensure_targets(device, size);
+        self.slots[ri].ensure_targets(device, size, self.layouts.depth_format);
+        self.prepare_features(shared, ri, &mut prepared);
         self.upload(shared, ri, &prepared);
         let any_shadows = !prepared.shadows.is_empty();
         if any_shadows && self.atlas.is_none() {

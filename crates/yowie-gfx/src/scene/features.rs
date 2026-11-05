@@ -1,0 +1,241 @@
+//! The GPU state of the material features beside the core scene: the
+//! transmission copy and the order-independent transparency targets of
+//! each slot, the decal records and atlases, and the surface shaders'
+//! uniform blocks.
+
+use super::decals::DecalAtlases;
+use super::layouts::HDR_FORMAT;
+use super::prepare::Prepared;
+use super::render::SceneRenderer;
+use super::slot::GrowBuffer;
+use super::transmission::{CopyPipelines, SceneCopy};
+use super::transparency::{OitTargets, composite_pipeline};
+use crate::shared::Shared;
+
+/// A slot's feature targets and buffers.
+#[derive(Debug)]
+pub(crate) struct SlotFeatures {
+    pub(crate) copy: Option<SceneCopy>,
+    pub(crate) oit: Option<OitTargets>,
+    pub(crate) decals: GrowBuffer,
+    pub(crate) user: GrowBuffer,
+    /// The uniform bind group and the buffer generation and binding size
+    /// it was made for.
+    pub(crate) user_group: Option<((u64, u64), wgpu::BindGroup)>,
+    user_generation: u64,
+    /// Each material's dynamic offset into `user`, or `u32::MAX`.
+    pub(crate) user_offsets: Vec<u32>,
+}
+
+impl SlotFeatures {
+    pub(crate) fn new(device: &wgpu::Device) -> Self {
+        use wgpu::BufferUsages as U;
+        Self {
+            copy: None,
+            oit: None,
+            decals: GrowBuffer::new(device, "yowie decals", U::STORAGE),
+            user: GrowBuffer::new(device, "yowie surface uniforms", U::UNIFORM),
+            user_group: None,
+            user_generation: 0,
+            user_offsets: Vec::new(),
+        }
+    }
+}
+
+/// The renderer's feature pipelines, atlases and stand-in textures.
+#[derive(Debug)]
+pub(crate) struct Features {
+    copy: Option<CopyPipelines>,
+    composite: Option<wgpu::RenderPipeline>,
+    atlases: Option<DecalAtlases>,
+    /// A 1x1 HDR texture bound where a scene has no copy.
+    no_copy: wgpu::TextureView,
+    /// A 1x1 colour texture bound where there are no decal atlases.
+    no_atlas: wgpu::TextureView,
+}
+
+fn one_texel(device: &wgpu::Device, format: wgpu::TextureFormat) -> wgpu::TextureView {
+    device
+        .create_texture(&wgpu::TextureDescriptor {
+            label: Some("yowie feature stand-in"),
+            size: wgpu::Extent3d {
+                width: 1,
+                height: 1,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        })
+        .create_view(&Default::default())
+}
+
+impl Features {
+    pub(crate) fn new(device: &wgpu::Device) -> Self {
+        Self {
+            copy: None,
+            composite: None,
+            atlases: None,
+            no_copy: one_texel(device, HDR_FORMAT),
+            no_atlas: one_texel(device, wgpu::TextureFormat::Rgba8Unorm),
+        }
+    }
+
+    /// The decal atlases' views, or stand-ins before any decal was drawn.
+    pub(crate) fn atlas_views(&self) -> (&wgpu::TextureView, &wgpu::TextureView) {
+        match &self.atlases {
+            Some(a) => (a.color_view(), a.normal_view()),
+            None => (&self.no_atlas, &self.no_atlas),
+        }
+    }
+
+    /// A slot's copy view, or the stand-in.
+    pub(crate) fn copy_view<'a>(&'a self, slot: &'a SlotFeatures) -> &'a wgpu::TextureView {
+        slot.copy.as_ref().map_or(&self.no_copy, |c| &c.view)
+    }
+
+    /// What the frame bind group names from the features, so it rebuilds
+    /// when that changes.
+    pub(crate) fn group_key(&self, slot: &SlotFeatures) -> u64 {
+        let copy = slot.copy.as_ref().map_or(0, |c| c.id);
+        (copy << 1) | u64::from(self.atlases.is_some())
+    }
+
+    pub(crate) fn copy_pipelines(&self) -> Option<&CopyPipelines> {
+        self.copy.as_ref()
+    }
+
+    pub(crate) fn composite(&self) -> Option<&wgpu::RenderPipeline> {
+        self.composite.as_ref()
+    }
+}
+
+impl SceneRenderer {
+    /// Makes what slot `ri`'s features need this frame: the decal records
+    /// (placing their images in the atlases), the transmission copy and
+    /// OIT targets at the slot's size, and the surface shaders' uniform
+    /// blocks.
+    pub(super) fn prepare_features(&mut self, shared: &Shared, ri: usize, p: &mut Prepared) {
+        let device = shared.device();
+        let frame = self.frame_number();
+        let rec = &self.records[ri];
+        if !rec.decals.is_empty() {
+            let atlases = self
+                .features
+                .atlases
+                .get_or_insert_with(|| DecalAtlases::new(shared));
+            atlases.records(shared, &rec.decals, frame, &mut p.decals);
+        } else {
+            p.decals.clear();
+        }
+        p.frame.counts[2] = p.decals.len() as u32;
+        let Some(targets) = self.slots[ri].targets.as_ref() else {
+            return;
+        };
+        let size = targets.size;
+        if !p.transmit.is_empty() {
+            if self.features.copy.is_none() {
+                self.features.copy = Some(CopyPipelines::new(device, &self.layouts));
+            }
+            let slot = &mut self.slots[ri];
+            if slot.features.copy.as_ref().is_none_or(|c| c.size != size) {
+                let Some(t) = slot.targets.as_ref() else {
+                    return;
+                };
+                slot.features.copy = Some(SceneCopy::new(
+                    device,
+                    &self.layouts,
+                    &self.linear_sampler,
+                    &t.color,
+                    size,
+                ));
+            }
+        }
+        if !p.oit.is_empty() {
+            if self.features.composite.is_none() {
+                self.features.composite = Some(composite_pipeline(device, &self.layouts));
+            }
+            let slot = &mut self.slots[ri];
+            if slot.features.oit.as_ref().is_none_or(|o| o.size != size) {
+                slot.features.oit = Some(OitTargets::new(
+                    device,
+                    &self.layouts,
+                    &self.linear_sampler,
+                    size,
+                ));
+            }
+        }
+        self.upload_features(shared, ri, p);
+    }
+
+    /// Writes the decal records and surface shader uniform blocks.
+    fn upload_features(&mut self, shared: &Shared, ri: usize, p: &Prepared) {
+        let (device, queue) = (shared.device(), shared.queue());
+        let rec = &self.records[ri];
+        let slot = &mut self.slots[ri].features;
+        let decals: &[u8] = if p.decals.is_empty() {
+            &[0; 112]
+        } else {
+            bytemuck::cast_slice(&p.decals)
+        };
+        if slot.decals.write(device, queue, decals) {
+            self.generation += 1;
+        }
+        slot.user_offsets.clear();
+        if rec.user_blocks.is_empty() {
+            return;
+        }
+        let align = u64::from(device.limits().min_uniform_buffer_offset_alignment).max(16);
+        let size = rec
+            .user_blocks
+            .iter()
+            .map(|b| (b.len() as u64).div_ceil(16) * 16)
+            .max()
+            .unwrap_or(16)
+            .max(16);
+        let mut bytes = Vec::new();
+        let mut offsets = Vec::with_capacity(rec.user_blocks.len());
+        for b in &rec.user_blocks {
+            let at = (bytes.len() as u64).div_ceil(align) * align;
+            bytes.resize(at as usize, 0);
+            bytes.extend_from_slice(b);
+            offsets.push(at as u32);
+        }
+        // The last block's binding reaches `size` bytes past its offset.
+        let end = u64::from(*offsets.last().unwrap_or(&0)) + size;
+        bytes.resize(end as usize, 0);
+        if slot.user.write(device, queue, &bytes) {
+            slot.user_generation += 1;
+        }
+        slot.user_offsets = rec
+            .material_blocks
+            .iter()
+            .map(|&b| {
+                if b == u32::MAX {
+                    u32::MAX
+                } else {
+                    offsets[b as usize]
+                }
+            })
+            .collect();
+        let key = (slot.user_generation, size);
+        if slot.user_group.as_ref().is_none_or(|(k, _)| *k != key) {
+            let group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("yowie surface uniforms"),
+                layout: &self.layouts.user,
+                entries: &[wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                        buffer: &slot.user.buffer,
+                        offset: 0,
+                        size: wgpu::BufferSize::new(size),
+                    }),
+                }],
+            });
+            slot.user_group = Some((key, group));
+        }
+    }
+}

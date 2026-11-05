@@ -47,9 +47,12 @@ impl Gpu {
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
                 label: Some("yowie device"),
-                // Block-compressed (BC) textures when the GPU has them.
-                required_features: adapter.features() & wgpu::Features::TEXTURE_COMPRESSION_BC,
-                required_limits: wgpu::Limits::default().using_resolution(adapter.limits()),
+                // Block-compressed (BC) textures when the GPU has them, and
+                // a 32-bit float depth format with stencil for the 3D scene.
+                required_features: adapter.features()
+                    & (wgpu::Features::TEXTURE_COMPRESSION_BC
+                        | wgpu::Features::DEPTH32FLOAT_STENCIL8),
+                required_limits: required_limits(&adapter.limits()),
                 experimental_features: wgpu::ExperimentalFeatures::disabled(),
                 memory_hints: wgpu::MemoryHints::Performance,
                 trace: wgpu::Trace::Off,
@@ -75,6 +78,23 @@ impl Gpu {
         let (gpu, ()) = Gpu::new(|_| Ok(()), |_| None).await?;
         Ok(gpu)
     }
+}
+
+/// The sampled textures per shader stage the 3D surface program binds: the
+/// shadow atlas, two environment maps, the transmission copy and two decal
+/// atlases, fourteen material textures, and room for later additions.
+const SCENE_SAMPLED_TEXTURES: u32 = 32;
+
+/// The WebGPU defaults raised to the adapter's resolution limits and to
+/// the sampled texture count the 3D renderer needs, where the adapter
+/// allows it. Every desktop Metal, Vulkan and DX12 driver allows at least
+/// 31.
+fn required_limits(adapter: &wgpu::Limits) -> wgpu::Limits {
+    let mut limits = wgpu::Limits::default().using_resolution(adapter.clone());
+    limits.max_sampled_textures_per_shader_stage = limits
+        .max_sampled_textures_per_shader_stage
+        .max(SCENE_SAMPLED_TEXTURES.min(adapter.max_sampled_textures_per_shader_stage));
+    limits
 }
 
 /// Whether this machine has a GPU adapter Yowie can render with. Tests and

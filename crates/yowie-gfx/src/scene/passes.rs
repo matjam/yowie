@@ -1,20 +1,25 @@
 //! Recording one scene's GPU passes: the shadow atlas, then the HDR scene
-//! (opaque and cut-out meshes, the sky, blended meshes, debug lines).
+//! (opaque, cut-out and fur meshes, the sky, outlines, refracting
+//! meshes over a copy of the scene, x-ray tints, order-independent
+//! transparency, sorted blended meshes, debug lines).
 
 use super::pipelines::{FixedPipeline, MeshKey};
 use super::prepare::{Batch, Prepared};
 use super::render::SceneRenderer;
 use super::shadow::atlas_rect;
-use super::slot::SceneSlot;
+use super::stencil::StencilKey;
+use super::textures::TextureKey;
 use crate::shared::Shared;
 
 /// What the current pass has bound.
 #[derive(Debug, Default)]
 pub(crate) struct PassState {
     pipeline: Option<MeshKey>,
-    textures: Option<[u64; 5]>,
+    textures: Option<TextureKey>,
     mesh: Option<u32>,
     index_count: u32,
+    stencil: Option<u32>,
+    user: Option<u32>,
 }
 
 impl SceneRenderer {
@@ -29,14 +34,47 @@ impl SceneRenderer {
         state: &mut PassState,
     ) -> u32 {
         let rec = &self.records[ri];
+        let features = &self.slots[ri].features;
         let mut calls = 0;
         for b in batches {
+            let material = &rec.materials[b.material as usize];
+            if b.key.shader.1 {
+                // A shader with uniforms draws only with its block bound.
+                let offset = features
+                    .user_offsets
+                    .get(b.material as usize)
+                    .copied()
+                    .unwrap_or(u32::MAX);
+                let Some((_, group)) = features.user_group.as_ref() else {
+                    continue;
+                };
+                if offset == u32::MAX {
+                    continue;
+                }
+                if state.user != Some(offset) {
+                    pass.set_bind_group(3, group, &[offset]);
+                    state.user = Some(offset);
+                }
+            }
             if state.pipeline != Some(b.key) {
-                let p = self.pipelines.mesh(shared.device(), &self.layouts, b.key);
+                let custom = if b.key.shader.0 != 0 {
+                    material.shader.as_ref().map(|s| s.module())
+                } else {
+                    None
+                };
+                let p = self
+                    .pipelines
+                    .mesh(shared.device(), &self.layouts, b.key, custom);
                 pass.set_pipeline(&p);
                 state.pipeline = Some(b.key);
             }
-            let material = &rec.materials[b.material as usize];
+            if b.key.stencil != StencilKey::None {
+                let reference = b.key.stencil.reference(&material.stencil);
+                if state.stencil != Some(reference) {
+                    pass.set_stencil_reference(reference);
+                    state.stencil = Some(reference);
+                }
+            }
             let tex_key = material.texture_ids();
             if state.textures != Some(tex_key)
                 && let Some(g) = self.textures.group(&tex_key)
@@ -73,36 +111,43 @@ impl SceneRenderer {
     }
 }
 
-/// Begins the HDR scene pass of a slot, clearing colour to transparent and
-/// depth to the far plane (0, reversed).
+/// Begins an HDR scene pass. With `clear`, colour clears to transparent,
+/// depth to the far plane (0, reversed) and stencil to 0; otherwise all
+/// three load what earlier passes left.
 fn begin_hdr_pass<'e>(
     encoder: &'e mut wgpu::CommandEncoder,
-    slot: &SceneSlot,
-) -> Option<wgpu::RenderPass<'e>> {
-    let t = slot.targets.as_ref()?;
-    Some(encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+    color: &wgpu::TextureView,
+    depth_stencil: &wgpu::TextureView,
+    clear: bool,
+) -> wgpu::RenderPass<'e> {
+    use wgpu::LoadOp;
+    let (c, d, s) = if clear {
+        (
+            LoadOp::Clear(wgpu::Color::TRANSPARENT),
+            LoadOp::Clear(0.0),
+            LoadOp::Clear(0),
+        )
+    } else {
+        (LoadOp::Load, LoadOp::Load, LoadOp::Load)
+    };
+    let store = wgpu::StoreOp::Store;
+    encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
         label: Some("yowie scene"),
         color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-            view: &t.color,
+            view: color,
             depth_slice: None,
             resolve_target: None,
-            ops: wgpu::Operations {
-                load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
-                store: wgpu::StoreOp::Store,
-            },
+            ops: wgpu::Operations { load: c, store },
         })],
         depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-            view: &t.depth,
-            depth_ops: Some(wgpu::Operations {
-                load: wgpu::LoadOp::Clear(0.0),
-                store: wgpu::StoreOp::Store,
-            }),
-            stencil_ops: None,
+            view: depth_stencil,
+            depth_ops: Some(wgpu::Operations { load: d, store }),
+            stencil_ops: Some(wgpu::Operations { load: s, store }),
         }),
         timestamp_writes: None,
         occlusion_query_set: None,
         multiview_mask: None,
-    }))
+    })
 }
 
 /// Records the shadow atlas pass: every shadow view's casters into its
@@ -163,6 +208,10 @@ pub(crate) fn encode_scene(
     if !p.shadows.is_empty() {
         calls += encode_shadows(r, shared, encoder, ri, p, &shadow_group, &instances);
     }
+    let Some(t) = r.slots[ri].targets.as_ref() else {
+        return calls;
+    };
+    let (color, depth_stencil) = (t.color.clone(), t.depth_stencil.clone());
     let lines = r.slots[ri].lines.buffer.clone();
     let rec = &r.records[ri];
     let (n_lines, n_top) = (rec.lines.len() as u32, rec.lines_on_top.len() as u32);
@@ -170,11 +219,12 @@ pub(crate) fn encode_scene(
     let sky_pipe = sky.then(|| r.fixed(shared, FixedPipeline::Sky));
     let lines_pipe = (n_lines > 0).then(|| r.fixed(shared, FixedPipeline::Lines));
     let top_pipe = (n_top > 0).then(|| r.fixed(shared, FixedPipeline::LinesOnTop));
-    let Some(mut pass) = begin_hdr_pass(encoder, &r.slots[ri]) else {
-        return calls;
+    let bind = |pass: &mut wgpu::RenderPass<'_>| {
+        pass.set_bind_group(0, &frame_group, &[]);
+        pass.set_vertex_buffer(1, instances.slice(..));
     };
-    pass.set_bind_group(0, &frame_group, &[]);
-    pass.set_vertex_buffer(1, instances.slice(..));
+    let mut pass = begin_hdr_pass(encoder, &color, &depth_stencil, true);
+    bind(&mut pass);
     let mut state = PassState::default();
     calls += r.draw_batches(shared, &mut pass, ri, &p.opaque, &mut state);
     if let Some(sky) = &sky_pipe {
@@ -182,6 +232,45 @@ pub(crate) fn encode_scene(
         pass.draw(0..3, 0..1);
         state.pipeline = None;
         calls += 1;
+    }
+    calls += r.draw_batches(shared, &mut pass, ri, &p.outline, &mut state);
+    if !p.transmit.is_empty()
+        && let (Some(copy), Some(pipes)) = (
+            r.slots[ri].features.copy.as_ref(),
+            r.features.copy_pipelines(),
+        )
+    {
+        // Refracting meshes sample the opaque scene as it stands now.
+        drop(pass);
+        copy.record(pipes, encoder);
+        pass = begin_hdr_pass(encoder, &color, &depth_stencil, false);
+        bind(&mut pass);
+        state = PassState::default();
+        calls += r.draw_batches(shared, &mut pass, ri, &p.transmit, &mut state);
+    }
+    calls += r.draw_batches(shared, &mut pass, ri, &p.xray, &mut state);
+    if !p.oit.is_empty()
+        && let (Some(oit), Some(composite)) = (
+            r.slots[ri].features.oit.as_ref(),
+            r.features.composite().cloned(),
+        )
+    {
+        drop(pass);
+        let groups = oit.groups.clone();
+        {
+            let mut accum = oit.begin(encoder, &depth_stencil);
+            bind(&mut accum);
+            let mut s = PassState::default();
+            calls += r.draw_batches(shared, &mut accum, ri, &p.oit, &mut s);
+        }
+        pass = begin_hdr_pass(encoder, &color, &depth_stencil, false);
+        pass.set_pipeline(&composite);
+        pass.set_bind_group(0, &groups[0], &[]);
+        pass.set_bind_group(1, &groups[1], &[]);
+        pass.draw(0..3, 0..1);
+        calls += 1;
+        bind(&mut pass);
+        state = PassState::default();
     }
     calls += r.draw_batches(shared, &mut pass, ri, &p.blend, &mut state);
     if let Some(lp) = &lines_pipe {

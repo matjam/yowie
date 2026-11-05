@@ -5,7 +5,7 @@
 use yowie_core::UVec2;
 
 use super::frame_data::FrameUniform;
-use super::layouts::{DEPTH_FORMAT, HDR_FORMAT};
+use super::layouts::HDR_FORMAT;
 
 /// A buffer that grows to fit what is written to it.
 #[derive(Debug)]
@@ -62,34 +62,43 @@ impl GrowBuffer {
 pub(crate) struct Targets {
     pub(crate) size: UVec2,
     pub(crate) color: wgpu::TextureView,
+    /// The depth aspect alone, for sampling the scene's depth. A view of
+    /// both aspects cannot be bound for sampling.
+    #[allow(dead_code, reason = "kept for post-processing passes that read depth")]
     pub(crate) depth: wgpu::TextureView,
+    /// Depth and stencil together, for attaching to a render pass.
+    pub(crate) depth_stencil: wgpu::TextureView,
 }
 
 impl Targets {
-    fn new(device: &wgpu::Device, size: UVec2) -> Self {
+    fn new(device: &wgpu::Device, size: UVec2, depth_format: wgpu::TextureFormat) -> Self {
         let make = |format, label| {
-            device
-                .create_texture(&wgpu::TextureDescriptor {
-                    label: Some(label),
-                    size: wgpu::Extent3d {
-                        width: size.x,
-                        height: size.y,
-                        depth_or_array_layers: 1,
-                    },
-                    mip_level_count: 1,
-                    sample_count: 1,
-                    dimension: wgpu::TextureDimension::D2,
-                    format,
-                    usage: wgpu::TextureUsages::RENDER_ATTACHMENT
-                        | wgpu::TextureUsages::TEXTURE_BINDING,
-                    view_formats: &[],
-                })
-                .create_view(&Default::default())
+            device.create_texture(&wgpu::TextureDescriptor {
+                label: Some(label),
+                size: wgpu::Extent3d {
+                    width: size.x,
+                    height: size.y,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                    | wgpu::TextureUsages::TEXTURE_BINDING,
+                view_formats: &[],
+            })
         };
+        let depth = make(depth_format, "yowie scene depth");
         Self {
             size,
-            color: make(HDR_FORMAT, "yowie scene colour"),
-            depth: make(DEPTH_FORMAT, "yowie scene depth"),
+            color: make(HDR_FORMAT, "yowie scene colour").create_view(&Default::default()),
+            depth: depth.create_view(&wgpu::TextureViewDescriptor {
+                label: Some("yowie scene depth sampled"),
+                aspect: wgpu::TextureAspect::DepthOnly,
+                ..Default::default()
+            }),
+            depth_stencil: depth.create_view(&Default::default()),
         }
     }
 }
@@ -111,6 +120,8 @@ pub(crate) struct SceneSlot {
     /// The frame and shadow bind groups and what they were built from.
     pub(crate) groups: Option<(GroupKey, wgpu::BindGroup, wgpu::BindGroup)>,
     pub(crate) resolve_group: Option<wgpu::BindGroup>,
+    /// Transmission copy, transparency targets, decals, shader uniforms.
+    pub(crate) features: super::features::SlotFeatures,
 }
 
 /// What a slot's bind groups name besides its own buffers: the atlas and
@@ -120,6 +131,8 @@ pub(crate) struct GroupKey {
     pub(crate) atlas: u64,
     pub(crate) env: u64,
     pub(crate) buffers: u64,
+    /// The transmission copy and decal atlases (`Features::group_key`).
+    pub(crate) features: u64,
 }
 
 impl SceneSlot {
@@ -149,17 +162,23 @@ impl SceneSlot {
             targets: None,
             groups: None,
             resolve_group: None,
+            features: super::features::SlotFeatures::new(device),
         }
     }
 
     /// The targets at `size`, recreated when the size changed. Returns
     /// whether they were recreated.
-    pub(crate) fn ensure_targets(&mut self, device: &wgpu::Device, size: UVec2) -> bool {
+    pub(crate) fn ensure_targets(
+        &mut self,
+        device: &wgpu::Device,
+        size: UVec2,
+        depth_format: wgpu::TextureFormat,
+    ) -> bool {
         let size = size.max(UVec2::ONE);
         if self.targets.as_ref().is_some_and(|t| t.size == size) {
             return false;
         }
-        self.targets = Some(Targets::new(device, size));
+        self.targets = Some(Targets::new(device, size, depth_format));
         self.resolve_group = None;
         true
     }
