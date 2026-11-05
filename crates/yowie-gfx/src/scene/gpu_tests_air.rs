@@ -73,3 +73,37 @@ fn aerial_perspective_fades_distant_ground_towards_the_sky() {
     }
     assert!(blue[1] > blue[0] + 40, "aerial scale hazes it: {blue:?}");
 }
+
+#[test]
+fn aerial_perspective_is_smooth_over_ground_below_the_camera() {
+    let Some(mut gfx) = headless(uvec2(96, 64)) else {
+        return;
+    };
+    let ground = Mesh::new(&gfx, &MeshData::plane(1.0, 1)).expect("mesh");
+    let grey = Material::color(Color::GRAY, 0.0, 1.0);
+    // Looking down at flat ground from above: every pixel's ray leaves
+    // the camera downwards, which once cut some rays short at random.
+    let cam = Camera3D::perspective(Vec3::new(0.0, 30.0, 0.0), Vec3::new(0.0, 0.0, -200.0), 0.6);
+    gfx.scene(&cam, |s| {
+        s.set_sun(sun());
+        s.set_sky(Sky::atmospheric(
+            Atmosphere::new(3000.0).with_aerial(8.0),
+            Color::rgb8(70, 70, 60),
+        ));
+        s.draw(
+            &ground,
+            &grey,
+            yowie_core::Mat4::from_scale(Vec3::new(2000.0, 1.0, 2000.0)),
+        );
+    });
+    let img = render(&mut gfx);
+    let mut worst = 0;
+    for y in 40..64 {
+        for x in 1..96 {
+            let (a, b) = (img.get_pixel(x - 1, y).0, img.get_pixel(x, y).0);
+            let d = (0..3).map(|c| a[c].abs_diff(b[c])).max().unwrap_or(0);
+            worst = worst.max(d);
+        }
+    }
+    assert!(worst < 12, "neighbouring pixels differ by {worst}");
+}
