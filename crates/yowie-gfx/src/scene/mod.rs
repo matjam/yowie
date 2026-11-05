@@ -13,8 +13,10 @@
 //!    the scene into an HDR colour image with depth: opaque and cut-out
 //!    meshes, the sky, blended meshes back to front, debug lines
 //!    (`render.rs` prepares and uploads, `passes.rs` records).
-//! 3. Pass 2 resolves the HDR image into the output with exposure and a
-//!    tone curve (`resolve.rs`); the 2D pass then draws over it.
+//! 3. Pass 2 runs the scene's post chain from the HDR image into the
+//!    output (the `post` module, set up by [`PostSettings`]); with the
+//!    default settings that is exposure and a tone curve alone. The 2D
+//!    pass then draws over it.
 //!
 //! The world is right-handed with +Y up; distances are world units and
 //! angles radians. Colours given to the API are sRGB with straight alpha;
@@ -22,9 +24,18 @@
 //!
 //! # Extension points for later work
 //!
-//! - **Post-processing** replaces [`resolve::resolve_output`]: it reads
-//!   each scene slot's HDR colour and depth (`slot.rs`, `Targets`) and
-//!   writes the output. Everything before it stays the same.
+//! - **Pipelines that draw in the HDR pass** (meshes, sky, lines,
+//!   particles, decals) must match its attachments, which depend on the
+//!   post settings: multisampling, and the surface and specular images
+//!   that ambient occlusion and reflections read (`targets.rs`). Key such
+//!   a pipeline by the slot's `SceneFormat` and take its colour targets
+//!   from `SceneFormat::color_targets` and its multisample state from
+//!   `SceneFormat::multisample`; begin extra passes into the slot's
+//!   targets with `Targets::color_attachments` and
+//!   `Targets::depth_attachment`.
+//! - **New post effects** are steps in `post/steps.rs`: a program in
+//!   `post/pipelines.rs` (its texture bindings and shader file), an image
+//!   kind in `post/targets.rs` and a field in `PostSettings`.
 //! - **New material features** follow the steps in the `material` module
 //!   documentation; the record has spare vectors and flag bits.
 //! - **Render bundles** for static geometry: `passes.rs` records every
@@ -37,7 +48,7 @@
 //! - **Order-independent transparency** replaces the sorted blended
 //!   batches (`Prepared::blend`, built in `prepare.rs`, drawn in
 //!   `passes.rs`) with an accumulation pass and a composite before the
-//!   resolve.
+//!   post chain.
 
 mod bounds;
 mod camera;
