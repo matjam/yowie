@@ -35,6 +35,7 @@ const GOLDEN: &[(&str, &[&str])] = &[
     ("solar", &["--seconds", "3", "--select", "Halcyon"]),
     ("space", &["--autoplay", "--warp", "20", "--seconds", "2"]),
     ("sprites", &["--seconds", "1"]),
+    ("terrain", &["--seconds", "1"]),
     ("tetris", &["--autoplay", "--seconds", "12"]),
     ("text", &[]),
     ("tiled", &["--seconds", "2"]),

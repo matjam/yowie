@@ -39,19 +39,31 @@
 //!   compute work before the HDR pass and their draws after the blended
 //!   meshes, beside the lines, with the frame bind group bound. Probe
 //!   captures leave them out.
+//! - **Large-scene classes** (terrain, water, billboards and impostors,
+//!   dithered cross-fades) draw with their own pipelines inside the same
+//!   passes; `large.rs` describes the three calls that hook them in.
+//!   Probe captures leave them out too.
 //! - **Order-independent transparency** replaces the sorted blended
 //!   batches (`Prepared::blend`, built in `prepare.rs`, drawn in
 //!   `passes.rs`) with an accumulation pass and a composite before the
 //!   resolve.
 
+mod billboard;
+mod billboard_render;
 mod bounds;
 mod camera;
 mod cluster;
 mod environment;
+mod fade;
 mod frame_data;
 mod ibl;
+mod impostor;
+mod label;
+mod large;
+mod large_pipelines;
 mod layouts;
 mod light;
+mod lod;
 mod material;
 mod mesh;
 mod model;
@@ -70,20 +82,30 @@ mod sky;
 mod slot;
 mod statics;
 mod submit;
+mod terrain;
 mod textures;
 mod upload;
 mod vertex;
+mod water;
 
 #[cfg(test)]
 mod gpu_tests;
 #[cfg(test)]
+mod gpu_tests_air;
+#[cfg(test)]
+mod gpu_tests_large;
+#[cfg(test)]
 mod gpu_tests_models;
 
+pub use billboard::{Billboard, BillboardStyle, Facing};
 pub use bounds::{Aabb, Frustum, Ray};
 pub use camera::{Camera3D, Projection};
 pub use cluster::MAX_LIGHTS;
 pub use environment::{Environment, EnvironmentOptions};
+pub use impostor::{Impostor, ImpostorOptions, MAX_IMPOSTOR_VIEWS};
+pub use label::LabelStyle;
 pub use light::{DirectionalLight, PointLight, SpotLight};
+pub use lod::{Lod, LodState};
 pub use material::{
     AlphaMode, EXT_ANISOTROPY, EXT_CLEARCOAT, EXT_FUR, EXT_IRIDESCENCE, EXT_SHEEN, EXT_SPECULAR,
     EXT_SUBSURFACE, EXT_TRANSMISSION, Material, MaterialGpu, TextureTransform, UvSets,
@@ -99,7 +121,12 @@ pub use shadow::{MAX_POINT_SHADOWS, MAX_SPOT_SHADOWS};
 pub use sky::{Atmosphere, Fog, Sky, Tonemap};
 pub use statics::StaticGroup;
 pub use submit::{DrawId, Placement, Scene, ScenePick, pick};
+pub use terrain::{
+    Brush, BrushMode, HeightMap, LayerRule, SplatRules, Terrain, TerrainDrawOptions, TerrainLayer,
+    TerrainOptions,
+};
 pub use vertex::{MeshData, Vertex3D};
+pub use water::{Water, WaterOptions};
 
 pub(crate) use render::SceneRenderer;
 
