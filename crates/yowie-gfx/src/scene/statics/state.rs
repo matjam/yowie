@@ -88,10 +88,13 @@ impl Readback {
 pub(crate) struct CullPipelines {
     pub(crate) cull_layout: wgpu::BindGroupLayout,
     pub(crate) first_layout: wgpu::BindGroupLayout,
+    pub(crate) first_ms_layout: wgpu::BindGroupLayout,
     pub(crate) down_layout: wgpu::BindGroupLayout,
     pub(crate) early: wgpu::ComputePipeline,
     pub(crate) late: wgpu::ComputePipeline,
     pub(crate) first: wgpu::ComputePipeline,
+    /// Level 0 from multisampled depth.
+    pub(crate) first_ms: wgpu::ComputePipeline,
     pub(crate) down: wgpu::ComputePipeline,
 }
 
@@ -100,6 +103,8 @@ pub(crate) struct CullPipelines {
 pub(crate) struct Pyramid {
     /// The depth view it reduces and that view's size.
     pub(crate) depth: wgpu::TextureView,
+    /// The depth is multisampled.
+    pub(crate) multisampled: bool,
     pub(crate) size: (u32, u32),
     /// Every mip, for culling.
     pub(crate) view: wgpu::TextureView,

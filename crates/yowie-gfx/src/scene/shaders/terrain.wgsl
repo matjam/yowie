@@ -138,8 +138,8 @@ fn level_tint(level: u32) -> vec3<f32> {
     }
 }
 
-@fragment
-fn fs_terrain(in: TerrainOut) -> @location(0) vec4<f32> {
+// The blended layers of a terrain fragment as a surface to shade.
+fn terrain_surface(in: TerrainOut) -> Surface {
     let size = vec2<f32>(f32(terrain.grid.x), f32(terrain.grid.y));
     let uv = (in.grid + 0.5) / size;
     let n = normalize(textureSample(terrain_normals, terrain_clamp, uv).xyz * 2.0 - 1.0);
@@ -166,7 +166,19 @@ fn fs_terrain(in: TerrainOut) -> @location(0) vec4<f32> {
     if (in.level >> 8u) != 0u {
         base = mix(base, level_tint(in.level & 0xffu), 0.55);
     }
-    let s = plain_surface(base, n, rough, in.world);
+    return plain_surface(base, n, rough, in.world);
+}
+
+@fragment
+fn fs_terrain(in: TerrainOut) -> @location(0) vec4<f32> {
+    let s = terrain_surface(in);
     let c = apply_fog(shade(s, in.clip, in.view_depth), in.world);
     return vec4<f32>(c, 1.0);
+}
+
+// `fs_terrain` with the surface images the post chain reads.
+@fragment
+fn fs_terrain_post(in: TerrainOut) -> PostOut {
+    let s = terrain_surface(in);
+    return post_out(s, shade(s, in.clip, in.view_depth), in.world);
 }

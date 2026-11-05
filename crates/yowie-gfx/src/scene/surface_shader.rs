@@ -9,6 +9,7 @@ use parking_lot::Mutex;
 
 use super::layouts::SceneLayouts;
 use super::pipelines::{MeshKey, MeshPass, build_mesh, mesh_source};
+use super::targets::SceneFormat;
 use crate::Graphics;
 use crate::error::{GfxError, Result};
 use crate::shared::Shared;
@@ -185,7 +186,7 @@ fn compile(shared: &Shared, source: &str, has_uniforms: bool) -> Result<wgpu::Sh
             shader: (1, has_uniforms),
             ..MeshKey::default()
         };
-        let _pipeline = build_mesh(device, &layouts, &module, key);
+        let _pipeline = build_mesh(device, &layouts, &module, key, SceneFormat::default());
     }
     let scoped = pollster::block_on(scope.pop());
     if !messages.is_empty() {

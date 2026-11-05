@@ -77,18 +77,36 @@ fn vs_fur_skinned(v: VertexIn, s: SkinIn) -> VertexOut {
 
 // A fur shell keeps the strands that reach its height, darkened towards
 // the root where the strands shade each other.
+fn fur_surface(in: VertexOut, front: bool) -> Surface {
+    var s = material(surface(in, front));
+    s.occlusion *= mix(0.35, 1.0, in.shell);
+    return s;
+}
+
 @fragment
 fn fs_fur(in: VertexOut, @builtin(front_facing) front: bool) -> @location(0) vec4<f32> {
     let m = materials[in.material];
     let mask = fur_mask(m, transform_uv(m, in.uv));
-    var s = material(surface(in, front));
-    let root = mix(0.35, 1.0, in.shell);
-    s.occlusion *= root;
+    let s = fur_surface(in, front);
     let c = apply_fog(shade(s, in.clip, in.view_depth) * mix(0.6, 1.0, in.shell), in.world);
     if mask < in.shell {
         discard;
     }
     return vec4<f32>(c, 1.0);
+}
+
+// `fs_fur` with the surface images the post chain reads.
+@fragment
+fn fs_fur_post(in: VertexOut, @builtin(front_facing) front: bool) -> PostOut {
+    let m = materials[in.material];
+    let mask = fur_mask(m, transform_uv(m, in.uv));
+    let s = fur_surface(in, front);
+    var out = post_out(s, shade(s, in.clip, in.view_depth) * mix(0.6, 1.0, in.shell), in.world);
+    if mask < in.shell {
+        discard;
+    }
+    out.color.a = 1.0;
+    return out;
 }
 
 struct OutlineOut {

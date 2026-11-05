@@ -91,12 +91,15 @@ pub(crate) struct GpuInfo {
     pub(crate) view: (f32, f32),
     pub(crate) pixels_per_unit: f32,
     pub(crate) stats: FrameStats,
+    pub(crate) timing_supported: bool,
 }
 
 pub(crate) struct Core {
     pub(crate) opts: ConsoleOptions,
     pub(crate) open: bool,
     pub(crate) panels_open: bool,
+    /// The console turned GPU timing on for its panels.
+    pub(crate) gpu_timing: bool,
     pub(crate) just_toggled: bool,
     pub(crate) line: String,
     pub(crate) caret_end: bool,
@@ -159,6 +162,7 @@ impl Console {
                 opts: options,
                 open: false,
                 panels_open: false,
+                gpu_timing: false,
                 just_toggled: false,
                 line: String::new(),
                 caret_end: false,
@@ -412,6 +416,11 @@ impl Console {
         self.ui.set_delta_time(dt);
         self.core.refresh_gpu(gfx);
         self.core.handle_keys(input);
+        // GPU timing runs while the panels are open, for the GPU panel.
+        if self.core.panels_open != self.core.gpu_timing {
+            self.core.gpu_timing = self.core.panels_open;
+            gfx.set_gpu_timing(self.core.gpu_timing);
+        }
         if !self.core.open && !self.core.panels_open {
             return;
         }
@@ -456,6 +465,7 @@ impl Core {
             view: (view.x, view.y),
             pixels_per_unit: gfx.pixels_per_unit(),
             stats: gfx.stats(),
+            timing_supported: gfx.gpu_timing_supported(),
         };
     }
 

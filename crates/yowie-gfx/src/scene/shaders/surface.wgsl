@@ -309,6 +309,77 @@ fn fs_mask(in: VertexOut, @builtin(front_facing) front: bool) -> @location(0) ve
     return vec4<f32>(c.rgb, 1.0);
 }
 
+// The outputs of opaque surfaces when post effects read the surface:
+// colour; the world normal (octahedral), roughness and the share of the
+// colour that is ambient light (ambient occlusion scales only that share);
+// the environment reflection weight (screen-space reflections replace the
+// environment's reflection by that weight).
+struct PostOut {
+    @location(0) color: vec4<f32>,
+    @location(1) surface: vec4<f32>,
+    @location(2) specular: vec4<f32>,
+}
+
+fn oct_encode(n: vec3<f32>) -> vec2<f32> {
+    let p = n.xy / (abs(n.x) + abs(n.y) + abs(n.z));
+    if n.z >= 0.0 {
+        return p;
+    }
+    return (1.0 - abs(p.yx)) * select(vec2<f32>(-1.0), vec2<f32>(1.0), p >= vec2<f32>(0.0));
+}
+
+// The outputs of surface `s`, shaded to `total` before fog, at `world`.
+// The specular image holds how much environment reflection the surface
+// shows, as `shade_ambient` weighs it: the base lobe under the clearcoat,
+// plus the coat. The roughness written for reflections moves towards the
+// coat's roughness by the coat's share of that reflection.
+fn post_out(s: Surface, total: vec3<f32>, world: vec3<f32>) -> PostOut {
+    var out: PostOut;
+    out.color = vec4<f32>(apply_fog(total, world), s.alpha);
+    let weights = vec3<f32>(0.2126, 0.7152, 0.0722);
+    var ambient = 0.0;
+    var spec = vec3<f32>(0.0);
+    var rough = s.roughness;
+    if !s.unlit {
+        ambient = clamp(dot(shade_ambient(s), weights) / max(dot(total, weights), 1e-5), 0.0, 1.0);
+        let nv = max(dot(s.normal, s.view), 1e-4);
+        spec = env_weight(s, base_f0(s), nv) * s.occlusion;
+        let ly = s.layers;
+        if ly.clearcoat > 0.0 {
+            let cnv = max(dot(ly.clearcoat_normal, s.view), 1e-4);
+            let fc = (0.04 + 0.96 * pow(1.0 - cnv, 5.0)) * ly.clearcoat;
+            spec = spec * (1.0 - fc) + vec3<f32>(fc * s.occlusion);
+            let share = clamp(fc * s.occlusion / max(dot(spec, weights), 1e-4), 0.0, 1.0);
+            rough = mix(s.roughness, min(s.roughness, ly.clearcoat_roughness), share);
+        }
+    }
+    out.surface = vec4<f32>(oct_encode(s.normal), rough, ambient);
+    out.specular = vec4<f32>(spec, 1.0);
+    return out;
+}
+
+fn lit_post(in: VertexOut, front: bool) -> PostOut {
+    let s = material(surface(in, front));
+    return post_out(s, shade(s, in.clip, in.view_depth), in.world);
+}
+
+@fragment
+fn fs_opaque_post(in: VertexOut, @builtin(front_facing) front: bool) -> PostOut {
+    var out = lit_post(in, front);
+    out.color.a = 1.0;
+    return out;
+}
+
+@fragment
+fn fs_mask_post(in: VertexOut, @builtin(front_facing) front: bool) -> PostOut {
+    var out = lit_post(in, front);
+    if out.color.a < materials[in.material].params.w {
+        discard;
+    }
+    out.color.a = 1.0;
+    return out;
+}
+
 @fragment
 fn fs_blend(in: VertexOut, @builtin(front_facing) front: bool) -> @location(0) vec4<f32> {
     let c = lit(in, front);

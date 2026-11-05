@@ -9,7 +9,7 @@ use parking_lot::Mutex;
 use yowie_core::{Color, Vec2, Vec3};
 
 use super::large::{LargeRecord, PrepareContext};
-use super::large_pipelines::LargePipelines;
+use super::large_pipelines::HdrPipelines;
 use super::submit::Scene;
 use super::terrain::Terrain;
 use crate::Graphics;
@@ -238,7 +238,7 @@ pub(crate) fn prepare(ctx: &PrepareContext<'_>, rec: &LargeRecord) {
 /// Records the recorded water surfaces: into the order-independent
 /// transparency targets with `oit`, blended over the scene otherwise.
 pub(crate) fn encode(
-    p: &LargePipelines,
+    p: &HdrPipelines,
     rec: &LargeRecord,
     pass: &mut wgpu::RenderPass<'_>,
     oit: bool,

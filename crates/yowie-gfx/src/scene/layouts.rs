@@ -114,7 +114,6 @@ pub(crate) struct SceneLayouts {
     pub(crate) material: wgpu::BindGroupLayout,
     pub(crate) morph: wgpu::BindGroupLayout,
     pub(crate) user: wgpu::BindGroupLayout,
-    pub(crate) resolve: wgpu::BindGroupLayout,
     /// One texture and its sampler: the OIT composite reads two of these,
     /// the scene copy reads one per level.
     pub(crate) sampled: wgpu::BindGroupLayout,
@@ -123,7 +122,6 @@ pub(crate) struct SceneLayouts {
     pub(crate) mesh_user: wgpu::PipelineLayout,
     pub(crate) shadow: wgpu::PipelineLayout,
     pub(crate) frame_only: wgpu::PipelineLayout,
-    pub(crate) resolve_pipeline: wgpu::PipelineLayout,
     pub(crate) oit_composite: wgpu::PipelineLayout,
     pub(crate) copy: wgpu::PipelineLayout,
 }
@@ -217,14 +215,6 @@ impl SceneLayouts {
                 count: None,
             }],
         });
-        let resolve = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("yowie resolve"),
-            entries: &[
-                texture(0, wgpu::TextureViewDimension::D2),
-                sampler(1),
-                uniform(2, S::FRAGMENT, 32),
-            ],
-        });
         let sampled = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("yowie sampled texture"),
             entries: &[texture(0, wgpu::TextureViewDimension::D2), sampler(1)],
@@ -246,7 +236,6 @@ impl SceneLayouts {
             &[Some(&shadow_frame), Some(&material), Some(&morph)],
         );
         let frame_only = pl("yowie scene frame only", &[Some(&frame)]);
-        let resolve_pipeline = pl("yowie resolve", &[Some(&resolve)]);
         let oit_composite = pl("yowie oit composite", &[Some(&sampled), Some(&sampled)]);
         let copy = pl("yowie scene copy", &[Some(&sampled)]);
         Self {
@@ -256,13 +245,11 @@ impl SceneLayouts {
             material,
             morph,
             user,
-            resolve,
             sampled,
             mesh,
             mesh_user,
             shadow,
             frame_only,
-            resolve_pipeline,
             oit_composite,
             copy,
         }

@@ -61,6 +61,8 @@ pub(crate) struct GroupGpu {
 /// What a bundle was recorded with; a difference records it again.
 #[derive(Debug, PartialEq)]
 pub(crate) struct BundleKey {
+    /// The attachments of the pass the bundles execute in.
+    pub(crate) format: crate::scene::targets::SceneFormat,
     pub(crate) frame: wgpu::BindGroup,
     pub(crate) materials: Vec<Option<wgpu::BindGroup>>,
     pub(crate) meshes: Vec<(wgpu::Buffer, wgpu::Buffer)>,
@@ -213,7 +215,11 @@ impl SceneRenderer {
             }
         }
         let t = self.slot(slot).targets.as_ref()?;
-        let (depth, size) = (t.depth.clone(), t.size);
+        // A multisampled scene draws its depth into the multisampled image.
+        let (depth, size, ms) = match &t.msaa {
+            Some(m) => (m.depth.clone(), t.size, true),
+            None => (t.depth.clone(), t.size, false),
+        };
         let pipes = self
             .statics
             .pipelines
@@ -224,7 +230,7 @@ impl SceneRenderer {
             .get(&slot)
             .is_none_or(|p| p.depth != depth || p.size != (size.x, size.y));
         if stale {
-            let p = pyramid(device, pipes, &depth, size);
+            let p = pyramid(device, pipes, &depth, size, ms);
             self.statics.pyramids.insert(slot, p);
         }
         let (pyramid_view, mips) = {
@@ -321,7 +327,11 @@ impl SceneRenderer {
                 timestamp_writes: None,
             });
             for (i, (group, (w, h))) in pyr.steps.iter().enumerate() {
-                pass.set_pipeline(if i == 0 { &pipes.first } else { &pipes.down });
+                pass.set_pipeline(match (i, pyr.multisampled) {
+                    (0, false) => &pipes.first,
+                    (0, true) => &pipes.first_ms,
+                    _ => &pipes.down,
+                });
                 pass.set_bind_group(0, group, &[]);
                 pass.dispatch_workgroups(w.div_ceil(8), h.div_ceil(8), 1);
             }

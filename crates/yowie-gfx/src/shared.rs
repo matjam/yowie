@@ -1,6 +1,7 @@
 //! The device objects textures, shaders and frames share.
 
 use crate::device::Gpu;
+use crate::gpu_timer::{GpuTimer, Span, Timed};
 use crate::mipmap::MipmapGenerator;
 use crate::pipelines::Layouts;
 use crate::texture::{Filter, TextureOptions, Wrap};
@@ -73,6 +74,9 @@ pub(crate) struct Shared {
     pub(crate) layouts: Layouts,
     pub(crate) samplers: Samplers,
     pub(crate) mipmaps: MipmapGenerator,
+    /// GPU timestamps around the frame's passes; every pass recorder
+    /// reaches it through `Shared`.
+    pub(crate) timer: parking_lot::Mutex<GpuTimer>,
 }
 
 impl Shared {
@@ -80,12 +84,19 @@ impl Shared {
         let layouts = Layouts::new(&gpu.device);
         let samplers = Samplers::new(&gpu.device);
         let mipmaps = MipmapGenerator::new(&gpu.device, &layouts.texture);
+        let timer = parking_lot::Mutex::new(GpuTimer::new(&gpu.device, &gpu.queue));
         Self {
             gpu,
             layouts,
             samplers,
             mipmaps,
+            timer,
         }
+    }
+
+    /// A timestamp span of this frame for `what`, when the frame is timed.
+    pub(crate) fn span(&self, what: Timed) -> Option<Span> {
+        self.timer.lock().span(what)
     }
 
     pub(crate) fn device(&self) -> &wgpu::Device {

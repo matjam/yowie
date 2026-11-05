@@ -1,7 +1,9 @@
 //! The opaque scene copy transmissive materials refract: the HDR colour
 //! after the opaque meshes and the sky, copied into a texture whose mips
 //! are successively blurred halves, so rough glass reads a blurrier level
-//! (`transmission_light` in `shaders/layers.wgsl`).
+//! (`transmission_light` in `shaders/layers.wgsl`). The copy reads the
+//! single-sample colour, which a multisampled scene resolves into at the
+//! end of the pass before the copy.
 
 use yowie_core::UVec2;
 
@@ -89,7 +91,8 @@ impl CopyPipelines {
 /// level.
 #[derive(Debug)]
 pub(crate) struct SceneCopy {
-    pub(crate) size: UVec2,
+    /// The id of the scene targets whose colour the copy reads.
+    pub(crate) source: u64,
     pub(crate) id: u64,
     /// Every level, for sampling.
     pub(crate) view: wgpu::TextureView,
@@ -111,7 +114,7 @@ impl SceneCopy {
         device: &wgpu::Device,
         layouts: &SceneLayouts,
         sampler: &wgpu::Sampler,
-        scene_color: &wgpu::TextureView,
+        (source, scene_color): (u64, &wgpu::TextureView),
         size: UVec2,
     ) -> Self {
         let mips = level_count(size);
@@ -157,7 +160,7 @@ impl SceneCopy {
         };
         let sources = levels[..levels.len() - 1].iter().map(group).collect();
         Self {
-            size,
+            source,
             id: crate::texture::next_id(),
             view: texture.create_view(&Default::default()),
             scene: group(scene_color),

@@ -30,12 +30,32 @@ fn trusted(device: &wgpu::Device, label: &str, source: String) -> wgpu::ShaderMo
     unsafe { device.create_shader_module_trusted(desc, wgpu::ShaderRuntimeChecks::unchecked()) }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 struct PipelineKey {
     /// The scene's depth format for a 3D pass; `None` draws in 2D.
     depth: Option<wgpu::TextureFormat>,
     format: wgpu::TextureFormat,
     blend: BlendMode,
+    samples: u32,
+    /// Formats of the pass's colour targets after the first.
+    extra: Vec<Option<wgpu::TextureFormat>>,
+}
+
+/// The attachments a draw records into besides its own colour target:
+/// the sample count and the pass's further colour targets, which the
+/// pipeline lists and leaves alone.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct PassShape<'a> {
+    pub(crate) samples: u32,
+    pub(crate) extra: &'a [Option<wgpu::ColorTargetState>],
+}
+
+impl PassShape<'_> {
+    /// A single-sample pass with one colour target.
+    pub(crate) const PLAIN: PassShape<'static> = PassShape {
+        samples: 1,
+        extra: &[],
+    };
 }
 
 /// Shared programs of one device.
@@ -174,11 +194,18 @@ impl Programs {
         depth: Option<wgpu::TextureFormat>,
         format: wgpu::TextureFormat,
         blend: BlendMode,
+        shape: PassShape<'_>,
     ) -> wgpu::RenderPipeline {
         let key = PipelineKey {
             depth,
             format,
             blend,
+            samples: shape.samples,
+            extra: shape
+                .extra
+                .iter()
+                .map(|t| t.as_ref().map(|t| t.format))
+                .collect(),
         };
         let three_d = depth.is_some();
         let mut map = self.pipelines.lock().unwrap_or_else(|e| e.into_inner());
@@ -208,6 +235,12 @@ impl Programs {
             // so every blend must raise it, additive ones included.
             blend_state.alpha = wgpu::BlendComponent::OVER;
         }
+        let mut targets = vec![Some(wgpu::ColorTargetState {
+            format,
+            blend: Some(blend_state),
+            write_mask: wgpu::ColorWrites::ALL,
+        })];
+        targets.extend_from_slice(shape.extra);
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("yowie particles"),
             layout: Some(&layout),
@@ -219,16 +252,15 @@ impl Programs {
             },
             primitive: wgpu::PrimitiveState::default(),
             depth_stencil,
-            multisample: wgpu::MultisampleState::default(),
+            multisample: wgpu::MultisampleState {
+                count: shape.samples,
+                ..Default::default()
+            },
             fragment: Some(wgpu::FragmentState {
                 module,
                 entry_point: Some("fs"),
                 compilation_options: Default::default(),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format,
-                    blend: Some(blend_state),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
+                targets: &targets,
             }),
             multiview_mask: None,
             cache: None,

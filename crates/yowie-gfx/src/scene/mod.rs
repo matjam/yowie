@@ -16,9 +16,12 @@
 //!    meshes through order-independent transparency (`transparency.rs`)
 //!    or back to front, debug lines (`render.rs` prepares and uploads,
 //!    `features.rs` makes the feature targets, `passes.rs` records).
-//!    Decals are records the surface program reads (`decals.rs`).
-//! 3. Pass 2 resolves the HDR image into the output with exposure and a
-//!    tone curve (`resolve.rs`); the 2D pass then draws over it.
+//!    Decals are records the surface program reads (`decals.rs`). The
+//!    transparency composite runs inside this pass, before the post chain.
+//! 3. Pass 2 runs the scene's post chain from the HDR image into the
+//!    output (the `post` module, set up by [`PostSettings`]); with the
+//!    default settings that is exposure and a tone curve alone. The 2D
+//!    pass then draws over it.
 //!
 //! The world is right-handed with +Y up; distances are world units and
 //! angles radians. Colours given to the API are sRGB with straight alpha;
@@ -26,9 +29,18 @@
 //!
 //! # Extension points for later work
 //!
-//! - **Post-processing** replaces [`resolve::resolve_output`]: it reads
-//!   each scene slot's HDR colour and depth (`slot.rs`, `Targets`) and
-//!   writes the output. Everything before it stays the same.
+//! - **Pipelines that draw in the HDR pass** (meshes, sky, lines,
+//!   particles, decals) must match its attachments, which depend on the
+//!   post settings: multisampling, and the surface and specular images
+//!   that ambient occlusion and reflections read (`targets.rs`). Key such
+//!   a pipeline by the slot's `SceneFormat` and take its colour targets
+//!   from `SceneFormat::color_targets` and its multisample state from
+//!   `SceneFormat::multisample`; begin extra passes into the slot's
+//!   targets with `Targets::color_attachments` and
+//!   `Targets::depth_attachment`.
+//! - **New post effects** are steps in `post/steps.rs`: a program in
+//!   `post/pipelines.rs` (its texture bindings and shader file), an image
+//!   kind in `post/targets.rs` and a field in `PostSettings`.
 //! - **New material features** follow the steps in the `material` module
 //!   documentation; the record has spare flag bits and two spare vectors.
 //! - **Game surface shaders** ([`SurfaceShader`]) are WGSL appended to the
@@ -86,12 +98,12 @@ mod morph;
 mod panorama;
 mod passes;
 mod pipelines;
+mod post;
 mod prepare;
 mod primitives;
 mod probes;
 mod record;
 mod render;
-mod resolve;
 mod shadow;
 mod sky;
 mod slot;
@@ -99,6 +111,7 @@ mod statics;
 mod stencil;
 mod submit;
 mod surface_shader;
+mod targets;
 mod terrain;
 mod textures;
 mod transmission;
@@ -119,6 +132,8 @@ mod gpu_tests_masks;
 mod gpu_tests_materials;
 #[cfg(test)]
 mod gpu_tests_models;
+#[cfg(test)]
+mod gpu_tests_post_materials;
 
 pub use billboard::{Billboard, BillboardStyle, Facing};
 pub use bounds::{Aabb, Frustum, Ray};
@@ -140,6 +155,7 @@ pub use mesh::{Mesh, RayHit};
 pub use model::{Model, ModelInstance, ModelPart};
 pub use morph::{MAX_MORPH_WEIGHTS, MorphTarget};
 pub use panorama::Panorama;
+pub use post::{Lut, PostSettings};
 pub use probes::{
     LightProbeGrid, MAX_LIGHT_PROBES, MAX_REFLECTION_PROBES, ProbeUpdate, ReflectionProbe,
 };
@@ -157,11 +173,11 @@ pub use transparency::Transparency;
 pub use vertex::{MeshData, Vertex3D};
 pub use water::{Water, WaterOptions};
 
+pub(crate) use post::{HDR as FRAME_POST_FORMAT, PostRenderer};
 pub(crate) use render::SceneRenderer;
 
 /// Scenes recorded for one output.
 pub(crate) type SceneRecordList = Vec<record::SceneRecord>;
-pub(crate) use resolve::resolve_output;
 
 impl crate::Graphics {
     /// The scene renderer, created the first time a scene is recorded.

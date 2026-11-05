@@ -10,7 +10,8 @@ use super::reflection::ProbeMaps;
 use super::{Capture, MAX_REFLECTION_PROBES, ProbeBlock, ProbeGpu};
 use crate::scene::layouts::HDR_FORMAT;
 use crate::scene::render::SceneRenderer;
-use crate::scene::slot::{SlotId, depth_views};
+use crate::scene::slot::SlotId;
+use crate::scene::targets::depth_views;
 use crate::shared::Shared;
 
 /// Face size of a prefiltered probe cube.
@@ -114,7 +115,7 @@ impl ProbeState {
         {
             return (d.clone(), ds.clone());
         }
-        let (d, ds) = depth_views(device, UVec2::splat(size), format, "yowie capture depth");
+        let (d, ds) = depth_views(device, "yowie capture depth", UVec2::splat(size), format, 1);
         self.depth = Some((size, d.clone(), ds.clone()));
         (d, ds)
     }

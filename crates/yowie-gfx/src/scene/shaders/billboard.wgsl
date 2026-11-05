@@ -163,15 +163,12 @@ fn fs_billboard_shadow(in: BillboardShadowOut) {
     }
 }
 
-// The lit colour and alpha of a billboard fragment.
-fn billboard_color(in: BillboardOut, front: bool) -> vec4<f32> {
+// The surface of a billboard fragment, unlit when the sheet is; its
+// alpha is the coverage.
+fn billboard_surface(in: BillboardOut, front: bool) -> Surface {
     let texel = textureSample(sheet_albedo, sheet_sampler, in.uv);
     let nt = textureSample(sheet_normal, sheet_sampler, in.uv);
-    let alpha = texel.a * in.color.a;
     let base = texel.rgb / max(texel.a, 1e-4) * in.color.rgb;
-    if sheet.params.z < 0.5 {
-        return vec4<f32>(apply_fog(base, in.world), alpha);
-    }
     var n = normalize(in.toward);
     if sheet.params.w > 0.5 {
         // Normal maps are stored premultiplied by coverage like colour.
@@ -181,9 +178,17 @@ fn billboard_color(in: BillboardOut, front: bool) -> vec4<f32> {
     if !front {
         n = -n;
     }
-    let s = plain_surface(base, n, sheet.params.y, in.world);
+    var s = plain_surface(base, n, sheet.params.y, in.world);
+    s.alpha = texel.a * in.color.a;
+    s.unlit = sheet.params.z < 0.5;
+    return s;
+}
+
+// The lit colour and alpha of a billboard fragment.
+fn billboard_color(in: BillboardOut, front: bool) -> vec4<f32> {
+    let s = billboard_surface(in, front);
     let c = shade(s, in.clip, view_depth_of(in.world));
-    return vec4<f32>(apply_fog(c, in.world), alpha);
+    return vec4<f32>(apply_fog(c, in.world), s.alpha);
 }
 
 @fragment
@@ -193,6 +198,18 @@ fn fs_billboard_cutout(in: BillboardOut, @builtin(front_facing) front: bool) -> 
         discard;
     }
     return vec4<f32>(c.rgb, 1.0);
+}
+
+// `fs_billboard_cutout` with the surface images the post chain reads.
+@fragment
+fn fs_billboard_cutout_post(in: BillboardOut, @builtin(front_facing) front: bool) -> PostOut {
+    let s = billboard_surface(in, front);
+    var out = post_out(s, shade(s, in.clip, view_depth_of(in.world)), in.world);
+    if out.color.a < sheet.params.x || dither_threshold(in.clip.xy) >= in.fade {
+        discard;
+    }
+    out.color.a = 1.0;
+    return out;
 }
 
 @fragment

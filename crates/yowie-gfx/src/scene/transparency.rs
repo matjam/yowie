@@ -1,6 +1,6 @@
 //! Order-independent transparency: weighted blended accumulation
 //! (McGuire and Bavoil, 2013) into two targets beside the scene, then a
-//! composite over the scene before the resolve.
+//! composite over the scene before the post chain.
 //!
 //! Each blended fragment adds its premultiplied colour times a depth weight
 //! to the accumulation target and multiplies the revealage target by one
@@ -9,12 +9,18 @@
 //! over the scene by one minus the revealage, so a pixel no fragment
 //! touched keeps the scene exactly. The result does not depend on the
 //! order surfaces were drawn in.
+//!
+//! In a multisampled scene the accumulation pass tests against the
+//! multisampled depth, so its targets have the scene's sample count and
+//! resolve into single-sample images. The composite reads those and runs
+//! in the multisampled HDR pass, once per pixel.
 
 use yowie_core::UVec2;
 
-use super::layouts::{HDR_FORMAT, SceneLayouts};
+use super::layouts::SceneLayouts;
 use super::pipelines::{OIT_ACCUM_FORMAT, OIT_REVEAL_FORMAT, PREMULTIPLIED, depth};
 use super::submit::Scene;
+use super::targets::SceneFormat;
 use crate::pipelines::trusted_module;
 
 impl Scene<'_> {
@@ -73,8 +79,14 @@ fn fs_main(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
 #[derive(Debug)]
 pub(crate) struct OitTargets {
     pub(crate) size: UVec2,
-    pub(crate) accum: wgpu::TextureView,
-    pub(crate) reveal: wgpu::TextureView,
+    /// Samples per pixel of the pass the accumulation draws in.
+    pub(crate) samples: u32,
+    /// The single-sample accumulation and revealage the composite reads.
+    accum: wgpu::TextureView,
+    reveal: wgpu::TextureView,
+    /// The multisampled pair the accumulation draws into when `samples`
+    /// is above 1, resolving into `accum` and `reveal`.
+    msaa: Option<[wgpu::TextureView; 2]>,
     /// The composite's two bind groups: accumulation, revealage.
     pub(crate) groups: [wgpu::BindGroup; 2],
 }
@@ -85,8 +97,14 @@ impl OitTargets {
         layouts: &SceneLayouts,
         sampler: &wgpu::Sampler,
         size: UVec2,
+        samples: u32,
     ) -> Self {
-        let make = |format, label| {
+        let make = |format, label, sample_count| {
+            let usage = if sample_count > 1 {
+                wgpu::TextureUsages::RENDER_ATTACHMENT
+            } else {
+                wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING
+            };
             device
                 .create_texture(&wgpu::TextureDescriptor {
                     label: Some(label),
@@ -96,17 +114,22 @@ impl OitTargets {
                         depth_or_array_layers: 1,
                     },
                     mip_level_count: 1,
-                    sample_count: 1,
+                    sample_count,
                     dimension: wgpu::TextureDimension::D2,
                     format,
-                    usage: wgpu::TextureUsages::RENDER_ATTACHMENT
-                        | wgpu::TextureUsages::TEXTURE_BINDING,
+                    usage,
                     view_formats: &[],
                 })
                 .create_view(&Default::default())
         };
-        let accum = make(OIT_ACCUM_FORMAT, "yowie oit accumulation");
-        let reveal = make(OIT_REVEAL_FORMAT, "yowie oit revealage");
+        let accum = make(OIT_ACCUM_FORMAT, "yowie oit accumulation", 1);
+        let reveal = make(OIT_REVEAL_FORMAT, "yowie oit revealage", 1);
+        let msaa = (samples > 1).then(|| {
+            [
+                make(OIT_ACCUM_FORMAT, "yowie oit accumulation msaa", samples),
+                make(OIT_REVEAL_FORMAT, "yowie oit revealage msaa", samples),
+            ]
+        });
         let group = |view: &wgpu::TextureView| {
             device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some("yowie oit composite"),
@@ -126,36 +149,44 @@ impl OitTargets {
         let groups = [group(&accum), group(&reveal)];
         Self {
             size,
+            samples,
             accum,
             reveal,
+            msaa,
             groups,
         }
     }
 
     /// Begins the accumulation pass: both targets cleared (colour to zero,
     /// revealage to one), testing against the scene's depth and stencil
-    /// without writing them.
+    /// (`depth_stencil`, the view the HDR pass attaches) without writing
+    /// them. Multisampled targets resolve when the pass ends.
     pub(crate) fn begin<'e>(
         &self,
         encoder: &'e mut wgpu::CommandEncoder,
         depth_stencil: &wgpu::TextureView,
     ) -> wgpu::RenderPass<'e> {
-        let attachment = |view, clear| {
+        let attachment = |i: usize, single, clear| {
+            let multi = self.msaa.as_ref().map(|m| &m[i]);
             Some(wgpu::RenderPassColorAttachment {
-                view,
+                view: multi.unwrap_or(single),
                 depth_slice: None,
-                resolve_target: None,
+                resolve_target: multi.map(|_| single),
                 ops: wgpu::Operations {
                     load: wgpu::LoadOp::Clear(clear),
-                    store: wgpu::StoreOp::Store,
+                    store: if multi.is_some() {
+                        wgpu::StoreOp::Discard
+                    } else {
+                        wgpu::StoreOp::Store
+                    },
                 },
             })
         };
         encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("yowie oit accumulation"),
             color_attachments: &[
-                attachment(&self.accum, wgpu::Color::TRANSPARENT),
-                attachment(&self.reveal, wgpu::Color::WHITE),
+                attachment(0, &self.accum, wgpu::Color::TRANSPARENT),
+                attachment(1, &self.reveal, wgpu::Color::WHITE),
             ],
             depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                 view: depth_stencil,
@@ -175,10 +206,13 @@ impl OitTargets {
     }
 }
 
-/// The composite pipeline, drawn inside the HDR scene pass.
+/// The composite pipeline, drawn inside an HDR scene pass of `format`. It
+/// writes colour alone, leaving the surface images as the opaque scene
+/// set them.
 pub(crate) fn composite_pipeline(
     device: &wgpu::Device,
     layouts: &SceneLayouts,
+    format: SceneFormat,
 ) -> wgpu::RenderPipeline {
     let module = trusted_module(device, "yowie oit composite", COMPOSITE);
     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -196,16 +230,12 @@ pub(crate) fn composite_pipeline(
             false,
             wgpu::CompareFunction::Always,
         )),
-        multisample: wgpu::MultisampleState::default(),
+        multisample: format.multisample(),
         fragment: Some(wgpu::FragmentState {
             module: &module,
             entry_point: Some("fs_main"),
             compilation_options: Default::default(),
-            targets: &[Some(wgpu::ColorTargetState {
-                format: HDR_FORMAT,
-                blend: Some(PREMULTIPLIED),
-                write_mask: wgpu::ColorWrites::ALL,
-            })],
+            targets: &format.color_targets(Some(PREMULTIPLIED), false),
         }),
         multiview_mask: None,
         cache: None,

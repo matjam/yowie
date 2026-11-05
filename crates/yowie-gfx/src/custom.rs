@@ -75,6 +75,14 @@ pub struct Draw3D<'a> {
     pub depth_format: wgpu::TextureFormat,
     /// The layout of group 0, the scene's frame bind group.
     pub frame_layout: &'a wgpu::BindGroupLayout,
+    /// Samples per pixel of the pass's attachments: 1, or 2, 4 or 8 when
+    /// the scene's post settings multisample. A pipeline's multisample
+    /// count must match.
+    pub sample_count: u32,
+    /// The pass's colour targets after the HDR colour (the images post
+    /// effects read), with empty write masks. A pipeline lists them after
+    /// its own colour target, as given, and leaves them alone.
+    pub extra_targets: &'a [Option<wgpu::ColorTargetState>],
 }
 
 /// A renderer extension that records its own GPU work in the frame. See

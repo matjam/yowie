@@ -2,8 +2,9 @@
 
 use std::collections::HashMap;
 
-use super::layouts::{HDR_FORMAT, SHADOW_FORMAT, SceneLayouts};
+use super::layouts::{SHADOW_FORMAT, SceneLayouts};
 use super::stencil::StencilKey;
+use super::targets::{Outputs, SceneFormat};
 use super::vertex::buffer_layouts;
 use crate::pipelines::trusted_module;
 
@@ -16,7 +17,6 @@ const DECALS: &str = include_str!("shaders/decals.wgsl");
 const PASSES: &str = include_str!("shaders/passes.wgsl");
 const SURFACE: &str = include_str!("shaders/surface.wgsl");
 const SKY: &str = include_str!("shaders/sky.wgsl");
-const RESOLVE: &str = include_str!("shaders/resolve.wgsl");
 
 /// The surface program the engine draws with when a material has no
 /// surface shader.
@@ -101,7 +101,7 @@ impl MeshKey {
     }
 }
 
-/// The fixed pipelines of the background, lines and resolve.
+/// The fixed pipelines of the background and lines.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(crate) enum FixedPipeline {
     Sky,
@@ -114,11 +114,10 @@ pub(crate) enum FixedPipeline {
 pub(crate) struct ScenePipelines {
     mesh_module: wgpu::ShaderModule,
     sky_module: wgpu::ShaderModule,
-    resolve_module: wgpu::ShaderModule,
-    /// Mesh pipelines with the generation of the module they came from.
-    mesh: HashMap<MeshKey, (u32, wgpu::RenderPipeline)>,
-    fixed: HashMap<FixedPipeline, wgpu::RenderPipeline>,
-    resolve: HashMap<wgpu::TextureFormat, wgpu::RenderPipeline>,
+    /// Mesh pipelines by key and pass format, with the generation of the
+    /// module they came from.
+    mesh: HashMap<(MeshKey, SceneFormat), (u32, wgpu::RenderPipeline)>,
+    fixed: HashMap<(FixedPipeline, SceneFormat), wgpu::RenderPipeline>,
 }
 
 pub(crate) fn depth(
@@ -146,25 +145,30 @@ impl ScenePipelines {
         Self {
             mesh_module: trusted_module(device, "yowie mesh", &mesh_src),
             sky_module: trusted_module(device, "yowie sky", &sky_src),
-            resolve_module: trusted_module(device, "yowie resolve", RESOLVE),
             mesh: HashMap::new(),
             fixed: HashMap::new(),
-            resolve: HashMap::new(),
         }
     }
 
-    /// The pipeline for `key`. `custom` is the surface shader's module and
-    /// generation when `key.shader` names one; a pipeline built from an
-    /// older generation is rebuilt.
+    /// The mesh pipeline for `key` drawing into a pass of `format`; shadow
+    /// pipelines ignore the format. `custom` is the surface shader's
+    /// module and generation when `key.shader` names one; a pipeline built
+    /// from an older generation is rebuilt.
     pub(crate) fn mesh(
         &mut self,
         device: &wgpu::Device,
         layouts: &SceneLayouts,
         key: MeshKey,
+        format: SceneFormat,
         custom: Option<(wgpu::ShaderModule, u32)>,
     ) -> wgpu::RenderPipeline {
+        let format = if key.pass.is_shadow() {
+            SceneFormat::default()
+        } else {
+            format
+        };
         let generation = custom.as_ref().map_or(0, |c| c.1);
-        if let Some((g, p)) = self.mesh.get(&key)
+        if let Some((g, p)) = self.mesh.get(&(key, format))
             && *g == generation
         {
             return p.clone();
@@ -173,10 +177,10 @@ impl ScenePipelines {
         if key.shader.0 != 0 {
             // A reloaded shader's older pipelines are never drawn again.
             self.mesh
-                .retain(|k, (g, _)| k.shader.0 != key.shader.0 || *g == generation);
+                .retain(|(k, _), (g, _)| k.shader.0 != key.shader.0 || *g == generation);
         }
-        let p = build_mesh(device, layouts, &module, key);
-        self.mesh.insert(key, (generation, p.clone()));
+        let p = build_mesh(device, layouts, &module, key, format);
+        self.mesh.insert((key, format), (generation, p.clone()));
         p
     }
 
@@ -185,8 +189,9 @@ impl ScenePipelines {
         device: &wgpu::Device,
         layouts: &SceneLayouts,
         which: FixedPipeline,
+        format: SceneFormat,
     ) -> wgpu::RenderPipeline {
-        if let Some(p) = self.fixed.get(&which) {
+        if let Some(p) = self.fixed.get(&(which, format)) {
             return p.clone();
         }
         let module = &self.sky_module;
@@ -233,62 +238,20 @@ impl ScenePipelines {
                 ..Default::default()
             },
             depth_stencil: Some(depth_state),
-            multisample: wgpu::MultisampleState::default(),
+            multisample: format.multisample(),
             fragment: Some(wgpu::FragmentState {
                 module,
                 entry_point: Some(fs),
                 compilation_options: Default::default(),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: HDR_FORMAT,
-                    blend: (which != FixedPipeline::Sky).then_some(PREMULTIPLIED),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
+                targets: &format.color_targets(
+                    (which != FixedPipeline::Sky).then_some(PREMULTIPLIED),
+                    false,
+                ),
             }),
             multiview_mask: None,
             cache: None,
         });
-        self.fixed.insert(which, p.clone());
-        p
-    }
-
-    /// The resolve pipeline writing `format`, blending premultiplied
-    /// colour over what the output holds.
-    pub(crate) fn resolve(
-        &mut self,
-        device: &wgpu::Device,
-        layouts: &SceneLayouts,
-        format: wgpu::TextureFormat,
-    ) -> wgpu::RenderPipeline {
-        if let Some(p) = self.resolve.get(&format) {
-            return p.clone();
-        }
-        let module = &self.resolve_module;
-        let p = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("yowie resolve"),
-            layout: Some(&layouts.resolve_pipeline),
-            vertex: wgpu::VertexState {
-                module,
-                entry_point: Some("vs_resolve"),
-                compilation_options: Default::default(),
-                buffers: &[],
-            },
-            primitive: wgpu::PrimitiveState::default(),
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState::default(),
-            fragment: Some(wgpu::FragmentState {
-                module,
-                entry_point: Some("fs_resolve"),
-                compilation_options: Default::default(),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format,
-                    blend: Some(PREMULTIPLIED),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-            }),
-            multiview_mask: None,
-            cache: None,
-        });
-        self.resolve.insert(format, p.clone());
+        self.fixed.insert((which, format), p.clone());
         p
     }
 }
@@ -298,8 +261,12 @@ const LINE_ATTRIBUTES: [wgpu::VertexAttribute; 2] = wgpu::vertex_attr_array![
     1 => Float32x4,
 ];
 
-/// The vertex and fragment entry points of a mesh pipeline.
-fn entry_points(key: MeshKey) -> (&'static str, Option<&'static str>) {
+/// The vertex and fragment entry points of a mesh pipeline. With
+/// `surface`, the solid passes (opaque, cut-out, fur shells) write the
+/// surface images the post chain reads; the blended and overlay passes
+/// (blending, transparency, glass, outlines, x-ray) leave them alone, as
+/// the large-scene classes' blended draws do.
+fn entry_points(key: MeshKey, surface: bool) -> (&'static str, Option<&'static str>) {
     let skinned = key.skinned;
     let vs = match key.pass {
         MeshPass::ShadowOpaque | MeshPass::ShadowMask if skinned => "vs_shadow_skinned",
@@ -312,12 +279,15 @@ fn entry_points(key: MeshKey) -> (&'static str, Option<&'static str>) {
         _ => "vs_static",
     };
     let fs = match key.pass {
+        MeshPass::Opaque if surface => Some("fs_opaque_post"),
         MeshPass::Opaque => Some("fs_opaque"),
+        MeshPass::Mask if surface => Some("fs_mask_post"),
         MeshPass::Mask => Some("fs_mask"),
+        MeshPass::Fur if surface => Some("fs_fur_post"),
+        MeshPass::Fur => Some("fs_fur"),
         MeshPass::Blend => Some("fs_blend"),
         MeshPass::Oit => Some("fs_oit"),
         MeshPass::Transmit => Some("fs_transmit"),
-        MeshPass::Fur => Some("fs_fur"),
         MeshPass::Outline => Some("fs_outline"),
         MeshPass::XRay => Some("fs_xray"),
         MeshPass::ShadowOpaque => None,
@@ -360,20 +330,19 @@ pub(crate) fn oit_targets() -> [Option<wgpu::ColorTargetState>; 2] {
     ]
 }
 
-/// The colour targets of a mesh pass.
-fn color_targets(pass: MeshPass) -> Vec<Option<wgpu::ColorTargetState>> {
-    let hdr = |blend| {
-        Some(wgpu::ColorTargetState {
-            format: HDR_FORMAT,
-            blend,
-            write_mask: wgpu::ColorWrites::ALL,
-        })
-    };
+/// The colour targets of a mesh pass drawing into a pass of `format`:
+/// the scene's targets, writing the surface images from the solid passes
+/// when `surface`, or the transparency accumulation targets.
+fn color_targets(
+    pass: MeshPass,
+    format: SceneFormat,
+    surface: bool,
+) -> Vec<Option<wgpu::ColorTargetState>> {
     match pass {
         MeshPass::ShadowOpaque | MeshPass::ShadowMask => vec![],
-        MeshPass::Opaque | MeshPass::Mask | MeshPass::Fur => vec![hdr(None)],
+        MeshPass::Opaque | MeshPass::Mask | MeshPass::Fur => format.color_targets(None, surface),
         MeshPass::Blend | MeshPass::Transmit | MeshPass::Outline | MeshPass::XRay => {
-            vec![hdr(Some(PREMULTIPLIED))]
+            format.color_targets(Some(PREMULTIPLIED), false)
         }
         MeshPass::Oit => oit_targets().to_vec(),
     }
@@ -408,18 +377,21 @@ fn depth_and_cull(
     (d, cull)
 }
 
-/// Builds the mesh pipeline `key` from `module`.
+/// Builds the mesh pipeline `key` from `module`, drawing into a pass of
+/// `format` (shadow pipelines take the default format).
 pub(crate) fn build_mesh(
     device: &wgpu::Device,
     layouts: &SceneLayouts,
     module: &wgpu::ShaderModule,
     key: MeshKey,
+    format: SceneFormat,
 ) -> wgpu::RenderPipeline {
     let shadow = key.pass.is_shadow();
-    let (vs, fs) = entry_points(key);
+    let surface = format.outputs != Outputs::Color;
+    let (vs, fs) = entry_points(key, surface);
     let buffers = buffer_layouts(key.skinned);
     let (depth_state, cull) = depth_and_cull(layouts, key);
-    let targets = color_targets(key.pass);
+    let targets = color_targets(key.pass, format, surface);
     let fragment = fs.map(|entry| wgpu::FragmentState {
         module,
         entry_point: Some(entry),
@@ -447,7 +419,7 @@ pub(crate) fn build_mesh(
             ..Default::default()
         },
         depth_stencil: Some(depth_state),
-        multisample: wgpu::MultisampleState::default(),
+        multisample: format.multisample(),
         fragment,
         multiview_mask: None,
         cache: None,

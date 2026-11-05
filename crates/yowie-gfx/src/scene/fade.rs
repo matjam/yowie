@@ -6,7 +6,7 @@
 use yowie_core::Mat4;
 
 use super::large::{PrepareContext, instance_buffer};
-use super::large_pipelines::LargePipelines;
+use super::large_pipelines::HdrPipelines;
 use super::record::SceneRecord;
 use super::render::SceneRenderer;
 use super::slot::GrowBuffer;
@@ -89,7 +89,7 @@ pub(crate) fn prepare(ctx: &PrepareContext<'_>, rec: &SceneRecord, frame: &mut F
 /// Records the dithered draws.
 pub(crate) fn encode(
     r: &SceneRenderer,
-    p: &LargePipelines,
+    p: &HdrPipelines,
     rec: &SceneRecord,
     frame: &FadeFrame,
     pass: &mut wgpu::RenderPass<'_>,

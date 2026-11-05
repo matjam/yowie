@@ -39,11 +39,8 @@ fn vs_fade(v: VertexIn) -> FadeOut {
     return f;
 }
 
-@fragment
-fn fs_fade(f: FadeOut, @builtin(front_facing) front: bool) -> @location(0) vec4<f32> {
-    if dither_threshold(f.clip.xy) < f.hidden {
-        discard;
-    }
+// The mesh program's fragment input of a faded fragment.
+fn fade_vertex(f: FadeOut) -> VertexOut {
     var v: VertexOut;
     v.clip = f.clip;
     v.world = f.world;
@@ -54,10 +51,33 @@ fn fs_fade(f: FadeOut, @builtin(front_facing) front: bool) -> @location(0) vec4<
     v.color = f.color;
     v.material = f.material;
     v.view_depth = f.view_depth;
-    let c = lit(v, front);
+    return v;
+}
+
+@fragment
+fn fs_fade(f: FadeOut, @builtin(front_facing) front: bool) -> @location(0) vec4<f32> {
+    if dither_threshold(f.clip.xy) < f.hidden {
+        discard;
+    }
+    let c = lit(fade_vertex(f), front);
     let cutoff = materials[f.material].params.w;
     if cutoff >= 0.0 && c.a < cutoff {
         discard;
     }
     return vec4<f32>(c.rgb, 1.0);
+}
+
+// `fs_fade` with the surface images the post chain reads.
+@fragment
+fn fs_fade_post(f: FadeOut, @builtin(front_facing) front: bool) -> PostOut {
+    if dither_threshold(f.clip.xy) < f.hidden {
+        discard;
+    }
+    var out = lit_post(fade_vertex(f), front);
+    let cutoff = materials[f.material].params.w;
+    if cutoff >= 0.0 && out.color.a < cutoff {
+        discard;
+    }
+    out.color.a = 1.0;
+    return out;
 }

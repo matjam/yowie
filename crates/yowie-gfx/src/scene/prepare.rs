@@ -144,6 +144,7 @@ struct MeshInfo {
 }
 
 /// The camera facts the preparation needs.
+#[derive(Clone)]
 pub(crate) struct View {
     pub(crate) view: Mat4,
     pub(crate) proj: Mat4,

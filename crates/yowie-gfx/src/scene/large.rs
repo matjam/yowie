@@ -226,6 +226,9 @@ impl SceneRenderer {
         while large.slots.len() <= ri {
             large.slots.push(LargeSlot::new(shared.device()));
         }
+        large
+            .pipelines
+            .ensure(shared.device(), self.slots[ri].format());
         let view = Frustum::from_view_proj(&Mat4::from_cols_array_2d(&p.frame.view_proj));
         let shadows = shadow_frustums(p);
         let LargeRenderer {
@@ -261,10 +264,13 @@ impl SceneRenderer {
         let Some((ri, large, slot)) = self.large_slot(id) else {
             return 0;
         };
+        let Some(p) = large.pipelines.hdr(self.slot(id).format()) else {
+            return 0;
+        };
         let rec = &self.records[ri];
-        let mut calls = terrain::render::encode(&large.pipelines, &slot.terrain, pass);
-        calls += billboard::encode(&large.pipelines, &slot.billboards, pass, SheetPass::Cutout);
-        calls += fade::encode(self, &large.pipelines, rec, &slot.fades, pass);
+        let mut calls = terrain::render::encode(p, &slot.terrain, pass);
+        calls += billboard::encode(p, &slot.billboards, pass, SheetPass::Cutout);
+        calls += fade::encode(self, p, rec, &slot.fades, pass);
         calls
     }
 
@@ -291,14 +297,17 @@ impl SceneRenderer {
         let Some((ri, large, slot)) = self.large_slot(id) else {
             return 0;
         };
+        let Some(p) = large.pipelines.hdr(self.slot(id).format()) else {
+            return 0;
+        };
         let rec = &self.records[ri].large;
         let sheets = if oit {
             SheetPass::Oit
         } else {
             SheetPass::Blend
         };
-        let mut calls = water::encode(&large.pipelines, rec, pass, oit);
-        calls += billboard::encode(&large.pipelines, &slot.billboards, pass, sheets);
+        let mut calls = water::encode(p, rec, pass, oit);
+        calls += billboard::encode(p, &slot.billboards, pass, sheets);
         calls
     }
 

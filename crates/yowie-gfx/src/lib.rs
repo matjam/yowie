@@ -36,11 +36,13 @@
 //!    depth targets here. Its draws are queued during `draw` like 2D ones
 //!    and resolved in `end_frame`. The place is marked "Pass 1" in
 //!    `Graphics::end_frame` (`crates/yowie-gfx/src/frame.rs`).
-//! 2. **Post-processing chain** (extension point, none yet). Effects read
-//!    the scene targets and the last one writes the output. When this pass
-//!    runs, the 2D pass must load the output rather than clear it: set the
-//!    list's `clear` to `None` for that frame. Marked "Pass 2" in the same
-//!    function.
+//! 2. **Post-processing chain** ([`scene::PostSettings`]). Each scene's
+//!    chain reads its targets and writes its viewport of the output; the
+//!    2D pass then loads the output rather than clearing it. A 2D frame
+//!    with [`Graphics::set_frame_post`] draws its scenes and the layers
+//!    below [`layers::UI`] into an HDR image, runs its own chain into the
+//!    output, and draws the interface layers on top. Marked "Pass 2" in
+//!    the same function.
 //! 3. **2D overlay** (`Pass2D` in `frame.rs`). The sprite batch drawn over
 //!    whatever the scene left, or over the clear colour.
 //!
@@ -72,6 +74,7 @@ mod engine_shaders;
 mod error;
 mod frame;
 mod geometry;
+mod gpu_timer;
 mod graphics;
 mod half;
 mod image_data;
@@ -140,6 +143,7 @@ pub use custom::{Draw2D, Draw3D, GpuDraw, PrepareContext};
 pub use device::{adapter_available, default_adapter_info};
 pub use error::{GfxError, Result};
 pub use geometry::Vertex;
+pub use gpu_timer::GpuTimes;
 pub use graphics::{FrameStats, Graphics, GraphicsSettings};
 pub use image_data::ImageData;
 pub use lights::{Light2D, MAX_LIGHTS_2D, Spot2D};
@@ -149,6 +153,7 @@ pub use path::{
     TexturePaint,
 };
 pub use render_texture::{RenderTexture, RenderTextureOptions};
+pub use scene::{Lut, PostSettings};
 pub use shader::Shader;
 pub use sprite::Sprite;
 pub use text::{

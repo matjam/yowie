@@ -4,7 +4,6 @@
 use super::StaticUse;
 use super::gpu::{BundleKey, INSTANCE_BYTES};
 use super::layout::Layout;
-use crate::scene::layouts::HDR_FORMAT;
 use crate::scene::pipelines::MeshKey;
 use crate::scene::render::SceneRenderer;
 use crate::scene::slot::SlotId;
@@ -27,7 +26,9 @@ impl SceneRenderer {
     ) -> u32 {
         let device = shared.device();
         let l = u.data.layout();
+        let format = self.slot(slot).format();
         let key = BundleKey {
+            format,
             frame: frame_group.clone(),
             materials: l
                 .materials
@@ -59,7 +60,10 @@ impl SceneRenderer {
         let pipes: Vec<wgpu::RenderPipeline> = l
             .batches
             .iter()
-            .map(|b| self.pipelines.mesh(device, &self.layouts, b.key, None))
+            .map(|b| {
+                self.pipelines
+                    .mesh(device, &self.layouts, b.key, format, None)
+            })
             .collect();
         let rec = Recording {
             depth_format: self.layouts.depth_format,
@@ -101,15 +105,26 @@ impl Recording<'_> {
     /// A bundle drawing every batch with the arguments at `args_base` and
     /// the instances at `region` (bytes).
     fn record(&self, device: &wgpu::Device, args_base: u64, region: u64) -> wgpu::RenderBundle {
+        // The bundle's attachments match the slot's HDR pass: its colour
+        // targets (post effects add the surface images) and sample count.
+        let format = self.key.format;
+        let color_formats: Vec<Option<wgpu::TextureFormat>> = format
+            .color_targets(None, false)
+            .iter()
+            .map(|t| t.as_ref().map(|t| t.format))
+            .collect();
         let mut enc = device.create_render_bundle_encoder(&wgpu::RenderBundleEncoderDescriptor {
             label: Some("yowie static"),
-            color_formats: &[Some(HDR_FORMAT)],
+            color_formats: &color_formats,
+            // Bundles draw only materials that leave the stencil alone
+            // (`classes::bundles_can_draw`), so their pipelines never
+            // write it; a read-only bundle runs in the read-write pass.
             depth_stencil: Some(wgpu::RenderBundleDepthStencil {
                 format: self.depth_format,
                 depth_read_only: false,
                 stencil_read_only: true,
             }),
-            sample_count: 1,
+            sample_count: format.samples,
             multiview: None,
         });
         enc.set_bind_group(0, &self.key.frame, &[]);

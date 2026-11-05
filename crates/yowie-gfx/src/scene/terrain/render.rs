@@ -5,7 +5,7 @@
 use super::{Terrain, TerrainInner};
 use crate::graphics::FrameStats;
 use crate::scene::large::{LargeRecord, PrepareContext, instance_buffer};
-use crate::scene::large_pipelines::LargePipelines;
+use crate::scene::large_pipelines::{HdrPipelines, LargePipelines};
 use crate::scene::slot::GrowBuffer;
 
 /// A run of chunk instances of one terrain at one level.
@@ -187,7 +187,7 @@ fn draw(pass: &mut wgpu::RenderPass<'_>, frame: &TerrainFrame, view: usize) -> u
 
 /// Records the terrain batches of the scene pass.
 pub(crate) fn encode(
-    p: &LargePipelines,
+    p: &HdrPipelines,
     frame: &TerrainFrame,
     pass: &mut wgpu::RenderPass<'_>,
 ) -> u32 {

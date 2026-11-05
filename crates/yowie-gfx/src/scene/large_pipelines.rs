@@ -1,10 +1,15 @@
 //! The shader module, bind group layouts and render pipelines of the
-//! large-scene draw classes.
+//! large-scene draw classes. The pipelines that draw into a scene's HDR
+//! pass are built per attachment layout ([`SceneFormat`]), when a scene
+//! of that layout first draws a large-scene class.
+
+use std::collections::HashMap;
 
 use wgpu::{BindGroupLayoutEntry as Entry, BindingType, ShaderStages as S};
 
-use super::layouts::{HDR_FORMAT, SHADOW_FORMAT, SceneLayouts, sampler, texture};
+use super::layouts::{SHADOW_FORMAT, SceneLayouts, sampler, texture};
 use super::pipelines::{engine_source, oit_targets};
+use super::targets::{Outputs, SceneFormat};
 use super::vertex::buffer_layouts;
 use crate::pipelines::trusted_module;
 
@@ -55,14 +60,11 @@ fn tex2d(binding: u32) -> Entry {
     texture(binding, wgpu::TextureViewDimension::D2)
 }
 
-/// Every layout and pipeline of the large-scene classes.
+/// The pipelines that draw into a scene's HDR pass, for one attachment
+/// layout.
 #[derive(Debug)]
-pub(crate) struct LargePipelines {
-    pub(crate) terrain_layout: wgpu::BindGroupLayout,
-    pub(crate) water_layout: wgpu::BindGroupLayout,
-    pub(crate) sheet_layout: wgpu::BindGroupLayout,
+pub(crate) struct HdrPipelines {
     pub(crate) terrain: wgpu::RenderPipeline,
-    pub(crate) terrain_shadow: wgpu::RenderPipeline,
     pub(crate) water: wgpu::RenderPipeline,
     /// Water into the order-independent transparency targets.
     pub(crate) water_oit: wgpu::RenderPipeline,
@@ -70,10 +72,33 @@ pub(crate) struct LargePipelines {
     pub(crate) billboard_blend: wgpu::RenderPipeline,
     /// Blended billboards into the order-independent transparency targets.
     pub(crate) billboard_oit: wgpu::RenderPipeline,
-    pub(crate) billboard_shadow: wgpu::RenderPipeline,
     pub(crate) fade: wgpu::RenderPipeline,
+}
+
+/// The pipeline layouts the HDR-pass pipelines are built with, and the
+/// scene's depth and stencil format they attach.
+#[derive(Debug)]
+struct HdrLayouts {
+    terrain: wgpu::PipelineLayout,
+    water: wgpu::PipelineLayout,
+    sheet: wgpu::PipelineLayout,
+    mesh: wgpu::PipelineLayout,
+    depth_format: wgpu::TextureFormat,
+}
+
+/// Every layout and pipeline of the large-scene classes.
+#[derive(Debug)]
+pub(crate) struct LargePipelines {
+    pub(crate) terrain_layout: wgpu::BindGroupLayout,
+    pub(crate) water_layout: wgpu::BindGroupLayout,
+    pub(crate) sheet_layout: wgpu::BindGroupLayout,
+    pub(crate) terrain_shadow: wgpu::RenderPipeline,
+    pub(crate) billboard_shadow: wgpu::RenderPipeline,
     pub(crate) bake_static: wgpu::RenderPipeline,
     pub(crate) bake_skinned: wgpu::RenderPipeline,
+    module: wgpu::ShaderModule,
+    hdr_layouts: HdrLayouts,
+    hdr: HashMap<SceneFormat, HdrPipelines>,
 }
 
 /// One pipeline's description.
@@ -86,6 +111,7 @@ struct Desc<'a> {
     depth: wgpu::DepthStencilState,
     cull: Option<wgpu::Face>,
     targets: &'a [Option<wgpu::ColorTargetState>],
+    multisample: wgpu::MultisampleState,
 }
 
 fn build(device: &wgpu::Device, module: &wgpu::ShaderModule, d: Desc<'_>) -> wgpu::RenderPipeline {
@@ -103,7 +129,7 @@ fn build(device: &wgpu::Device, module: &wgpu::ShaderModule, d: Desc<'_>) -> wgp
             ..Default::default()
         },
         depth_stencil: Some(d.depth),
-        multisample: wgpu::MultisampleState::default(),
+        multisample: d.multisample,
         fragment: d.fs.map(|entry| wgpu::FragmentState {
             module,
             entry_point: Some(entry),
@@ -144,6 +170,22 @@ fn shadow_depth() -> wgpu::DepthStencilState {
 /// The per-instance stream of terrain chunks.
 const CHUNK_ATTRIBUTES: [wgpu::VertexAttribute; 1] = wgpu::vertex_attr_array![0 => Uint32x4];
 
+fn chunk_buffers() -> [Option<wgpu::VertexBufferLayout<'static>>; 1] {
+    [Some(wgpu::VertexBufferLayout {
+        array_stride: 16,
+        step_mode: wgpu::VertexStepMode::Instance,
+        attributes: &CHUNK_ATTRIBUTES,
+    })]
+}
+
+fn board_buffers() -> [Option<wgpu::VertexBufferLayout<'static>>; 1] {
+    [Some(wgpu::VertexBufferLayout {
+        array_stride: std::mem::size_of::<super::billboard::GpuBillboard>() as u64,
+        step_mode: wgpu::VertexStepMode::Instance,
+        attributes: &BILLBOARD_ATTRIBUTES,
+    })]
+}
+
 /// The per-instance stream of billboards; matches `GpuBillboard`.
 pub(crate) const BILLBOARD_ATTRIBUTES: [wgpu::VertexAttribute; 7] = wgpu::vertex_attr_array![
     0 => Float32x3,
@@ -161,8 +203,6 @@ impl LargePipelines {
     pub(crate) fn new(device: &wgpu::Device, layouts: &SceneLayouts, cube_array: bool) -> Self {
         let source = [engine_source(cube_array), SOURCES.join("\n")].join("\n");
         let module = trusted_module(device, "yowie large scene", &source);
-        // Lit draws attach the scene's depth and stencil image.
-        let lit = |write| depth(layouts.depth_format, write, wgpu::CompareFunction::Greater);
         let bgl = |label, entries: &[Entry]| {
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some(label),
@@ -213,24 +253,7 @@ impl LargePipelines {
             "yowie billboard shadow",
             &[Some(&layouts.shadow_frame), Some(&sheet_layout)],
         );
-        let hdr = |blend: bool| {
-            [Some(wgpu::ColorTargetState {
-                format: HDR_FORMAT,
-                blend: blend.then_some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
-                write_mask: wgpu::ColorWrites::ALL,
-            })]
-        };
-        let chunks = [Some(wgpu::VertexBufferLayout {
-            array_stride: 16,
-            step_mode: wgpu::VertexStepMode::Instance,
-            attributes: &CHUNK_ATTRIBUTES,
-        })];
-        let boards = [Some(wgpu::VertexBufferLayout {
-            array_stride: std::mem::size_of::<super::billboard::GpuBillboard>() as u64,
-            step_mode: wgpu::VertexStepMode::Instance,
-            attributes: &BILLBOARD_ATTRIBUTES,
-        })];
-        let oit = oit_targets();
+        let greater = wgpu::CompareFunction::Greater;
         let bake_targets = BAKE_FORMATS.map(|format| {
             Some(wgpu::ColorTargetState {
                 format,
@@ -238,121 +261,174 @@ impl LargePipelines {
                 write_mask: wgpu::ColorWrites::ALL,
             })
         });
+        let single = wgpu::MultisampleState::default();
         let b = |d: Desc<'_>| build(device, &module, d);
-        Self {
+        let terrain_shadow = b(Desc {
+            label: "yowie terrain shadow",
+            layout: &terrain_shadow_pl,
+            vs: "vs_terrain_shadow",
+            fs: None,
+            buffers: &chunk_buffers(),
+            depth: shadow_depth(),
+            cull: None,
+            targets: &[],
+            multisample: single,
+        });
+        let billboard_shadow = b(Desc {
+            label: "yowie billboard shadow",
+            layout: &sheet_shadow_pl,
+            vs: "vs_billboard_shadow",
+            fs: Some("fs_billboard_shadow"),
+            buffers: &board_buffers(),
+            depth: shadow_depth(),
+            cull: None,
+            targets: &[],
+            multisample: single,
+        });
+        let bake = |label, vs, skinned| {
+            b(Desc {
+                label,
+                layout: &layouts.mesh,
+                vs,
+                fs: Some("fs_impostor_bake"),
+                buffers: &buffer_layouts(skinned),
+                depth: depth(layouts.depth_format, true, greater),
+                cull: None,
+                targets: &bake_targets,
+                multisample: single,
+            })
+        };
+        let bake_static = bake("yowie impostor bake", "vs_static", false);
+        let bake_skinned = bake("yowie impostor bake skinned", "vs_skinned", true);
+        let mut pipelines = Self {
+            terrain_shadow,
+            billboard_shadow,
+            bake_static,
+            bake_skinned,
+            hdr_layouts: HdrLayouts {
+                terrain: terrain_lit,
+                water: water_pl,
+                sheet: sheet_pl,
+                mesh: layouts.mesh.clone(),
+                depth_format: layouts.depth_format,
+            },
+            hdr: HashMap::new(),
+            module,
+            terrain_layout,
+            water_layout,
+            sheet_layout,
+        };
+        pipelines.ensure(device, SceneFormat::default());
+        pipelines
+    }
+
+    /// Builds the HDR-pass pipelines for `format` unless they exist.
+    pub(crate) fn ensure(&mut self, device: &wgpu::Device, format: SceneFormat) {
+        if !self.hdr.contains_key(&format) {
+            let set = self.build_hdr(device, format);
+            self.hdr.insert(format, set);
+        }
+    }
+
+    /// The HDR-pass pipelines for `format`, once [`Self::ensure`] built
+    /// them.
+    pub(crate) fn hdr(&self, format: SceneFormat) -> Option<&HdrPipelines> {
+        self.hdr.get(&format)
+    }
+
+    fn build_hdr(&self, device: &wgpu::Device, format: SceneFormat) -> HdrPipelines {
+        let l = &self.hdr_layouts;
+        // Opaque classes write the surface images the post chain asked
+        // for; blended ones leave them alone.
+        let surface = format.outputs != Outputs::Color;
+        let fs = |plain, post| Some(if surface { post } else { plain });
+        let opaque = format.color_targets(None, surface);
+        let blended =
+            format.color_targets(Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING), false);
+        // The transparency accumulation pass has its own two targets and
+        // the scene's sample count; it writes no surface images.
+        let oit = oit_targets();
+        // Lit draws attach the scene's depth and stencil image.
+        let lit = |write| depth(l.depth_format, write, wgpu::CompareFunction::Greater);
+        let b = |d: Desc<'_>| build(device, &self.module, d);
+        HdrPipelines {
             terrain: b(Desc {
                 label: "yowie terrain",
-                layout: &terrain_lit,
+                layout: &l.terrain,
                 vs: "vs_terrain",
-                fs: Some("fs_terrain"),
-                buffers: &chunks,
+                fs: fs("fs_terrain", "fs_terrain_post"),
+                buffers: &chunk_buffers(),
                 depth: lit(true),
                 cull: Some(wgpu::Face::Back),
-                targets: &hdr(false),
-            }),
-            terrain_shadow: b(Desc {
-                label: "yowie terrain shadow",
-                layout: &terrain_shadow_pl,
-                vs: "vs_terrain_shadow",
-                fs: None,
-                buffers: &chunks,
-                depth: shadow_depth(),
-                cull: None,
-                targets: &[],
+                targets: &opaque,
+                multisample: format.multisample(),
             }),
             water: b(Desc {
                 label: "yowie water",
-                layout: &water_pl,
+                layout: &l.water,
                 vs: "vs_water",
                 fs: Some("fs_water"),
                 buffers: &[],
                 depth: lit(false),
                 cull: None,
-                targets: &hdr(true),
+                targets: &blended,
+                multisample: format.multisample(),
             }),
             water_oit: b(Desc {
                 label: "yowie water oit",
-                layout: &water_pl,
+                layout: &l.water,
                 vs: "vs_water",
                 fs: Some("fs_water_oit"),
                 buffers: &[],
                 depth: lit(false),
                 cull: None,
                 targets: &oit,
+                multisample: format.multisample(),
             }),
             billboard_cutout: b(Desc {
                 label: "yowie billboard",
-                layout: &sheet_pl,
+                layout: &l.sheet,
                 vs: "vs_billboard",
-                fs: Some("fs_billboard_cutout"),
-                buffers: &boards,
+                fs: fs("fs_billboard_cutout", "fs_billboard_cutout_post"),
+                buffers: &board_buffers(),
                 depth: lit(true),
                 cull: None,
-                targets: &hdr(false),
+                targets: &opaque,
+                multisample: format.multisample(),
             }),
             billboard_blend: b(Desc {
                 label: "yowie billboard blend",
-                layout: &sheet_pl,
+                layout: &l.sheet,
                 vs: "vs_billboard",
                 fs: Some("fs_billboard_blend"),
-                buffers: &boards,
+                buffers: &board_buffers(),
                 depth: lit(false),
                 cull: None,
-                targets: &hdr(true),
+                targets: &blended,
+                multisample: format.multisample(),
             }),
             billboard_oit: b(Desc {
                 label: "yowie billboard oit",
-                layout: &sheet_pl,
+                layout: &l.sheet,
                 vs: "vs_billboard",
                 fs: Some("fs_billboard_oit"),
-                buffers: &boards,
+                buffers: &board_buffers(),
                 depth: lit(false),
                 cull: None,
                 targets: &oit,
-            }),
-            billboard_shadow: b(Desc {
-                label: "yowie billboard shadow",
-                layout: &sheet_shadow_pl,
-                vs: "vs_billboard_shadow",
-                fs: Some("fs_billboard_shadow"),
-                buffers: &boards,
-                depth: shadow_depth(),
-                cull: None,
-                targets: &[],
+                multisample: format.multisample(),
             }),
             fade: b(Desc {
                 label: "yowie fade",
-                layout: &layouts.mesh,
+                layout: &l.mesh,
                 vs: "vs_fade",
-                fs: Some("fs_fade"),
+                fs: fs("fs_fade", "fs_fade_post"),
                 buffers: &buffer_layouts(false),
                 depth: lit(true),
                 cull: None,
-                targets: &hdr(false),
+                targets: &opaque,
+                multisample: format.multisample(),
             }),
-            bake_static: b(Desc {
-                label: "yowie impostor bake",
-                layout: &layouts.mesh,
-                vs: "vs_static",
-                fs: Some("fs_impostor_bake"),
-                buffers: &buffer_layouts(false),
-                depth: lit(true),
-                cull: None,
-                targets: &bake_targets,
-            }),
-            bake_skinned: b(Desc {
-                label: "yowie impostor bake skinned",
-                layout: &layouts.mesh,
-                vs: "vs_skinned",
-                fs: Some("fs_impostor_bake"),
-                buffers: &buffer_layouts(true),
-                depth: lit(true),
-                cull: None,
-                targets: &bake_targets,
-            }),
-            terrain_layout,
-            water_layout,
-            sheet_layout,
         }
     }
 }
