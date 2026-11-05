@@ -144,6 +144,7 @@ fn encode_shadows(
         pass.set_scissor_rect(x, y, s, s);
         calls += r.draw_batches(shared, &mut pass, ri, batches, &mut state);
     }
+    calls += r.draw_large_shadows(&mut pass, ri, p);
     calls
 }
 
@@ -174,6 +175,7 @@ pub(crate) fn encode_scene(
         return calls;
     };
     pass.set_bind_group(0, &frame_group, &[]);
+    calls += r.draw_large_opaque(&mut pass, ri);
     pass.set_vertex_buffer(1, instances.slice(..));
     let mut state = PassState::default();
     calls += r.draw_batches(shared, &mut pass, ri, &p.opaque, &mut state);
@@ -184,6 +186,7 @@ pub(crate) fn encode_scene(
         calls += 1;
     }
     calls += r.draw_batches(shared, &mut pass, ri, &p.blend, &mut state);
+    calls += r.draw_large_blend(&mut pass, ri);
     if let Some(lp) = &lines_pipe {
         pass.set_pipeline(lp);
         pass.set_vertex_buffer(0, lines.slice(..));

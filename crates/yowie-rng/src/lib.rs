@@ -18,9 +18,11 @@
 
 mod dice;
 mod error;
+mod noise;
 mod pcg;
 mod pick;
 
 pub use dice::Dice;
 pub use error::RngError;
+pub use noise::Noise;
 pub use pcg::Rng;

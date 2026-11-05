@@ -63,6 +63,18 @@ pub struct FrameStats {
     pub lights_dropped: u32,
     /// Instances drawn into shadow maps.
     pub shadow_instances: u32,
+    /// Terrain chunks drawn in the scene pass.
+    pub terrain_chunks: u32,
+    /// Terrain chunks skipped because they were outside the camera's view.
+    pub terrain_chunks_culled: u32,
+    /// Billboards and impostors drawn in the scene pass (those culled
+    /// count in `culled_3d`).
+    pub billboards: u32,
+    /// Impostors recorded, cross-fading ones included.
+    pub impostors: u32,
+    /// Draws picked from a level of detail, by level; the last entry
+    /// counts levels 3 and up.
+    pub lod_levels: [u32; 4],
 }
 
 /// The renderer for one window or headless image.

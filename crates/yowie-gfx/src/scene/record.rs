@@ -105,6 +105,8 @@ pub(crate) struct SceneRecord {
     /// The output's clear colour, taken over from its draw list by the
     /// first scene of each output when the frame renders.
     pub(crate) output_clear: Option<Color>,
+    /// Terrain, water, billboards, impostors and labels.
+    pub(crate) large: super::large::LargeRecord,
 }
 
 impl SceneRecord {
@@ -135,6 +137,7 @@ impl SceneRecord {
         self.lines_on_top.clear();
         self.background_color = [0.0; 4];
         self.output_clear = None;
+        self.large.clear();
     }
 
     pub(crate) fn mesh_slot(&mut self, mesh: &Mesh) -> u32 {

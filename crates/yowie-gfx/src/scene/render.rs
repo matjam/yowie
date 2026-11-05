@@ -62,6 +62,9 @@ pub(crate) struct SceneRenderer {
     frame: u64,
     /// Bumped whenever a slot buffer is replaced, so bind groups rebuild.
     pub(super) generation: u64,
+    /// Terrain, water, billboard and impostor pipelines and buffers,
+    /// created with the first scene that draws one (`large.rs`).
+    pub(super) large: Option<Box<super::large::LargeRenderer>>,
 }
 
 fn black_cube(device: &wgpu::Device) -> wgpu::TextureView {
@@ -142,6 +145,7 @@ impl SceneRenderer {
             prepared: Prepared::default(),
             frame: 0,
             generation: 0,
+            large: None,
         }
     }
 
@@ -283,6 +287,7 @@ impl SceneRenderer {
             }
         }
         let draws = rec.draws.len() as u32;
+        self.prepare_large(shared, ri, &prepared, stats);
         let calls = super::passes::encode_scene(self, shared, encoder, ri, &prepared);
         stats.draw_calls_3d += calls;
         stats.draws_3d += draws;
