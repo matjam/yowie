@@ -1,12 +1,15 @@
 //! 3D joint descriptions.
 
 use rapier3d::dynamics::{
-    FixedJointBuilder, GenericJoint, JointAxis, PrismaticJointBuilder, RevoluteJointBuilder,
-    RopeJointBuilder, SphericalJointBuilder, SpringJointBuilder,
+    FixedJointBuilder, GenericJoint, JointAxesMask, JointAxis, PrismaticJointBuilder,
+    RevoluteJointBuilder, RopeJointBuilder, SphericalJointBuilder, SpringJointBuilder,
 };
 use yowie_core::Vec3;
 
-use super::convert::vec;
+use super::convert::{joint_handle, vec};
+use super::world::World3D;
+use crate::error::{PhysError, Result};
+use crate::ids::JointId;
 use crate::joint::{Limits, Motor};
 
 /// The kind of constraint a 3D joint applies, with its parameters.
@@ -193,5 +196,36 @@ impl JointDesc3D {
                 .build()
                 .into(),
         }
+    }
+}
+
+impl World3D {
+    /// Replaces the motor of a hinge or prismatic joint, for example to
+    /// change a wheel's speed or torque while it runs.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PhysError::NoSuchJoint`] for a stale id.
+    pub fn set_joint_motor(&mut self, joint: JointId, motor: Motor) -> Result<()> {
+        let j = self
+            .pw
+            .impulse_joints
+            .get_mut(joint_handle(joint), true)
+            .ok_or(PhysError::NoSuchJoint(joint))?;
+        let axis = if j.data.motor_axes.contains(JointAxesMask::LIN_X) {
+            JointAxis::LinX
+        } else {
+            JointAxis::AngX
+        };
+        j.data
+            .set_motor(
+                axis,
+                motor.target_position,
+                motor.target_velocity,
+                motor.stiffness,
+                motor.damping,
+            )
+            .set_motor_max_force(axis, motor.max_force);
+        Ok(())
     }
 }

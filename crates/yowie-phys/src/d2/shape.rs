@@ -45,6 +45,16 @@ pub enum Shape2D {
         /// Joins the last point back to the first.
         closed: bool,
     },
+    /// A height profile sampled at evenly spaced X positions, filled below
+    /// the profile. Use it for static terrain.
+    Heightfield {
+        /// Height of each sample, left to right. At least 2.
+        heights: Vec<f32>,
+        /// Total extent along X (samples span `-extent / 2` to
+        /// `extent / 2` around the collider origin) and a multiplier
+        /// for the heights.
+        scale: Vec2,
+    },
     /// Several shapes with local offsets, acting as one collider.
     Compound(Vec<(Transform2D, Shape2D)>),
 }
@@ -99,6 +109,18 @@ impl Shape2D {
                     idx.push([n - 1, 0]);
                 }
                 Ok(SharedShape::polyline(verts, Some(idx)))
+            }
+            Self::Heightfield { heights, scale } => {
+                if heights.len() < 2
+                    || !positive(scale.x)
+                    || !scale.y.is_finite()
+                    || heights.iter().any(|h| !h.is_finite())
+                {
+                    return Err(PhysError::InvalidShape(
+                        "heightfield needs 2 finite heights and a positive width",
+                    ));
+                }
+                Ok(SharedShape::heightfield(heights.clone(), vec(*scale)))
             }
             Self::Compound(parts) => {
                 if parts.is_empty() {
@@ -156,6 +178,27 @@ mod tests {
                 Shape2D::Polyline {
                     points: vec![Vec2::ZERO],
                     closed: false,
+                },
+                false,
+            ),
+            (
+                Shape2D::Heightfield {
+                    heights: vec![0.0, 1.0, 0.5],
+                    scale: Vec2::new(10.0, 1.0),
+                },
+                true,
+            ),
+            (
+                Shape2D::Heightfield {
+                    heights: vec![0.0],
+                    scale: Vec2::new(10.0, 1.0),
+                },
+                false,
+            ),
+            (
+                Shape2D::Heightfield {
+                    heights: vec![0.0, 1.0],
+                    scale: Vec2::new(0.0, 1.0),
                 },
                 false,
             ),
