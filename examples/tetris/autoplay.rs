@@ -82,10 +82,10 @@ fn evaluate(board: &Board, landed: &Falling) -> f32 {
     let lines = b.full.iter().filter(|r| r.iter().all(|c| *c)).count();
     let mut heights = [0_i32; COLS];
     let mut holes = 0;
-    for x in 0..COLS {
+    for (x, height) in heights.iter_mut().enumerate() {
         let top = (0..ROWS).find(|y| b.full[*y][x]);
         if let Some(top) = top {
-            heights[x] = (ROWS - top) as i32;
+            *height = (ROWS - top) as i32;
             holes += (top..ROWS).filter(|y| !b.full[*y][x]).count();
         }
     }
