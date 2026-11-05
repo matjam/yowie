@@ -72,7 +72,7 @@ fn arg(name: &str) -> Option<String> {
 }
 
 /// The post settings the example starts with: bloom, ambient occlusion
-/// and FXAA (Bunyip's defaults), plus the effects `--effects` names.
+/// and FXAA, plus the effects `--effects` names.
 fn starting_post(effects: &str, warm: &Lut) -> PostSettings {
     let mut p = PostSettings {
         bloom: 0.25,

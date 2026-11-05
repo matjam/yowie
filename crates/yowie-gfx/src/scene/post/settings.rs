@@ -18,9 +18,6 @@ use crate::scene::Tonemap;
 /// processing existed; every effect is off until its strength or switch is
 /// set, and an effect that is off costs no pass.
 ///
-/// The names follow Bunyip's `PostSettings`. Unlike Bunyip, bloom, ambient
-/// occlusion and FXAA are off by default.
-///
 /// ```no_run
 /// # use yowie_gfx::scene::*;
 /// # fn f(s: &mut Scene) {

@@ -171,16 +171,16 @@ pub fn expand_blob(template: &RgbaImage, tile: u32) -> Option<RgbaImage> {
 mod tests {
     use super::*;
 
-    /// The canonical masks as Bunyip's `BlobMasks` returns them.
-    const BUNYIP_MASKS: [u8; 47] = [
+    /// The 47 canonical masks in ascending order.
+    const REFERENCE_MASKS: [u8; 47] = [
         0, 1, 4, 5, 7, 16, 17, 20, 21, 23, 28, 29, 31, 64, 65, 68, 69, 71, 80, 81, 84, 85, 87, 92,
         93, 95, 112, 113, 116, 117, 119, 124, 125, 127, 193, 197, 199, 209, 213, 215, 221, 223,
         241, 245, 247, 253, 255,
     ];
 
-    /// Bunyip's `BlobIndex` for every raw mask.
+    /// The expected tile index for every raw mask.
     #[rustfmt::skip]
-    const BUNYIP_INDEX: [u8; 256] = [
+    const REFERENCE_INDEX: [u8; 256] = [
         0, 1, 0, 1, 2, 3, 2, 4, 0, 1, 0, 1, 2, 3, 2, 4, 5, 6, 5, 6, 7, 8, 7, 9, 5, 6, 5, 6, 10, 11,
         10, 12, 0, 1, 0, 1, 2, 3, 2, 4, 0, 1, 0, 1, 2, 3, 2, 4, 5, 6, 5, 6, 7, 8, 7, 9, 5, 6, 5, 6,
         10, 11, 10, 12, 13, 14, 13, 14, 15, 16, 15, 17, 13, 14, 13, 14, 15, 16, 15, 17, 18, 19, 18,
@@ -194,10 +194,14 @@ mod tests {
     ];
 
     #[test]
-    fn mask_to_tile_table_matches_bunyip() {
-        assert_eq!(blob_masks(), BUNYIP_MASKS);
+    fn mask_to_tile_table_matches_reference() {
+        assert_eq!(blob_masks(), REFERENCE_MASKS);
         for m in 0..=255u8 {
-            assert_eq!(blob_index(m), BUNYIP_INDEX[m as usize] as usize, "mask {m}");
+            assert_eq!(
+                blob_index(m),
+                REFERENCE_INDEX[m as usize] as usize,
+                "mask {m}"
+            );
         }
     }
 

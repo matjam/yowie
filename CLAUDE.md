@@ -1,11 +1,8 @@
 # Yowie for language models
 
 Yowie is a Rust game library for real-time and turn-based games that put
-2D sprites and 3D models on one screen. Its feature set follows Bunyip
-(`~/src/bunyip`, a Go engine by the same author); its API does not. When a
-feature needs a reference implementation, read the matching Bunyip package
-(its Go source and `docs/guides/*.md`) for behaviour and algorithms, then
-write idiomatic Rust.
+2D sprites and 3D models on one screen. Code, comments and docs describe
+Yowie on its own terms; they do not name or compare it with other engines.
 
 Programs must build with plain `cargo build` on Linux (native Wayland, X11
 fallback), macOS and Windows.
@@ -67,14 +64,13 @@ Every example accepts `--shot <file.png>` (render, save the frame, exit),
 `YOWIE_FIXED_CLOCK=1` (advance time by exactly one fixed step per frame), so
 it can verify itself headless. The engine parses these; examples do not.
 
-The library is not finished until every one of these exists, each the
-counterpart of the Bunyip example of the same name (see Bunyip's README
-table for what each shows): animation, assets, audio, autotile, clear,
-gallery, inputs, lighting, materials, network, particles, pathfinding,
-physics_lab, physics2d, physics3d, probes, roguelike, shaders, softbody,
-solar, space, sprites, terrain, tetris, text, tiled, tiles, vector, viewer,
-window. Whoever builds a feature writes the examples that show it, with a
-golden image in `examples/testdata/` when the output is deterministic.
+These examples exist and must keep working: animation, assets, audio,
+autotile, clear, gallery, inputs, lighting, materials, network, particles,
+pathfinding, physics_lab, physics2d, physics3d, probes, roguelike, shaders,
+softbody, solar, space, sprites, terrain, tetris, text, tiled, tiles,
+vector, viewer, window. Whoever builds or changes a feature updates the
+examples that show it, with a golden image in `examples/testdata/` when the
+output is deterministic.
 
 ## Prose
 
