@@ -1,5 +1,7 @@
 # Yowie
 
+[![CI](https://github.com/matjam/yowie/actions/workflows/ci.yml/badge.svg)](https://github.com/matjam/yowie/actions/workflows/ci.yml)
+
 Yowie is a Rust game library for real-time and turn-based games that put
 2D sprites and 3D models on one screen. One renderer draws sprites, text,
 vector paths and tilemaps over physically based 3D scenes in the same

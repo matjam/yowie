@@ -2,3 +2,5 @@
 /shots
 **/*.rs.bk
 .DS_Store
+# The console's `screenshot` command writes here by default.
+/screenshot.png
