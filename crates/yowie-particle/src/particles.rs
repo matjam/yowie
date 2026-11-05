@@ -201,6 +201,15 @@ impl Particles {
         }
     }
 
+    /// The exact live count. On the GPU backend this waits for the GPU, so
+    /// use it for headless checks and tools, not every frame of a game.
+    pub fn read_alive(&self) -> usize {
+        match &self.kind {
+            Kind::Cpu(s) => s.alive(),
+            Kind::Gpu(s) => s.read_alive(),
+        }
+    }
+
     /// Whether the effect still births particles over time.
     pub fn emitting(&self) -> bool {
         match &self.kind {

@@ -1,9 +1,10 @@
 //! Every widget of the interface toolkit, the built-in themes, a texture
-//! skin, the frame-timing overlay and the debug console.
+//! skin, a live particle editor that saves its emitter as JSON, the
+//! frame-timing overlay and the debug console.
 //!
 //! Arguments: `--theme <name>` picks a built-in theme (try `nord`),
-//! `--skin` draws the widgets from nine-slice textures, `--overlay` shows
-//! the frame-timing overlay, `--console` and `--panels` start with the
+//! `--skin` draws the widgets from nine-slice textures, `--debug` (or
+//! `--overlay`) shows the frame-timing overlay, `--console` and `--panels` start with the
 //! console drop-down or the debug panels open, and `--beep` plays a tone through the audio
 //! mixer (never in headless runs). In a window, the backtick key opens
 //! the console and F4 the debug panels; F3 toggles the overlay. Try
@@ -13,6 +14,7 @@ use yowie::audio::{Pcm, PlayOptions, Sound};
 use yowie::console::IntVar;
 use yowie::gfx::{NineSlice, Texture, TextureOptions};
 use yowie::input::Key;
+use yowie::particle::{Backend, Blend, Emitter, Particles as Effect, presets};
 use yowie::ui::{Column, Frame, Skin, Theme, theme_names};
 use yowie::{Color, Config, Context, Game, GameResult, Rect, Vec2, vec2};
 
@@ -40,6 +42,7 @@ struct Gallery {
     tint_hue: f32,
     win_a: Rect,
     win_b: Rect,
+    editor: Editor,
     tab: usize,
     map: usize,
     fog: bool,
@@ -69,7 +72,7 @@ impl Args {
                 "--theme" => a.theme = it.next(),
                 "--skin" => a.skin = true,
                 "--beep" => a.beep = true,
-                "--overlay" => a.overlay = true,
+                "--overlay" | "--debug" => a.overlay = true,
                 "--console" => a.console = true,
                 "--panels" => a.panels = true,
                 other => {
@@ -200,6 +203,7 @@ impl Game for Gallery {
             tint_hue: 0.07,
             win_a: Rect::new(16.0, 40.0, 452.0, 548.0),
             win_b: Rect::new(484.0, 40.0, 460.0, 548.0),
+            editor: Editor::new(ctx)?,
             tab: 0,
             map: 1,
             fog: true,
@@ -282,8 +286,10 @@ impl Game for Gallery {
                 &mut beep,
             );
             self.more_window(f);
+            self.editor.window(f);
             self.dialogs(f, &mut quit);
         });
+        self.editor.draw_preview(&mut ctx.gfx, ctx.time.delta());
         self.volume.set(vol);
         self.theme.set(theme_idx as i64);
         self.use_skin = skin_on;
@@ -492,9 +498,184 @@ impl Gallery {
     }
 }
 
+// ---- The particle editor --------------------------------------------------
+
+const PRESETS: [&str; 5] = ["Fire", "Smoke", "Sparks", "Confetti", "Rain"];
+/// Where `Save JSON` writes, in the working directory.
+const SAVE_PATH: &str = "emitter.json";
+const PREVIEW_H: f32 = 120.0;
+
+/// A window with a live particle preview, sliders for the emitter and its
+/// JSON, which can be edited as text and saved to a file.
+struct Editor {
+    fx: Effect,
+    emitter: Emitter,
+    preset: usize,
+    tab: usize,
+    win: Rect,
+    preview: Rect,
+    json: String,
+    status: String,
+    gpu: bool,
+}
+
+fn preset_emitter(i: usize) -> Emitter {
+    let e = match i {
+        0 => presets::fire(),
+        1 => presets::smoke(),
+        2 => presets::sparks(),
+        3 => presets::confetti(),
+        _ => presets::rain(),
+    };
+    Emitter {
+        layer: yowie::gfx::layers::UI + 1,
+        prewarm: 0.0,
+        ..e
+    }
+}
+
+impl Editor {
+    fn new(ctx: &Context) -> GameResult<Self> {
+        let soft = Texture::from_image(
+            &ctx.gfx,
+            &presets::soft_circle(64),
+            TextureOptions::smooth(),
+        )?;
+        let emitter = preset_emitter(0);
+        let mut fx = Effect::new(&ctx.gfx, emitter.clone(), Backend::Cpu);
+        fx.set_texture(soft.clone());
+        Ok(Self {
+            fx,
+            json: emitter.to_json().unwrap_or_default(),
+            emitter,
+            preset: 0,
+            tab: 0,
+            win: Rect::new(960.0, 40.0, 304.0, 548.0),
+            preview: Rect::ZERO,
+            status: String::new(),
+            gpu: false,
+        })
+    }
+
+    fn load_preset(&mut self, i: usize) {
+        self.preset = i;
+        self.emitter = preset_emitter(i);
+        self.fx.set_emitter(self.emitter.clone());
+        self.fx.start();
+    }
+
+    /// The emitter as written to a file: on the default layer.
+    fn saved(&self) -> Emitter {
+        Emitter {
+            layer: 0,
+            ..self.emitter.clone()
+        }
+    }
+
+    fn window(&mut self, f: &mut Frame<'_>) {
+        let mut win = self.win;
+        f.window("Particle editor", &mut win, |f| {
+            self.preview = f.allocate(0.0, PREVIEW_H);
+            f.fill_rect(self.preview, Color::rgb8(10, 12, 22));
+            f.tabs("editor", &["Tune", "JSON"], &mut self.tab);
+            f.space(4.0);
+            if self.tab == 0 {
+                self.tune(f);
+            } else {
+                self.json_tab(f);
+            }
+            if !self.status.is_empty() {
+                f.label_dim(&self.status.clone());
+            }
+        });
+        self.win = win;
+    }
+
+    fn tune(&mut self, f: &mut Frame<'_>) {
+        let mut preset = self.preset;
+        f.combo_box("Preset", &mut preset, &PRESETS);
+        if preset != self.preset {
+            self.load_preset(preset);
+        }
+        let e = &mut self.emitter;
+        f.slider("Rate", &mut e.rate, 0.0..=400.0);
+        f.slider("Lifetime", &mut e.lifetime.max, 0.2..=4.0);
+        f.slider("Speed", &mut e.speed.max, 0.0..=300.0);
+        f.slider("Spread", &mut e.spread, 0.0..=std::f32::consts::TAU);
+        f.slider("Gravity", &mut e.gravity.y, -300.0..=300.0);
+        f.slider("Size", &mut e.size.max, 2.0..=60.0);
+        f.slider("Drag", &mut e.drag, 0.0..=2.0);
+        e.lifetime.min = e.lifetime.min.min(e.lifetime.max);
+        e.speed.min = e.speed.min.min(e.speed.max);
+        e.size.min = e.size.min.min(e.size.max);
+        let mut additive = e.blend == Blend::Additive;
+        let mut gpu = self.gpu;
+        let mut save = false;
+        f.columns(3, |f| {
+            f.checkbox("Add", &mut additive);
+            f.checkbox("GPU", &mut gpu);
+            save = f.button("Save JSON").clicked;
+        });
+        e.blend = if additive { Blend::Additive } else { Blend::Alpha };
+        self.gpu = gpu;
+        if save {
+            self.save();
+        }
+        self.json = self.saved().to_json().unwrap_or_default();
+    }
+
+    fn json_tab(&mut self, f: &mut Frame<'_>) {
+        f.text_area("JSON", &mut self.json, 300.0);
+        f.columns(2, |f| {
+            if f.button("Apply").clicked {
+                match Emitter::from_json(&self.json) {
+                    Ok(e) => {
+                        self.emitter = Emitter {
+                            layer: yowie::gfx::layers::UI + 1,
+                            ..e
+                        };
+                        self.status = "applied the JSON".into();
+                    }
+                    Err(e) => self.status = e.to_string(),
+                }
+            }
+            if f.button("Save JSON").clicked {
+                self.save();
+            }
+        });
+    }
+
+    fn save(&mut self) {
+        let json = self.saved().to_json().unwrap_or_default();
+        self.status = match std::fs::write(SAVE_PATH, json) {
+            Ok(()) => format!("saved {SAVE_PATH}"),
+            Err(e) => format!("cannot save {SAVE_PATH}: {e}"),
+        };
+    }
+
+    /// Runs the edited emitter and draws it inside the preview area.
+    fn draw_preview(&mut self, gfx: &mut yowie::gfx::Graphics, dt: f32) {
+        let want = if self.gpu { Backend::Gpu } else { Backend::Cpu };
+        self.fx.switch_to(gfx, want);
+        self.fx.set_emitter(self.emitter.clone());
+        let r = self.preview;
+        let at = match self.preset {
+            0 | 1 => vec2(r.x + r.w * 0.5, r.y + r.h * 0.85),
+            4 => vec2(r.x, r.y),
+            _ => vec2(r.x + r.w * 0.5, r.y + r.h * 0.5),
+        };
+        self.fx.set_position(at);
+        self.fx.update(dt);
+        if self.fx.finished() {
+            self.fx.start();
+        }
+        gfx.with_clip(r, |g| self.fx.draw(g));
+    }
+}
+
 fn main() -> Result<(), yowie::Error> {
     let args = Args::parse();
-    let mut config = Config::new("Yowie gallery").with_size(960, 600);
+    let mut config = Config::new("Yowie gallery").with_size(1280, 600);
     config.console = true;
     config.debug_overlay = args.overlay;
     config.clear_color = Color::rgb8(24, 26, 36);
