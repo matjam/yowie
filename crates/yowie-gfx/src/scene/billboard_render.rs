@@ -9,7 +9,7 @@ use bytemuck::{Pod, Zeroable};
 
 use super::billboard::{GpuBillboard, Sheet, SheetKey};
 use super::large::{LargeRecord, PrepareContext, instance_buffer};
-use super::large_pipelines::LargePipelines;
+use super::large_pipelines::{HdrPipelines, LargePipelines};
 use super::slot::GrowBuffer;
 use crate::graphics::FrameStats;
 use crate::texture_gpu::TextureGpu;
@@ -251,7 +251,7 @@ fn draw(
 /// Records the cut-out (`blend` false) or blended billboards of the scene
 /// pass.
 pub(crate) fn encode(
-    p: &LargePipelines,
+    p: &HdrPipelines,
     frame: &BillboardFrame,
     pass: &mut wgpu::RenderPass<'_>,
     blend: bool,

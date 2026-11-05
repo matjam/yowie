@@ -22,7 +22,8 @@ use crate::scene::camera::{Camera3D, Projection};
 use crate::scene::layouts::DEPTH_FORMAT;
 use crate::scene::prepare::View;
 use crate::scene::render::SceneRenderer;
-use crate::scene::slot::{SceneSlot, SlotId, Targets};
+use crate::scene::slot::{SceneSlot, SlotId};
+use crate::scene::targets::Targets;
 use crate::shared::Shared;
 
 /// Each face's camera direction and up vector, in cube face order (+X,
@@ -94,11 +95,11 @@ impl SceneRenderer {
         }
         let mut stats = FrameStats::default();
         for (f, face) in faces.iter().enumerate().take(6) {
-            self.captures[f].targets = Some(Targets {
-                size: UVec2::splat(size),
-                color: face.clone(),
-                depth: depth.clone(),
-            });
+            self.captures[f].targets = Some(Targets::wrap(
+                UVec2::splat(size),
+                face.clone(),
+                depth.clone(),
+            ));
             let cam = face_camera(position, f, range.0, range.1);
             let mut v = View::new(&cam, Vec2::splat(size as f32));
             v.capture = Some(kind);

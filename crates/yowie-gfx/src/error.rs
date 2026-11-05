@@ -104,6 +104,9 @@ pub enum GfxError {
     /// A panorama could not be decoded or baked.
     #[error("panorama: {0}")]
     Panorama(String),
+    /// A colour lookup table image had the wrong layout.
+    #[error("colour lookup table: {0}")]
+    Lut(String),
     /// A heightfield, terrain, water surface or impostor could not be
     /// built from the given sizes and options.
     #[error("terrain: {0}")]

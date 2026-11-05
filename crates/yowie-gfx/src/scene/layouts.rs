@@ -75,11 +75,9 @@ pub(crate) struct SceneLayouts {
     pub(crate) shadow_frame: wgpu::BindGroupLayout,
     pub(crate) material: wgpu::BindGroupLayout,
     pub(crate) morph: wgpu::BindGroupLayout,
-    pub(crate) resolve: wgpu::BindGroupLayout,
     pub(crate) mesh: wgpu::PipelineLayout,
     pub(crate) shadow: wgpu::PipelineLayout,
     pub(crate) frame_only: wgpu::PipelineLayout,
-    pub(crate) resolve_pipeline: wgpu::PipelineLayout,
 }
 
 impl SceneLayouts {
@@ -152,14 +150,6 @@ impl SceneLayouts {
             label: Some("yowie morph"),
             entries: &[storage(0, S::VERTEX)],
         });
-        let resolve = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("yowie resolve"),
-            entries: &[
-                texture(0, wgpu::TextureViewDimension::D2),
-                sampler(1),
-                uniform(2, S::FRAGMENT, 32),
-            ],
-        });
         let pl = |label, groups: &[Option<&wgpu::BindGroupLayout>]| {
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some(label),
@@ -173,17 +163,14 @@ impl SceneLayouts {
             &[Some(&shadow_frame), Some(&material), Some(&morph)],
         );
         let frame_only = pl("yowie scene frame only", &[Some(&frame)]);
-        let resolve_pipeline = pl("yowie resolve", &[Some(&resolve)]);
         Self {
             frame,
             shadow_frame,
             material,
             morph,
-            resolve,
             mesh,
             shadow,
             frame_only,
-            resolve_pipeline,
         }
     }
 }

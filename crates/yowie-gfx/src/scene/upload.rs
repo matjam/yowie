@@ -3,7 +3,6 @@
 
 use super::prepare::Prepared;
 use super::render::SceneRenderer;
-use super::sky::Tonemap;
 use super::slot::{GroupKey, SlotId};
 use crate::shared::Shared;
 
@@ -19,8 +18,7 @@ fn buf(b: &wgpu::Buffer) -> wgpu::BindingResource<'_> {
 
 impl SceneRenderer {
     /// Writes the frame block, lights, clusters, materials, joints, morph
-    /// weights, instances, lines and resolve settings of record `ri` into
-    /// `slot`.
+    /// weights, instances and lines of record `ri` into `slot`.
     pub(super) fn upload(&mut self, shared: &Shared, ri: usize, slot: SlotId, p: &Prepared) {
         let (device, queue) = (shared.device(), shared.queue());
         let rec = &self.records[ri];
@@ -61,14 +59,6 @@ impl SceneRenderer {
         lines.extend_from_slice(&rec.lines_on_top);
         slot.lines
             .write(device, queue, bytemuck::cast_slice(&lines));
-        let b = rec.background_color;
-        let mode = match rec.tonemap {
-            Tonemap::None => 0.0,
-            Tonemap::Aces => 1.0,
-            Tonemap::Agx => 2.0,
-        };
-        let resolve: [f32; 8] = [b[0], b[1], b[2], b[3], rec.exposure, mode, 0.0, 0.0];
-        queue.write_buffer(&slot.resolve, 0, bytemuck::cast_slice(&resolve));
         if grew {
             self.generation += 1;
         }

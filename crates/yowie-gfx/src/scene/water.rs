@@ -9,7 +9,7 @@ use parking_lot::Mutex;
 use yowie_core::{Color, Vec2, Vec3};
 
 use super::large::{LargeRecord, PrepareContext};
-use super::large_pipelines::LargePipelines;
+use super::large_pipelines::HdrPipelines;
 use super::submit::Scene;
 use super::terrain::Terrain;
 use crate::Graphics;
@@ -236,11 +236,7 @@ pub(crate) fn prepare(ctx: &PrepareContext<'_>, rec: &LargeRecord) {
 }
 
 /// Records the recorded water surfaces.
-pub(crate) fn encode(
-    p: &LargePipelines,
-    rec: &LargeRecord,
-    pass: &mut wgpu::RenderPass<'_>,
-) -> u32 {
+pub(crate) fn encode(p: &HdrPipelines, rec: &LargeRecord, pass: &mut wgpu::RenderPass<'_>) -> u32 {
     let mut calls = 0;
     for d in &rec.waters {
         let Some(group) = d.water.inner.group.lock().clone() else {

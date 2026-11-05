@@ -14,6 +14,7 @@ use super::record::SceneRecord;
 use super::shadow::ShadowAtlas;
 use super::slot::{SceneSlot, SlotId};
 use super::statics::StaticState;
+use super::targets::{Outputs, SceneFormat, pick_samples, sample_counts};
 use super::textures::MaterialTextures;
 use crate::batch::{DrawList, ListTarget};
 use crate::graphics::FrameStats;
@@ -72,6 +73,8 @@ pub(crate) struct SceneRenderer {
     refreshed: u64,
     /// Bumped whenever a slot buffer is replaced, so bind groups rebuild.
     pub(super) generation: u64,
+    /// The multisample counts above 1 the scene targets support.
+    sample_counts: Vec<u32>,
     /// Terrain, water, billboard and impostor pipelines and buffers,
     /// created with the first scene that draws one (`large.rs`).
     pub(super) large: Option<Box<super::large::LargeRenderer>>,
@@ -161,6 +164,7 @@ impl SceneRenderer {
             prepared: Prepared::default(),
             frame: 0,
             generation: 0,
+            sample_counts: sample_counts(&shared.gpu.adapter, device),
             large: None,
         }
     }
@@ -226,6 +230,11 @@ impl SceneRenderer {
                 rec.output_clear = None;
             }
         }
+    }
+
+    /// Whether any scene was recorded this frame.
+    pub(crate) fn any_records(&self) -> bool {
+        !self.records.is_empty()
     }
 
     /// Whether any scene renders into list `li`.
@@ -296,9 +305,14 @@ impl SceneRenderer {
             return None;
         }
         let size = UVec2::new(vp.w as u32, vp.h as u32);
-        let v = View::new(&rec.camera, size.as_vec2());
+        let steady = View::new(&rec.camera, size.as_vec2());
         let draws = rec.draws.len() as u32 + rec.static_draws();
-        self.slots[ri].ensure_targets(device, size);
+        let (cut, jitter) = (rec.cut, rec.post.temporal_aa);
+        // Temporal anti-aliasing rasterises with a sub-pixel jitter; the
+        // post chain keeps the steady camera for reprojection.
+        let v = self.slots[ri].set_camera(&steady, cut, jitter);
+        let format = self.scene_format(ri);
+        self.slots[ri].ensure_targets(device, size, format);
         self.prepare_resources(shared, ri);
         let calls = self.render_view(shared, encoder, ri, SlotId::Scene(ri), &v, stats);
         stats.draw_calls_3d += calls;
@@ -371,6 +385,24 @@ impl SceneRenderer {
         match id {
             SlotId::Scene(i) => &self.slots[i],
             SlotId::Capture(i) => &self.captures[i],
+        }
+    }
+
+    /// The attachment layout scene `ri`'s post settings ask for: the
+    /// images its effects read, and its sample count lowered to what the
+    /// device supports.
+    fn scene_format(&self, ri: usize) -> SceneFormat {
+        let post = &self.records[ri].post;
+        let outputs = if post.wants_reflections() {
+            Outputs::Specular
+        } else if post.wants_occlusion() {
+            Outputs::Surface
+        } else {
+            Outputs::Color
+        };
+        SceneFormat {
+            samples: pick_samples(&self.sample_counts, post.samples),
+            outputs,
         }
     }
 

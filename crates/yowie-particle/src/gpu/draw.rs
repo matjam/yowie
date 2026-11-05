@@ -5,6 +5,7 @@ use std::sync::Mutex;
 use yowie_gfx::{Draw2D, Draw3D, GpuDraw, PrepareContext};
 
 use super::pool::Core;
+use super::programs::PassShape;
 
 /// The part of a [`GpuSystem`](super::GpuSystem) the renderer holds on to
 /// between `draw` and the end of the frame.
@@ -39,9 +40,14 @@ impl GpuDraw for Inner {
 
     fn draw_2d(&self, pass: &mut wgpu::RenderPass<'_>, ctx: &Draw2D<'_>) {
         let core = self.lock();
-        let pipeline =
-            core.programs
-                .pipeline(&core.device, ctx.view_layout, false, ctx.format, core.blend);
+        let pipeline = core.programs.pipeline(
+            &core.device,
+            ctx.view_layout,
+            false,
+            ctx.format,
+            core.blend,
+            PassShape::PLAIN,
+        );
         pass.set_pipeline(&pipeline);
         pass.set_bind_group(0, ctx.view_group, &[ctx.view_offset]);
         self.record_draw(pass, &core);
@@ -55,6 +61,10 @@ impl GpuDraw for Inner {
             true,
             ctx.color_format,
             core.blend,
+            PassShape {
+                samples: ctx.sample_count,
+                extra: ctx.extra_targets,
+            },
         );
         pass.set_pipeline(&pipeline);
         self.record_draw(pass, &core);

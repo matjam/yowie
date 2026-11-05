@@ -2,30 +2,36 @@
 //! animation clips, cascaded sun shadows, two orbiting lamps that cast
 //! cube-map shadows over a field of 160 small clustered point lights, a
 //! procedural atmospheric sky that thins to black and stars as the
-//! altitude climbs to orbit, and image-based lighting from a panorama.
+//! altitude climbs to orbit, image-based lighting from a panorama, and
+//! every post-processing setting on a slider or checkbox in two panels.
 //!
 //! - `--env <panorama>` lights the scene from an equirectangular OpenEXR,
 //!   Radiance HDR, PNG or JPEG image; E toggles it.
 //! - `--model <file.gltf|file.glb>` replaces the creatures with a model;
 //!   C cycles its clips.
-//! - `--altitude <units>` starts the camera's air that high; PageUp and
-//!   PageDown climb and descend.
+//! - `--altitude <units>` starts the camera's air that high; the altitude
+//!   slider, PageUp and PageDown climb and descend.
+//! - `--effects <list>` turns effects on from the start, for screenshots:
+//!   a comma-separated list of `taa`, `msaa`, `dof`, `motion`, `rays`,
+//!   `ssr`, `lens`, `grade`, `auto` and `occlusion` (the occlusion buffer).
+//! - `--no-ui` hides the panels.
 //!
-//! S toggles shadows, F the light field; dragging with the left mouse
-//! button turns the camera, the wheel zooms; Escape quits.
+//! S toggles shadows, F the light field, Tab the panels; dragging with
+//! the left mouse button turns the camera, the wheel zooms; Escape quits.
 
 #[path = "common/creature.rs"]
 mod creature;
+#[path = "common/post_panel.rs"]
+mod post_panel;
 
 use std::f32::consts::TAU;
 
 use yowie::gfx::scene::{
-    Atmosphere, Camera3D, DirectionalLight, Environment, EnvironmentOptions, Material, Mesh,
-    MeshData, Model, ModelInstance, PointLight, Projection, Sky,
+    Atmosphere, Camera3D, DirectionalLight, Environment, EnvironmentOptions, Lut, Material, Mesh,
+    MeshData, Model, ModelInstance, PointLight, PostSettings, Projection, Sky,
 };
-use yowie::gfx::{Font, TextStyle};
 use yowie::input::Key;
-use yowie::{Color, Config, Context, Game, GameResult, Mat4, OrbitCamera, Quat, Rect, Vec3, vec2};
+use yowie::{Color, Config, Context, Game, GameResult, Mat4, OrbitCamera, Quat, Rect, Vec3};
 
 /// Small point lights over the floor: far more than a fixed array would
 /// hold, which the cluster grid sorts into the parts of the view each
@@ -46,7 +52,12 @@ struct Lighting {
     shadows: bool,
     field: bool,
     altitude: f32,
-    font: Font,
+    post: PostSettings,
+    warm: Lut,
+    panels: bool,
+    /// The game time of the last frame, for the moving sphere's previous
+    /// placement.
+    last_t: f32,
 }
 
 /// The value after `name` on the command line.
@@ -58,6 +69,65 @@ fn arg(name: &str) -> Option<String> {
         }
     }
     None
+}
+
+/// The post settings the example starts with: bloom, ambient occlusion
+/// and FXAA (Bunyip's defaults), plus the effects `--effects` names.
+fn starting_post(effects: &str, warm: &Lut) -> PostSettings {
+    let mut p = PostSettings {
+        bloom: 0.25,
+        ambient_occlusion: 0.6,
+        fxaa: true,
+        ..PostSettings::default()
+    };
+    for e in effects.split(',') {
+        match e.trim() {
+            "taa" => p.temporal_aa = true,
+            "msaa" => p.samples = 4,
+            "dof" => p.focus_distance = 9.0,
+            "motion" => p.motion_blur = 1.0,
+            "rays" => p.god_rays = 1.0,
+            "ssr" => p.reflections = 1.0,
+            "lens" => {
+                p.vignette = 0.5;
+                p.aberration = 2.0;
+                p.distortion = 0.15;
+                p.ghosts = 0.5;
+                p.grain = 0.04;
+            }
+            "grade" => {
+                p.temperature = 0.3;
+                p.saturation = 1.2;
+                p.contrast = 1.1;
+                p.lut = Some(warm.clone());
+                p.lut_strength = 0.5;
+            }
+            "auto" => p.auto_exposure = true,
+            "occlusion" => p.show_occlusion = true,
+            _ => {}
+        }
+    }
+    p
+}
+
+/// A lookup table that warms the picture: red up, blue down.
+fn warm_lut(ctx: &Context) -> GameResult<Lut> {
+    let mut img = Lut::neutral_image(16);
+    for p in img.pixels_mut() {
+        p.0[0] = (f32::from(p.0[0]) * 1.08).min(255.0) as u8;
+        p.0[2] = (f32::from(p.0[2]) * 0.85) as u8;
+    }
+    Ok(Lut::from_image(&ctx.gfx, &img)?)
+}
+
+/// Where the sphere on a fast orbit is at time `t`.
+fn orbit_at(t: f32) -> Mat4 {
+    let a = t * 1.3;
+    Mat4::from_scale_rotation_translation(
+        Vec3::splat(0.55),
+        Quat::IDENTITY,
+        Vec3::new(3.2 * a.cos(), 2.2, 3.2 * a.sin()),
+    )
 }
 
 impl Lighting {
@@ -74,6 +144,7 @@ impl Lighting {
     }
 
     fn draw_scene(&self, s: &mut yowie::gfx::scene::Scene, t: f32) {
+        s.set_post(self.post.clone());
         let mut sun = DirectionalLight::new(Vec3::new(-0.5, -1.0, -0.4), Color::WHITE, 2.5);
         if self.shadows {
             sun = sun.with_shadows(30.0);
@@ -141,17 +212,10 @@ impl Lighting {
                 Vec3::new(-3.5, 0.6, 2.0),
             ),
         );
-        let a = t * 1.3;
+        // The fast sphere says where it was last frame, so temporal
+        // anti-aliasing follows it and motion blur streaks it its own way.
         let coral = Material::color(Color::rgb8(255, 130, 90), 0.0, 0.35);
-        s.draw(
-            &self.sphere,
-            &coral,
-            Mat4::from_scale_rotation_translation(
-                Vec3::splat(0.55),
-                Quat::IDENTITY,
-                Vec3::new(3.2 * a.cos(), 2.2, 3.2 * a.sin()),
-            ),
-        );
+        s.draw_moved(&self.sphere, &coral, orbit_at(t), orbit_at(self.last_t));
         let n = self.creatures.len();
         for (i, c) in self.creatures.iter().enumerate() {
             let place = if n == 1 {
@@ -162,6 +226,44 @@ impl Lighting {
             };
             s.draw_model(c, place);
         }
+    }
+
+    fn draw_panels(&mut self, ctx: &mut Context) {
+        let st = ctx.gfx.stats();
+        let view = ctx.gfx.view_size();
+        let Lighting {
+            post,
+            warm,
+            altitude,
+            shadows,
+            field,
+            use_env,
+            env,
+            ..
+        } = self;
+        let has_env = env.is_some();
+        ctx.ui.draw(&mut ctx.gfx, &ctx.input, |f| {
+            let left = Rect::new(12.0, 12.0, 290.0, view.y - 24.0);
+            post_panel::picture_panel(f, left, post, warm, |f| {
+                f.label(&format!(
+                    "{} lights ({} dropped), {} shadow draws",
+                    st.lights, st.lights_dropped, st.shadow_instances
+                ));
+                f.label(&format!(
+                    "{} meshes in {} draw calls, {} culled",
+                    st.draws_3d, st.draw_calls_3d, st.culled_3d
+                ));
+                f.slider("Altitude", altitude, 0.0..=AIR * 1.2);
+                f.checkbox("Shadows", shadows);
+                f.checkbox("Light field (160 point lights)", field);
+                if has_env {
+                    f.checkbox("Environment (image-based lighting)", use_env);
+                }
+                f.label_dim("C next clip, Tab hides the panels");
+            });
+            let right = Rect::new(view.x - 302.0, 12.0, 290.0, view.y - 24.0);
+            post_panel::lens_panel(f, right, post);
+        });
     }
 }
 
@@ -203,6 +305,7 @@ impl Game for Lighting {
             fov_y: 55f32.to_radians(),
         };
         orbit.lens.far = 400.0;
+        let warm = warm_lut(ctx)?;
         let mut game = Lighting {
             orbit,
             floor: Mesh::new(&ctx.gfx, &MeshData::cube(1.0))?,
@@ -214,7 +317,10 @@ impl Game for Lighting {
             shadows: true,
             field: true,
             altitude,
-            font: ctx.gfx.default_font(),
+            post: starting_post(&arg("--effects").unwrap_or_default(), &warm),
+            warm,
+            panels: !std::env::args().any(|a| a == "--no-ui"),
+            last_t: 0.0,
         };
         game.play_clip();
         Ok(game)
@@ -225,18 +331,24 @@ impl Game for Lighting {
             ctx.quit();
         }
         let input = &ctx.input;
-        if input.key_pressed(Key::S) {
-            self.shadows = !self.shadows;
-        }
-        if input.key_pressed(Key::F) {
-            self.field = !self.field;
-        }
-        if input.key_pressed(Key::E) && self.env.is_some() {
-            self.use_env = !self.use_env;
-        }
-        if input.key_pressed(Key::C) {
-            self.clip += 1;
-            self.play_clip();
+        let typing = ctx.ui.wants_keyboard();
+        if !typing {
+            if input.key_pressed(Key::S) {
+                self.shadows = !self.shadows;
+            }
+            if input.key_pressed(Key::F) {
+                self.field = !self.field;
+            }
+            if input.key_pressed(Key::Tab) {
+                self.panels = !self.panels;
+            }
+            if input.key_pressed(Key::E) && self.env.is_some() {
+                self.use_env = !self.use_env;
+            }
+            if input.key_pressed(Key::C) {
+                self.clip += 1;
+                self.play_clip();
+            }
         }
         let dt = ctx.time.delta();
         if input.key_down(Key::PageUp) {
@@ -248,7 +360,9 @@ impl Game for Lighting {
                 self.altitude = 0.0;
             }
         }
-        self.orbit.update(&ctx.input, dt);
+        if !(self.panels && ctx.ui.wants_mouse()) {
+            self.orbit.update(&ctx.input, dt);
+        }
         self.orbit.yaw += dt * 0.15;
         for c in &mut self.creatures {
             c.advance(dt);
@@ -260,48 +374,12 @@ impl Game for Lighting {
         let t = ctx.time.elapsed() as f32;
         let cam: Camera3D = self.orbit.camera();
         ctx.gfx.scene(&cam, |s| self.draw_scene(s, t));
-
-        let g = &mut ctx.gfx;
-        let st = g.stats();
-        g.fill_rect(
-            Rect::new(12.0, 12.0, 360.0, 112.0),
-            Color::rgba(0.03, 0.04, 0.06, 0.75),
-        );
-        let style = TextStyle::new(14.0).color(Color::rgb8(225, 228, 238));
-        let lines = [
-            format!(
-                "{} lights ({} dropped), {} shadow draws",
-                st.lights, st.lights_dropped, st.shadow_instances
-            ),
-            format!(
-                "{} meshes in {} draw calls, {} culled",
-                st.draws_3d, st.draw_calls_3d, st.culled_3d
-            ),
-            format!(
-                "altitude {:.0} of {AIR:.0} (PageUp, PageDown)",
-                self.altitude
-            ),
-            format!(
-                "S shadows {}, F light field {}, E environment {}",
-                on(self.shadows),
-                on(self.field),
-                if self.env.is_none() {
-                    "none"
-                } else {
-                    on(self.use_env)
-                }
-            ),
-            "C next clip; drag turns, wheel zooms".to_owned(),
-        ];
-        for (i, line) in lines.iter().enumerate() {
-            g.draw_text(&self.font, line, vec2(22.0, 20.0 + i as f32 * 20.0), &style);
+        self.last_t = t;
+        if self.panels {
+            self.draw_panels(ctx);
         }
         Ok(())
     }
-}
-
-fn on(b: bool) -> &'static str {
-    if b { "on" } else { "off" }
 }
 
 fn main() -> Result<(), yowie::Error> {

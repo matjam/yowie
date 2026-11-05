@@ -219,3 +219,74 @@ fn a_box_behind_a_wall_is_occluded_and_appears_the_frame_it_shows() {
         "the box behind the wall shows at once: {r:?}"
     );
 }
+
+/// Multisampling with occlusion and reflections on (so the HDR pass has
+/// the surface images too), a probe captured every frame, and a static
+/// group culled on the GPU against multisampled depth.
+#[test]
+fn static_groups_occlusion_and_probes_work_with_multisampling() {
+    let Some(mut gfx) = headless(uvec2(W, H)) else {
+        return;
+    };
+    let counts = super::super::targets::sample_counts(&gfx.shared.gpu.adapter, gfx.shared.device());
+    if !counts.contains(&4) {
+        println!("skipping: no 4x multisampling for the scene formats");
+        return;
+    }
+    let (group, _cube) = walled(&gfx);
+    let bounds = Aabb::new(Vec3::splat(-10.0), Vec3::splat(10.0));
+    let probe = ReflectionProbe::new(Vec3::new(0.0, 2.0, 4.0), bounds)
+        .with_update(ProbeUpdate::EveryFrames(1));
+    let ball = Mesh::new(&gfx, &MeshData::sphere(0.5, 12, 24)).expect("mesh");
+    let post = PostSettings {
+        samples: 4,
+        ambient_occlusion: 0.5,
+        reflections: 0.5,
+        ..PostSettings::default()
+    };
+    let frame = |gfx: &mut Graphics, cam: &Camera3D| {
+        gfx.scene(cam, |s| {
+            s.set_ambient(Color::WHITE);
+            s.set_post(PostSettings {
+                tonemap: Tonemap::None,
+                ..post.clone()
+            });
+            s.add_reflection_probe(&probe);
+            s.draw_static(&group);
+            s.draw(
+                &ball,
+                &Material::color(Color::WHITE, 1.0, 0.1),
+                Vec3::new(-3.0, 0.0, 1.0),
+            );
+        });
+        render(gfx)
+    };
+    let view = vec2(W as f32, H as f32);
+    let front = Camera3D::perspective(Vec3::new(0.0, 0.0, 8.0), Vec3::ZERO, 0.9);
+    let mut occluded = 0;
+    for _ in 0..8 {
+        frame(&mut gfx, &front);
+        occluded = gfx.stats().occluded_3d;
+        if occluded > 0 {
+            break;
+        }
+    }
+    assert_eq!(
+        occluded, 1,
+        "the hidden box is occluded under multisampling"
+    );
+    assert!(gfx.stats().probe_faces > 0, "the probe captures");
+    let img = frame(&mut gfx, &front);
+    let green = front
+        .world_to_screen(Vec3::new(4.0, 0.0, 0.5), view)
+        .expect("visible");
+    let g = img.get_pixel(green.x as u32, green.y as u32).0;
+    assert!(g[1] > 200 && g[0] < 40, "the box beside the wall: {g:?}");
+    let side = Camera3D::perspective(Vec3::new(-6.0, 0.0, 2.0), Vec3::new(0.0, 0.0, -3.0), 0.9);
+    let img = frame(&mut gfx, &side);
+    let red = side
+        .world_to_screen(Vec3::new(0.0, 0.0, -3.0), view)
+        .expect("visible");
+    let r = img.get_pixel(red.x as u32, red.y as u32).0;
+    assert!(r[0] > 200 && r[1] < 40, "the box behind the wall: {r:?}");
+}

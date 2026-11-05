@@ -127,6 +127,25 @@ impl Core {
         );
         Self::kv(f, "draw calls", &g.stats.draw_calls.to_string());
         f.separator();
+        f.heading("GPU time");
+        match g.stats.gpu {
+            _ if !g.timing_supported => {
+                f.label_dim("this GPU has no timestamp queries");
+            }
+            None => {
+                f.label_dim("waiting for the first reading");
+            }
+            Some(t) => {
+                let ms = |us: u32| format!("{:.2} ms", us as f32 / 1000.0);
+                Self::kv(f, "shadows", &ms(t.shadows_us));
+                Self::kv(f, "opaque", &ms(t.opaque_us));
+                Self::kv(f, "blended", &ms(t.blended_us));
+                Self::kv(f, "post", &ms(t.post_us));
+                Self::kv(f, "2D", &ms(t.overlay_us));
+                Self::kv(f, "total", &ms(t.total_us()));
+            }
+        }
+        f.separator();
         f.heading("Textures");
         if self.textures.is_empty() {
             f.label_dim("none watched; call Console::watch_texture");

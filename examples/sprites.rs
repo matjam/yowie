@@ -1,9 +1,11 @@
 //! 300 tinted, rotating, alpha-blended sprites drawn from a texture made at
 //! start-up, over and under a few shapes, and a lit brick floor where a
-//! moving lamp throws shadows from three crates. Escape quits.
+//! moving lamp throws shadows from three crates. `--post` starts with
+//! post-processing over the frame and P toggles it. Escape quits.
 
 use std::f32::consts::TAU;
 
+use yowie::gfx::scene::PostSettings;
 use yowie::gfx::{BlendMode, Light2D, Sprite, Texture, TextureOptions};
 use yowie::input::Key;
 use yowie::{Color, Config, Context, Game, GameResult, Rect, Vec2, vec2};
@@ -38,6 +40,23 @@ struct Sprites {
     gem: Texture,
     items: Vec<Item>,
     floor: LitFloor,
+    /// Post-processing over the frame: `--post` starts with it on, P
+    /// toggles it.
+    post: bool,
+}
+
+/// A light 2D grade: saturation, bloom on the bright sprites, vignette,
+/// colour fringes and grain.
+fn frame_post() -> PostSettings {
+    PostSettings {
+        saturation: 1.1,
+        bloom: 0.3,
+        bloom_threshold: 0.9,
+        vignette: 0.3,
+        aberration: 0.6,
+        grain: 0.03,
+        ..PostSettings::default()
+    }
 }
 
 /// A soft-edged gem: a bright core, a dark ring and four points, with
@@ -81,12 +100,21 @@ impl Game for Sprites {
             })
             .collect();
         let floor = LitFloor::new(&ctx.gfx)?;
-        Ok(Sprites { gem, items, floor })
+        let post = std::env::args().any(|a| a == "--post");
+        Ok(Sprites {
+            gem,
+            items,
+            floor,
+            post,
+        })
     }
 
     fn update(&mut self, ctx: &mut Context) -> GameResult {
         if ctx.input.key_pressed(Key::Escape) {
             ctx.quit();
+        }
+        if ctx.input.key_pressed(Key::P) {
+            self.post = !self.post;
         }
         Ok(())
     }
@@ -137,6 +165,9 @@ impl Game for Sprites {
         }
 
         self.floor.draw(g, t);
+        if self.post {
+            g.set_frame_post(frame_post());
+        }
 
         // Shapes in front: an additive glow, a frame and a zigzag.
         g.with_layer(1, |g| {

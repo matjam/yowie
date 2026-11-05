@@ -13,7 +13,8 @@ use super::light::{DirectionalLight, LocalLight};
 use super::material::{Material, MaterialGpu};
 use super::mesh::Mesh;
 use super::morph::GpuMorphWeight;
-use super::sky::{Fog, Sky, Tonemap};
+use super::post::PostSettings;
+use super::sky::{Fog, Sky};
 
 /// A small multiplicative hasher for the per-draw lookups; the keys are
 /// ids and material bytes, not attacker input.
@@ -85,8 +86,14 @@ pub(crate) struct SceneRecord {
     pub(crate) environment: Option<Environment>,
     pub(crate) background: bool,
     pub(crate) fog: Option<Fog>,
-    pub(crate) exposure: f32,
-    pub(crate) tonemap: Tonemap,
+    /// Exposure, tone curve and effects for the scene's post chain.
+    pub(crate) post: PostSettings,
+    /// Draws the game gave a previous transform, for motion vectors: the
+    /// draw index and last frame's model matrix.
+    pub(crate) moved: Vec<(u32, Mat4)>,
+    /// The camera jumped since the last frame; temporal history is
+    /// dropped.
+    pub(crate) cut: bool,
     pub(crate) lights: Vec<LocalLight>,
     pub(crate) meshes: Vec<Mesh>,
     mesh_slots: FastMap<u64, u32>,
@@ -134,8 +141,9 @@ impl SceneRecord {
         self.environment = None;
         self.background = true;
         self.fog = None;
-        self.exposure = 1.0;
-        self.tonemap = Tonemap::default();
+        self.post = PostSettings::default();
+        self.moved.clear();
+        self.cut = false;
         self.lights.clear();
         self.meshes.clear();
         self.mesh_slots.clear();

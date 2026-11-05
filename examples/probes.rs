@@ -6,7 +6,8 @@
 //! room itself is a static group, drawn from render bundles and culled on
 //! the GPU.
 //!
-//! `--show-probes` starts with the grid's cells drawn as small spheres.
+//! `--show-probes` starts with the grid's cells drawn as small spheres;
+//! `--ssr` starts with screen-space reflections on the polished floor.
 //! Dragging with the left mouse button turns the camera, the wheel zooms;
 //! Escape quits.
 
@@ -33,6 +34,7 @@ struct Probes {
     use_grid: bool,
     show_cells: bool,
     spinning: bool,
+    reflections: bool,
 }
 
 /// A box of `size` world units centred on `at`.
@@ -170,6 +172,7 @@ impl Game for Probes {
             use_grid: true,
             show_cells: std::env::args().any(|a| a == "--show-probes"),
             spinning: true,
+            reflections: std::env::args().any(|a| a == "--ssr"),
         };
         // The grid first, so the probe's capture shows the walls lit by it.
         ctx.gfx
@@ -214,6 +217,11 @@ impl Game for Probes {
             if self.show_cells {
                 s.draw_light_probes(&self.grid, &self.small_sphere, 0.15);
             }
+            if self.reflections {
+                // Screen-space reflections on the polished floor, over the
+                // probe's reflection where the screen holds what it shows.
+                s.post_mut().reflections = 1.0;
+            }
             self.draw_scene(s);
         });
 
@@ -225,12 +233,13 @@ impl Game for Probes {
         ctx.ui.draw(&mut ctx.gfx, &ctx.input, |f| {
             f.panel(
                 Some("Global illumination"),
-                Rect::new(12.0, 360.0, 330.0, 268.0),
+                Rect::new(12.0, 328.0, 330.0, 300.0),
                 |f| {
                     f.checkbox("Reflection probe (chrome ball)", &mut self.use_probe);
                     f.checkbox("Light probe grid (matte balls)", &mut self.use_grid);
                     f.checkbox("Show light probes", &mut self.show_cells);
                     f.checkbox("Turn the camera", &mut self.spinning);
+                    f.checkbox("Screen-space reflections (floor)", &mut self.reflections);
                     f.label(&self.baked);
                     f.label(&statics);
                     f.label("Drag to look around, Escape quits.");
