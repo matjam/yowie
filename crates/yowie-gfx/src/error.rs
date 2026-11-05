@@ -104,6 +104,10 @@ pub enum GfxError {
     /// A panorama could not be decoded or baked.
     #[error("panorama: {0}")]
     Panorama(String),
+    /// A light probe grid was malformed, or saved probe data could not be
+    /// read.
+    #[error("light probes: {0}")]
+    Probes(String),
 }
 
 /// Results from the renderer.

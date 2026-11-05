@@ -107,6 +107,17 @@ pub(crate) struct SceneRecord {
     /// The output's clear colour, taken over from its draw list by the
     /// first scene of each output when the frame renders.
     pub(crate) output_clear: Option<Color>,
+    /// Reflection probes the scene shows, in the order added.
+    pub(crate) probes: Vec<super::probes::ProbeUse>,
+    /// The light probe grid lighting the scene.
+    pub(crate) light_grid: Option<super::probes::GridUse>,
+    /// Draws probe captures skip, in increasing order.
+    pub(crate) probe_hidden: Vec<u32>,
+    /// Static groups drawn through render bundles and GPU culling.
+    pub(crate) statics: Vec<super::statics::StaticUse>,
+    /// Whether static groups may use GPU culling and render bundles; when
+    /// not, their items are recorded as ordinary draws.
+    pub(crate) gpu_statics: bool,
 }
 
 impl SceneRecord {
@@ -138,6 +149,16 @@ impl SceneRecord {
         self.customs.clear();
         self.background_color = [0.0; 4];
         self.output_clear = None;
+        self.probes.clear();
+        self.light_grid = None;
+        self.probe_hidden.clear();
+        self.statics.clear();
+    }
+
+    /// The static group items drawn through GPU culling, which count as
+    /// draws but are not in `draws`.
+    pub(crate) fn static_draws(&self) -> u32 {
+        self.statics.iter().map(|s| s.data.gpu_items()).sum()
     }
 
     pub(crate) fn mesh_slot(&mut self, mesh: &Mesh) -> u32 {
