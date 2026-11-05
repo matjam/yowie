@@ -81,6 +81,10 @@ mod vertex;
 #[cfg(test)]
 mod gpu_tests;
 #[cfg(test)]
+mod gpu_tests_masks;
+#[cfg(test)]
+mod gpu_tests_materials;
+#[cfg(test)]
 mod gpu_tests_models;
 
 pub use bounds::{Aabb, Frustum, Ray};
