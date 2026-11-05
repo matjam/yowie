@@ -21,6 +21,7 @@ const GOLDEN: &[(&str, &[&str])] = &[
     ("shaders", &["--seconds", "1"]),
     ("sprites", &["--seconds", "1"]),
     ("text", &[]),
+    ("vector", &[]),
 ];
 
 /// The mean absolute difference per channel (0 to 255) the whole frame may
