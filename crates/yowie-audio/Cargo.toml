@@ -8,3 +8,8 @@ repository.workspace = true
 
 [dependencies]
 yowie-core.workspace = true
+cpal.workspace = true
+symphonia.workspace = true
+thiserror.workspace = true
+log.workspace = true
+crossbeam-channel.workspace = true
