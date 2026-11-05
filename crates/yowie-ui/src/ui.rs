@@ -5,7 +5,7 @@ use std::any::Any;
 use std::collections::HashMap;
 
 use yowie_core::{Rect, Vec2};
-use yowie_gfx::{Graphics, layers};
+use yowie_gfx::{Font, Graphics, layers};
 use yowie_input::InputState;
 
 use crate::access::AccessNode;
@@ -159,6 +159,7 @@ pub struct Ui {
     pub(crate) text_focus: bool,
     pub(crate) nodes_prev: Vec<AccessNode>,
     pub(crate) clipboard: Box<dyn Clipboard>,
+    pub(crate) fonts: Option<(Font, Font)>,
 }
 
 impl std::fmt::Debug for Ui {
@@ -217,6 +218,7 @@ impl Ui {
             text_focus: false,
             nodes_prev: Vec::new(),
             clipboard: Box::new(MemoryClipboard::default()),
+            fonts: None,
         }
     }
 
@@ -228,6 +230,13 @@ impl Ui {
     /// Replaces the theme; the next frame draws with it.
     pub fn set_theme(&mut self, theme: Theme) {
         self.theme = theme;
+    }
+
+    /// Sets the proportional and monospaced fonts [`draw`](Self::draw) uses
+    /// instead of the renderer's bundled ones. Fonts belong to the
+    /// renderer that loaded them.
+    pub fn set_fonts(&mut self, regular: Font, mono: Font) {
+        self.fonts = Some((regular, mono));
     }
 
     /// Sets what cut, copy and paste in text fields use.
@@ -274,7 +283,10 @@ impl Ui {
         input: &InputState,
         body: impl FnOnce(&mut Frame<'_>) -> R,
     ) -> R {
-        let mut painter = GfxPainter::new(gfx, layer);
+        let mut painter = match &self.fonts {
+            Some((regular, mono)) => GfxPainter::with_fonts(gfx, layer, regular.clone(), mono.clone()),
+            None => GfxPainter::new(gfx, layer),
+        };
         self.frame(&mut painter, input, body)
     }
 

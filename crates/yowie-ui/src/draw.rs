@@ -144,6 +144,23 @@ impl Frame<'_> {
         self.p.measure(text, face, size, None)
     }
 
+    /// The size `text` takes in the monospaced font.
+    pub fn measure_mono(&mut self, text: &str) -> Vec2 {
+        self.measure_face(text, Face::Mono)
+    }
+
+    /// Draws `text` in the monospaced font with its top-left at `pos`.
+    pub fn text_at_mono(&mut self, pos: Vec2, text: &str, color: Color) {
+        self.text_face(pos, text, color, Face::Mono, None);
+    }
+
+    /// Reserves a rectangle in the current container: `width` wide (the
+    /// container's width when zero) and `height` tall. For custom drawing
+    /// with [`fill_rect`](Self::fill_rect) and the text methods.
+    pub fn allocate(&mut self, width: f32, height: f32) -> Rect {
+        self.alloc(width, height, width <= 0.0)
+    }
+
     /// Draws `text` with its top-left at `pos`.
     pub fn text_at(&mut self, pos: Vec2, text: &str, color: Color) {
         self.text_face(pos, text, color, Face::Regular, None);

@@ -28,6 +28,9 @@ pub struct TextOptions<'a> {
     pub request_focus: bool,
     /// The most bytes of text the field accepts.
     pub max_len: Option<usize>,
+    /// Move the caret to the end of the text this frame, after the program
+    /// replaced the text (history recall, completion).
+    pub caret_to_end: bool,
 }
 
 fn text_hash(s: &str) -> u64 {
@@ -131,6 +134,9 @@ impl Frame<'_> {
         self.set_wants(&r, true, multiline, true);
         let mut ed = std::mem::take(self.ui.edits.get(id, frame));
         ed.clamp(text);
+        if opts.caret_to_end {
+            ed.set_cursor(text, text.len(), false);
+        }
         let (padx, accent) = {
             let t = &self.ui.theme;
             (t.padding * 0.75, t.accent)

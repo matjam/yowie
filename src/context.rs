@@ -84,6 +84,15 @@ pub struct Context {
     pub input: InputState,
     /// Game time.
     pub time: Time,
+    /// The immediate-mode interface, drawn in `draw` with
+    /// `ctx.ui.draw(&mut ctx.gfx, &ctx.input, |f| ...)`.
+    #[cfg(feature = "ui")]
+    pub ui: yowie_ui::Ui,
+    /// The debug console; it does nothing unless
+    /// [`Config::console`](crate::Config::console) is set.
+    #[cfg(feature = "console")]
+    pub console: yowie_console::Console,
+    pub(crate) hook: crate::ui_hook::Hook,
     pub(crate) host: Host,
     pub(crate) requests: Requests,
     pub(crate) clipboard: Clipboard,
@@ -102,6 +111,11 @@ impl Context {
             gfx,
             input: InputState::new(),
             time: Time::default(),
+            #[cfg(feature = "ui")]
+            ui: yowie_ui::Ui::default(),
+            #[cfg(feature = "console")]
+            console: yowie_console::Console::disabled(),
+            hook: crate::ui_hook::Hook::default(),
             host,
             requests: Requests::default(),
             clipboard,

@@ -6,5 +6,21 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[features]
+default = []
+# Panels for ECS worlds and schedules.
+ecs = ["dep:yowie-ecs"]
+# Panels for physics worlds.
+phys = ["dep:yowie-phys"]
+# A panel for the audio mixer.
+audio = ["dep:yowie-audio"]
+
 [dependencies]
 yowie-core.workspace = true
+yowie-gfx.workspace = true
+yowie-input.workspace = true
+yowie-ui.workspace = true
+log.workspace = true
+yowie-ecs = { workspace = true, optional = true }
+yowie-phys = { workspace = true, optional = true }
+yowie-audio = { workspace = true, optional = true }

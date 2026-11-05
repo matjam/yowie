@@ -93,6 +93,7 @@ impl<G: Game> WindowState<G> {
         };
         let mut ctx = Context::new(gfx, host, config.debug_overlay);
         ctx.focused = window.has_focus();
+        crate::ui_hook::setup(&mut ctx, config);
         let game = G::init(&mut ctx).map_err(Error::Game)?;
         window.request_redraw();
         Ok(Self {
@@ -132,6 +133,9 @@ impl<G: Game> WindowState<G> {
     pub(crate) fn input(&mut self, event: InputEvent) -> Result<()> {
         self.ctx.input.apply(&event);
         self.turn_pending = true;
+        if self.ctx.input_captured() {
+            return Ok(());
+        }
         self.deliver(Event::Input(event))
     }
 

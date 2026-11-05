@@ -343,6 +343,17 @@ impl<'a> Frame<'a> {
         id
     }
 
+    /// The id a widget labelled `label` gets here if it is the first with
+    /// that label in the container, without using it up.
+    pub fn peek_id(&self, label: &str) -> WidgetId {
+        self.current_id().child(label)
+    }
+
+    /// Whether the widget `id` has keyboard focus.
+    pub fn has_focus(&self, id: WidgetId) -> bool {
+        self.ui.focus == id && id != WidgetId::NONE
+    }
+
     /// Runs `body` with `key` added to the identity of every widget in it,
     /// so repeated labels (list rows) keep their ids when rows move.
     pub fn with_id<R>(

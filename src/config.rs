@@ -81,6 +81,12 @@ pub struct Config {
     /// [`Context::quit`](crate::Context::quit) when ready. Otherwise the
     /// loop ends on the request.
     pub handle_close: bool,
+    /// Whether the debug console is built, tees the log into its output and
+    /// opens on `console_key`. Needs the `console` cargo feature, which is
+    /// on by default.
+    pub console: bool,
+    /// The key that opens the console's drop-down; F4 opens its panels.
+    pub console_key: yowie_input::Key,
 }
 
 impl Default for Config {
@@ -100,6 +106,8 @@ impl Default for Config {
             pause_when_unfocused: false,
             debug_overlay: false,
             handle_close: false,
+            console: false,
+            console_key: yowie_input::Key::Grave,
         }
     }
 }
