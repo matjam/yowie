@@ -133,10 +133,12 @@ fn blend_modes_combine_in_linear_light() {
         (BlendMode::Additive, half, [byte(d + 0.5); 3], 255),
         (BlendMode::Multiply, Color::RED, [byte(d), 0, 0], 255),
         (BlendMode::Screen, Color::WHITE, [255; 3], 255),
+        // A result near black would test sRGB rounding, not subtraction:
+        // the curve is steep there and drivers round differently.
         (
             BlendMode::Subtract,
-            Color::rgb(0.5, 0.5, 0.5),
-            [byte(d - srgb_to_linear(0.5)); 3],
+            Color::rgb(0.25, 0.25, 0.25),
+            [byte(d - srgb_to_linear(0.25)); 3],
             255,
         ),
         (BlendMode::Replace, Color::TRANSPARENT, [0; 3], 0),

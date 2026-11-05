@@ -149,9 +149,10 @@ fn rtt_estimate_converges_on_delayed_link() {
         let r = client.stats().rtt;
         (r > Duration::ZERO).then_some(r)
     });
-    // 20 ms each way, plus up to a tick of scheduling on each hop.
+    // 20 ms each way is the floor. Scheduling adds to every hop, more on a
+    // loaded CI machine and on Windows, whose sleeps round up to 15.6 ms.
     let ms = rtt.as_secs_f64() * 1000.0;
-    assert!((38.0..70.0).contains(&ms), "rtt {ms} ms");
+    assert!((38.0..250.0).contains(&ms), "rtt {ms} ms");
 }
 
 #[test]
