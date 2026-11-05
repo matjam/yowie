@@ -6,6 +6,7 @@ use yowie_core::{Color, Rect, UVec2, Vec2};
 use crate::batch::{DrawList, FrameTables, ListTarget};
 use crate::blend::BlendMode;
 use crate::device::Gpu;
+use crate::engine_shaders::EngineShaders;
 use crate::error::Result;
 use crate::frame::FrameBuffers;
 use crate::output::Output;
@@ -87,6 +88,8 @@ pub struct Graphics {
     pub(crate) white: Texture,
     pub(crate) pipelines: PipelineCache,
     pub(crate) default_module: wgpu::ShaderModule,
+    pub(crate) engine_shaders: EngineShaders,
+    pub(crate) path_cache: crate::path::PathCache,
     pub(crate) buffers: FrameBuffers,
     pub(crate) text: TextSystem,
     pub(crate) capture_requested: bool,
@@ -145,6 +148,7 @@ impl Graphics {
         scale_factor: f32,
     ) -> Result<Graphics> {
         let shared = Shared::new(gpu);
+        let engine_shaders = EngineShaders::new(shared.device());
         let default_module =
             trusted_module(shared.device(), "yowie sprite", &compose(DEFAULT_FRAGMENT));
         let white = Texture::create(
@@ -174,6 +178,8 @@ impl Graphics {
             white,
             pipelines: PipelineCache::default(),
             default_module,
+            engine_shaders,
+            path_cache: Default::default(),
             buffers,
             text,
             capture_requested: false,

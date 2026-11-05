@@ -64,6 +64,7 @@ mod batch;
 mod blend;
 mod camera;
 mod device;
+mod engine_shaders;
 mod error;
 mod frame;
 mod geometry;
@@ -73,6 +74,7 @@ mod image_data;
 mod mipmap;
 mod nine_slice;
 mod output;
+mod path;
 mod pipelines;
 mod pixels;
 mod readback;
@@ -87,6 +89,7 @@ mod text;
 mod texture;
 mod texture_gpu;
 mod texture_upload;
+mod transform_stack;
 mod view;
 
 #[cfg(test)]
@@ -95,6 +98,31 @@ mod gpu_tests;
 mod gpu_tests_reload;
 #[cfg(test)]
 mod gpu_tests_text;
+#[cfg(test)]
+mod gpu_tests_textfx;
+#[cfg(test)]
+mod gpu_tests_vector;
+
+// 2D world features: camera rig, sheets, atlases, Aseprite, colour
+// matrices, tilemaps, autotiling and Tiled levels.
+mod aseprite;
+mod atlas;
+pub mod autotile;
+mod camera_rig;
+mod color_matrix;
+mod sheet;
+mod tiled_level;
+mod tilemap;
+
+pub use aseprite::{AseSlice, AseSliceKey, AseTag, AsepriteData, AsepriteSheet};
+pub use atlas::{Atlas, AtlasBuilder, AtlasPacker, PackRect};
+pub use camera_rig::CameraRig;
+pub use color_matrix::{ColorMatrix, ColorMatrixShader};
+pub use sheet::{SheetGrid, SpriteSheet, sheet_flipbook};
+pub use tiled_level::{LevelLayer, LevelLayerKind, TiledLevel};
+pub use tilemap::{
+    GridKind, GridLayout, Stagger, Tile, TileAnimation, TileAnimations, TileFlip, Tilemap,
+};
 
 pub use blend::BlendMode;
 pub use camera::Camera2D;
@@ -104,10 +132,16 @@ pub use geometry::Vertex;
 pub use graphics::{FrameStats, Graphics, GraphicsSettings};
 pub use image_data::ImageData;
 pub use nine_slice::NineSlice;
+pub use path::{
+    Cap, Dash, Fill, FillRule, Gradient, GradientStop, Join, Paint, Path, PathBuilder, Stroke,
+    TexturePaint,
+};
 pub use render_texture::{RenderTexture, RenderTextureOptions};
 pub use shader::Shader;
 pub use sprite::Sprite;
-pub use text::{Font, TextAlign, TextStyle};
+pub use text::{
+    Caret, Font, Language, Orientation, RichText, SpanStyle, TextAlign, TextLayout, TextStyle,
+};
 pub use texture::{Filter, Texture, TextureOptions, Wrap};
 pub use view::{ScaleMode, ViewMapping, ViewSettings};
 

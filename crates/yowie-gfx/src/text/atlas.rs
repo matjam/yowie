@@ -18,6 +18,8 @@ const MAX_SIZE: u32 = 4096;
 pub(crate) enum AtlasKind {
     /// One byte of coverage per texel, tinted by the text colour.
     Mask,
+    /// Signed distance tiles, one byte per texel, for scalable text.
+    Sdf,
     /// Premultiplied sRGB colour, for emoji and other colour glyphs.
     Color,
 }
@@ -88,7 +90,7 @@ pub(crate) struct GlyphAtlas {
 impl GlyphAtlas {
     fn make_texture(shared: &Shared, kind: AtlasKind, size: u32) -> Result<Texture> {
         let format = match kind {
-            AtlasKind::Mask => wgpu::TextureFormat::R8Unorm,
+            AtlasKind::Mask | AtlasKind::Sdf => wgpu::TextureFormat::R8Unorm,
             AtlasKind::Color => wgpu::TextureFormat::Rgba8UnormSrgb,
         };
         Texture::create(
@@ -165,7 +167,7 @@ impl GlyphAtlas {
             }
         };
         let bpp = match self.kind {
-            AtlasKind::Mask => 1,
+            AtlasKind::Mask | AtlasKind::Sdf => 1,
             AtlasKind::Color => 4,
         };
         if w > 0 && h > 0 {

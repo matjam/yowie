@@ -50,16 +50,27 @@ fn apply_morph(v: VertexIn, p: ptr<function, Placed>) {
     for (var i = 0u; i < count; i++) {
         let mw = morph_weights[v.params.z + i];
         let base = (mw.target_index * morph.vertex_count + v.vertex_index) * 6u;
+        // A mesh updated to more vertices than its targets cover reads
+        // nothing past the deltas (the module has no bounds checks).
+        if base + 6u > arrayLength(&morph.deltas) {
+            break;
+        }
         (*p).position += vec3<f32>(morph.deltas[base], morph.deltas[base + 1u], morph.deltas[base + 2u]) * mw.weight;
         (*p).normal += vec3<f32>(morph.deltas[base + 3u], morph.deltas[base + 4u], morph.deltas[base + 5u]) * mw.weight;
     }
 }
 
+// The module is built without runtime bounds checks, and joint numbers
+// come from the game's vertex data, so each is clamped to the table.
+fn joint(i: u32) -> mat4x4<f32> {
+    return joints[min(i, arrayLength(&joints) - 1u)];
+}
+
 fn skin_matrix(first: u32, s: SkinIn) -> mat4x4<f32> {
-    return joints[first + s.joints.x] * s.weights.x
-        + joints[first + s.joints.y] * s.weights.y
-        + joints[first + s.joints.z] * s.weights.z
-        + joints[first + s.joints.w] * s.weights.w;
+    return joint(first + s.joints.x) * s.weights.x
+        + joint(first + s.joints.y) * s.weights.y
+        + joint(first + s.joints.z) * s.weights.z
+        + joint(first + s.joints.w) * s.weights.w;
 }
 
 fn model_matrix(v: VertexIn) -> mat4x4<f32> {

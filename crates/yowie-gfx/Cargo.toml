@@ -9,16 +9,22 @@ repository.workspace = true
 [dependencies]
 yowie-core.workspace = true
 yowie-ktx2.workspace = true
+yowie-anim.workspace = true
+yowie-asset.workspace = true
+yowie-tiled.workspace = true
+asefile.workspace = true
 wgpu.workspace = true
 bytemuck.workspace = true
 pollster.workspace = true
 image.workspace = true
 cosmic-text.workspace = true
+swash.workspace = true
+lyon.workspace = true
+hyphenation = { workspace = true, features = ["embed_all"] }
 parking_lot.workspace = true
 thiserror.workspace = true
 log.workspace = true
 raw-window-handle.workspace = true
-yowie-anim.workspace = true
 gltf = { workspace = true, features = ["KHR_texture_transform", "KHR_materials_emissive_strength", "KHR_materials_unlit"] }
 exr.workspace = true
 

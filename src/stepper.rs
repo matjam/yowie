@@ -113,7 +113,10 @@ impl Stepper {
             };
             self.last_turn = Some(now);
             ctx.time.delta = delta as f32;
-            game.update(ctx).map_err(Error::Game)?;
+            let held = crate::ui_hook::capture_input(ctx);
+            let updated = game.update(ctx);
+            crate::ui_hook::release_input(ctx, held);
+            updated.map_err(Error::Game)?;
             ctx.input.end_update();
             ctx.time.elapsed += delta;
             ctx.time.updates += 1;
@@ -137,21 +140,33 @@ impl Stepper {
             ctx.gfx.set_time(ctx.time.elapsed as f32);
             ctx.gfx.begin_frame();
             ctx.input.begin_draw();
+            let ui_dt = if self.fixed_clock {
+                step as f32
+            } else {
+                wall as f32
+            };
+            crate::ui_hook::begin_draw(ctx, ui_dt);
+            let held = crate::ui_hook::capture_input(ctx);
             let drawn = game.draw(ctx);
+            crate::ui_hook::release_input(ctx, held);
             if ctx.input.key_pressed(Key::F3) {
                 ctx.overlay.enabled = !ctx.overlay.enabled;
             }
             let stats = ctx.gfx.stats();
             ctx.overlay.draw(&mut ctx.gfx, self.fps, stats);
+            crate::ui_hook::draw_console(ctx, ui_dt);
             ctx.input.end_draw();
+            crate::ui_hook::end_draw(ctx);
             drawn.map_err(Error::Game)?;
             draw_ms = started.elapsed().as_secs_f32() * 1000.0;
             ctx.gfx.end_frame()?;
+            crate::ui_hook::after_frame(ctx);
             ctx.time.frame += 1;
             self.drawn_any = true;
         }
         ctx.overlay
             .record((wall * 1000.0) as f32, update_ms, draw_ms);
+        crate::ui_hook::record(ctx, self.fps, (wall * 1000.0) as f32, update_ms, draw_ms);
         Ok(())
     }
 }

@@ -90,6 +90,16 @@ impl FrameTables {
 
 /// The engine's default shader in a [`DrawState`].
 pub(crate) const DEFAULT_SHADER: u32 = u32::MAX;
+/// The engine's signed-distance-field text shader in a [`DrawState`].
+pub(crate) const SDF_SHADER: u32 = u32::MAX - 1;
+/// The engine's radial-gradient shader in a [`DrawState`].
+pub(crate) const RADIAL_SHADER: u32 = u32::MAX - 2;
+
+/// Whether `slot` names one of the engine's own shaders rather than an
+/// entry of the frame's game shader table.
+pub(crate) fn is_engine_shader(slot: u32) -> bool {
+    slot >= u32::MAX - 15
+}
 
 /// What a draw call binds: texture, shader, blend and view, by slot.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]

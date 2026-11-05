@@ -69,9 +69,21 @@ pub enum GfxError {
     /// Reading pixels back from the GPU failed.
     #[error("cannot read pixels back: {0}")]
     Readback(String),
+    /// Images did not fit an atlas of the largest allowed size.
+    #[error("atlas: {0}")]
+    Atlas(String),
+    /// An Aseprite file could not be read or used.
+    #[error("aseprite: {0}")]
+    Aseprite(String),
+    /// A Tiled map could not be turned into a drawable level.
+    #[error("tiled level: {0}")]
+    TiledLevel(String),
     /// Font bytes held no font face.
     #[error("font data holds no usable face")]
     NoFontFace,
+    /// A font file could not be read.
+    #[error("cannot read font file: {0}")]
+    FontFile(String),
     /// A KTX2 file could not be read.
     #[error("cannot read KTX2 file: {0}")]
     Ktx2(#[from] yowie_ktx2::Error),

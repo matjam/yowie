@@ -28,6 +28,7 @@ pub(crate) fn run_headless<G: Game>(config: Config, args: RunArgs) -> Result<()>
         size: config.size(),
     };
     let mut ctx = Context::new(gfx, host, &config)?;
+    crate::ui_hook::setup(&mut ctx, &config);
     let mut game = G::init(&mut ctx).map_err(Error::Game)?;
     let mut stepper = Stepper::new(&config, true);
     let tick = Tick {

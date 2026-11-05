@@ -17,15 +17,22 @@ use image::RgbaImage;
 /// `--shot`.
 const GOLDEN: &[(&str, &[&str])] = &[
     ("audio", &["--seconds", "2"]),
+    ("autotile", &[]),
     ("clear", &[]),
+    ("gallery", &["--seconds", "1", "--theme", "nord"]),
     ("inputs", &[]),
     ("lighting", &["--seconds", "2"]),
+    ("particles", &["--seconds", "2"]),
     ("pathfinding", &[]),
+    ("physics2d", &["--seconds", "6"]),
     ("physics3d", &["--seconds", "3"]),
     ("roguelike", &["--autoplay", "--seconds", "0.5"]),
     ("shaders", &["--seconds", "1"]),
     ("sprites", &["--seconds", "1"]),
     ("text", &[]),
+    ("tiled", &["--seconds", "2"]),
+    ("tiles", &["--seconds", "4"]),
+    ("vector", &[]),
     ("viewer", &["--seconds", "1"]),
 ];
 

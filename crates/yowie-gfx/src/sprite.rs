@@ -168,7 +168,8 @@ impl Graphics {
     pub fn draw_sprite(&mut self, texture: &Texture, sprite: &Sprite) {
         let ts = texture.size().as_vec2();
         let corners = sprite.corners(ts);
-        if let Some(bounds) = Rect::bounding(corners)
+        let t = self.cursor.transform;
+        if let Some(bounds) = Rect::bounding(corners.map(|c| t.transform_point2(c)))
             && !bounds.intersects(&self.cached_visible_area())
         {
             return;
