@@ -4902,6 +4902,8 @@ dependencies = [
  "thiserror 2.0.21",
  "wgpu",
  "yowie-core",
+ "yowie-ktx2",
+ "yowie-tools",
 ]
 
 [[package]]

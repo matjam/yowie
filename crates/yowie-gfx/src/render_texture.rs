@@ -78,7 +78,7 @@ impl RenderTexture {
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("yowie render texture readback"),
         });
-        let pending = readback::record(device, &mut encoder, &self.texture.inner.texture)?;
+        let pending = readback::record(device, &mut encoder, &self.texture.gpu().texture)?;
         gfx.shared.queue().submit([encoder.finish()]);
         pending.finish(device, true)
     }

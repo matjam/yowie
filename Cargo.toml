@@ -85,6 +85,7 @@ yowie-grid = { path = "crates/yowie-grid", version = "0.1.0" }
 yowie-orbit = { path = "crates/yowie-orbit", version = "0.1.0" }
 yowie-net = { path = "crates/yowie-net", version = "0.1.0" }
 yowie-ktx2 = { path = "crates/yowie-ktx2", version = "0.1.0" }
+yowie-tools = { path = "crates/yowie-tools", version = "0.1.0" }
 
 # Platform, GPU and maths
 winit = "0.30.13"
