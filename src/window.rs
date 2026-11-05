@@ -13,6 +13,7 @@ use yowie_gfx::{Graphics, GraphicsSettings};
 use yowie_input::InputEvent;
 
 use crate::context::{Host, UserEvent};
+use crate::icon::Cursor;
 use crate::stepper::{Stepper, Tick};
 use crate::{Config, Context, Error, Event, Game, Result, keymap};
 
@@ -32,7 +33,7 @@ pub(crate) struct WindowState<G: Game> {
 }
 
 fn window_attributes(config: &Config) -> winit::window::WindowAttributes {
-    let attrs = Window::default_attributes()
+    let mut attrs = Window::default_attributes()
         .with_title(config.title.clone())
         .with_inner_size(winit::dpi::LogicalSize::new(
             config.width.max(1),
@@ -40,6 +41,24 @@ fn window_attributes(config: &Config) -> winit::window::WindowAttributes {
         ))
         .with_resizable(config.resizable)
         .with_fullscreen(config.fullscreen.then_some(Fullscreen::Borderless(None)));
+    if let Some(icon) = &config.icon {
+        match icon.to_winit() {
+            Ok(icon) => attrs = attrs.with_window_icon(Some(icon)),
+            Err(e) => log::warn!("window icon not set: {e}"),
+        }
+    }
+    if let Some(s) = config.min_size {
+        attrs = attrs.with_min_inner_size(winit::dpi::LogicalSize::new(s.x.max(1), s.y.max(1)));
+    }
+    if let Some(s) = config.max_size {
+        attrs = attrs.with_max_inner_size(winit::dpi::LogicalSize::new(s.x.max(1), s.y.max(1)));
+    }
+    if let Some(p) = config.position {
+        attrs = attrs.with_position(winit::dpi::LogicalPosition::new(p.x, p.y));
+    }
+    if config.always_on_top {
+        attrs = attrs.with_window_level(winit::window::WindowLevel::AlwaysOnTop);
+    }
     #[cfg(all(
         unix,
         not(any(target_os = "macos", target_os = "ios", target_os = "android"))
@@ -91,7 +110,7 @@ impl<G: Game> WindowState<G> {
             window: window.clone(),
             proxy,
         };
-        let mut ctx = Context::new(gfx, host, config.debug_overlay);
+        let mut ctx = Context::new(gfx, host, config)?;
         ctx.focused = window.has_focus();
         let game = G::init(&mut ctx).map_err(Error::Game)?;
         window.request_redraw();
@@ -109,7 +128,27 @@ impl<G: Game> WindowState<G> {
     /// Whether the window cannot be seen, so frames update without drawing.
     pub(crate) fn hidden(&self) -> bool {
         let s = self.window.inner_size();
-        self.occluded || s.width == 0 || s.height == 0
+        self.occluded
+            || s.width == 0
+            || s.height == 0
+            || self.window.is_minimized().unwrap_or(false)
+    }
+
+    /// Applies what the game asked of the window during a callback and
+    /// needs the event loop to carry out: a changed cursor.
+    pub(crate) fn apply_requests(&mut self, el: &ActiveEventLoop) {
+        if !std::mem::take(&mut self.ctx.requests.cursor_dirty) {
+            return;
+        }
+        match &self.ctx.cursor {
+            Cursor::Custom(image) => match image.to_source() {
+                Ok(source) => self.window.set_cursor(el.create_custom_cursor(source)),
+                Err(e) => log::warn!("cursor not set: {e}"),
+            },
+            shape => self
+                .window
+                .set_cursor(shape.icon().unwrap_or(winit::window::CursorIcon::Default)),
+        }
     }
 
     /// Seconds per update.
@@ -174,7 +213,24 @@ impl<G: Game> WindowState<G> {
             }
             WindowEvent::Occluded(occluded) => {
                 self.occluded = occluded;
+                if !occluded {
+                    // Draw the frame that was skipped while hidden.
+                    self.turn_pending = true;
+                    self.window.request_redraw();
+                }
                 self.deliver(Event::Occluded(occluded))?;
+            }
+            WindowEvent::HoveredFile(path) => {
+                self.turn_pending = true;
+                self.deliver(Event::FileHovered(path))?;
+            }
+            WindowEvent::HoveredFileCancelled => {
+                self.turn_pending = true;
+                self.deliver(Event::FileHoverCancelled)?;
+            }
+            WindowEvent::DroppedFile(path) => {
+                self.turn_pending = true;
+                self.deliver(Event::FileDropped(path))?;
             }
             WindowEvent::KeyboardInput {
                 event,

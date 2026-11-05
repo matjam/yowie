@@ -72,6 +72,12 @@ pub enum GfxError {
     /// Font bytes held no font face.
     #[error("font data holds no usable face")]
     NoFontFace,
+    /// A KTX2 file could not be read.
+    #[error("cannot read KTX2 file: {0}")]
+    Ktx2(#[from] yowie_ktx2::Error),
+    /// The image or texture format is not supported by this GPU or call.
+    #[error("unsupported texture format: {0}")]
+    UnsupportedFormat(String),
     /// The call is not allowed while a frame is being recorded, or needs
     /// one.
     #[error("{0}")]

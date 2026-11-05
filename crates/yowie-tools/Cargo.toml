@@ -24,6 +24,7 @@ path = "src/bin/yowie-play.rs"
 
 [dependencies]
 yowie-audio.workspace = true
+yowie-ktx2.workspace = true
 ktx2.workspace = true
 intel_tex_2.workspace = true
 image.workspace = true
