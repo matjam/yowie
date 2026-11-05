@@ -1,7 +1,7 @@
 //! Drawing state: layer, sort key, blend mode, shader, camera and clip,
 //! with closure scopes that restore it.
 
-use yowie_core::{Color, Mat4, Rect, Vec2, Vec4};
+use yowie_core::{Affine2, Color, Mat4, Rect, Vec2, Vec4};
 
 use crate::Graphics;
 use crate::batch::{DEFAULT_SHADER, DrawState, ViewEntry};
@@ -38,6 +38,10 @@ pub(crate) struct Cursor {
     pub(crate) visible: Rect,
     /// The last texture looked up and its slot.
     pub(crate) last_texture: Option<(u64, u32)>,
+    /// The transform applied to drawing coordinates before the camera.
+    pub(crate) transform: Affine2,
+    /// Transforms saved by `push_transform`.
+    pub(crate) transform_stack: Vec<Affine2>,
 }
 
 impl Graphics {
@@ -237,14 +241,41 @@ impl Graphics {
         vertices: &[Vertex2D],
         indices: &[u32],
     ) {
-        let state = self.draw_state(texture);
+        self.push_triangles_with(texture, vertices, indices, None);
+    }
+
+    /// Like `push_triangles`, drawing through one of the engine's own
+    /// shader variants (`SDF_SHADER`, `RADIAL_SHADER`) when `engine` is set.
+    pub(crate) fn push_triangles_with(
+        &mut self,
+        texture: &Texture,
+        vertices: &[Vertex2D],
+        indices: &[u32],
+        engine: Option<u32>,
+    ) {
+        let mut state = self.draw_state(texture);
+        if let Some(shader) = engine {
+            state.shader = shader;
+        }
         let sc = self.tables.views[state.view as usize].scissor;
         if sc[2] == 0 || sc[3] == 0 {
             return;
         }
         let (layer, key) = (self.cursor.layer, self.cursor.sort_key);
         let i = self.current_index();
-        self.lists[i].push(state, layer, key, vertices, indices);
+        if self.cursor.transform == Affine2::IDENTITY {
+            self.lists[i].push(state, layer, key, vertices, indices);
+        } else {
+            let t = self.cursor.transform;
+            let moved: Vec<Vertex2D> = vertices
+                .iter()
+                .map(|v| Vertex2D {
+                    position: t.transform_point2(Vec2::from(v.position)).to_array(),
+                    ..*v
+                })
+                .collect();
+            self.lists[i].push(state, layer, key, &moved, indices);
+        }
     }
 
     /// Queues one quad from four corners (clockwise from top-left) and
@@ -257,12 +288,26 @@ impl Graphics {
         color: [f32; 4],
         mode: u32,
     ) {
+        self.push_quad_with(texture, corners, uvs, color, mode, None);
+    }
+
+    /// Like `push_quad`, through an engine shader variant when `engine` is
+    /// set.
+    pub(crate) fn push_quad_with(
+        &mut self,
+        texture: &Texture,
+        corners: [Vec2; 4],
+        uvs: [Vec2; 4],
+        color: [f32; 4],
+        mode: u32,
+        engine: Option<u32>,
+    ) {
         let v = std::array::from_fn::<Vertex2D, 4, _>(|i| Vertex2D {
             position: corners[i].to_array(),
             uv: uvs[i].to_array(),
             color,
             mode,
         });
-        self.push_triangles(texture, &v, &[0, 1, 2, 0, 2, 3]);
+        self.push_triangles_with(texture, &v, &[0, 1, 2, 0, 2, 3], engine);
     }
 }

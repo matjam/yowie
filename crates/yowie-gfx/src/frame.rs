@@ -10,7 +10,8 @@ use std::collections::HashMap;
 use std::num::NonZeroU64;
 
 use crate::Graphics;
-use crate::batch::{DEFAULT_SHADER, DrawCall, DrawList, FrameTables, ListTarget};
+use crate::batch::{DEFAULT_SHADER, DrawCall, DrawList, FrameTables, ListTarget, is_engine_shader};
+use crate::engine_shaders::EngineShaders;
 use crate::error::Result;
 use crate::graphics::FrameStats;
 use crate::pipelines::{PipelineCache, PipelineKey, Vertex2D, sprite_pipeline};
@@ -225,6 +226,7 @@ impl Graphics {
                 pipelines: &mut self.pipelines,
                 buffers: &mut self.buffers,
                 default_module: &self.default_module,
+                engine: &self.engine_shaders,
                 uniforms: &uniforms,
             };
             stats.draw_calls += pass2d.encode(&mut encoder, view, format, list, calls);
@@ -265,6 +267,7 @@ struct Pass2D<'a> {
     pipelines: &'a mut PipelineCache,
     buffers: &'a mut FrameBuffers,
     default_module: &'a wgpu::ShaderModule,
+    engine: &'a EngineShaders,
     uniforms: &'a UniformLayout,
 }
 
@@ -293,7 +296,7 @@ impl Pass2D<'_> {
         // Bind groups for uniform sizes are made before the pass borrows
         // the buffers.
         for call in calls {
-            if call.state.shader != DEFAULT_SHADER {
+            if !is_engine_shader(call.state.shader) {
                 let size = self.tables.shaders[call.state.shader as usize]
                     .uniforms
                     .len() as u64;
@@ -331,6 +334,8 @@ impl Pass2D<'_> {
             let st = call.state;
             let (shader, generation, module, user_size) = if st.shader == DEFAULT_SHADER {
                 (0, 0, self.default_module, 0)
+            } else if is_engine_shader(st.shader) {
+                self.engine.module(st.shader)
             } else {
                 let s = &self.tables.shaders[st.shader as usize];
                 (s.id, s.generation, &s.module, s.uniforms.len() as u64)

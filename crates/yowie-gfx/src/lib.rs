@@ -64,6 +64,7 @@ mod batch;
 mod blend;
 mod camera;
 mod device;
+mod engine_shaders;
 mod error;
 mod frame;
 mod geometry;
@@ -73,6 +74,7 @@ mod image_data;
 mod mipmap;
 mod nine_slice;
 mod output;
+mod path;
 mod pipelines;
 mod pixels;
 mod readback;
@@ -86,6 +88,7 @@ mod text;
 mod texture;
 mod texture_gpu;
 mod texture_upload;
+mod transform_stack;
 mod view;
 
 #[cfg(test)]
@@ -94,6 +97,10 @@ mod gpu_tests;
 mod gpu_tests_reload;
 #[cfg(test)]
 mod gpu_tests_text;
+#[cfg(test)]
+mod gpu_tests_textfx;
+#[cfg(test)]
+mod gpu_tests_vector;
 
 pub use blend::BlendMode;
 pub use camera::Camera2D;
@@ -103,10 +110,16 @@ pub use geometry::Vertex;
 pub use graphics::{FrameStats, Graphics, GraphicsSettings};
 pub use image_data::ImageData;
 pub use nine_slice::NineSlice;
+pub use path::{
+    Cap, Dash, Fill, FillRule, Gradient, GradientStop, Join, Paint, Path, PathBuilder, Stroke,
+    TexturePaint,
+};
 pub use render_texture::{RenderTexture, RenderTextureOptions};
 pub use shader::Shader;
 pub use sprite::Sprite;
-pub use text::{Font, TextAlign, TextStyle};
+pub use text::{
+    Caret, Font, Language, Orientation, RichText, SpanStyle, TextAlign, TextLayout, TextStyle,
+};
 pub use texture::{Filter, Texture, TextureOptions, Wrap};
 pub use view::{ScaleMode, ViewMapping, ViewSettings};
 
