@@ -64,6 +64,7 @@ mod batch;
 mod blend;
 mod camera;
 mod device;
+mod engine_shaders;
 mod error;
 mod frame;
 mod geometry;
@@ -71,6 +72,7 @@ mod graphics;
 mod mipmap;
 mod nine_slice;
 mod output;
+mod path;
 mod pipelines;
 mod pixels;
 mod readback;
@@ -82,12 +84,15 @@ mod sprite;
 mod state;
 mod text;
 mod texture;
+mod transform_stack;
 mod view;
 
 #[cfg(test)]
 mod gpu_tests;
 #[cfg(test)]
 mod gpu_tests_text;
+#[cfg(test)]
+mod gpu_tests_vector;
 
 pub use blend::BlendMode;
 pub use camera::Camera2D;
@@ -96,6 +101,10 @@ pub use error::{GfxError, Result};
 pub use geometry::Vertex;
 pub use graphics::{FrameStats, Graphics, GraphicsSettings};
 pub use nine_slice::NineSlice;
+pub use path::{
+    Cap, Dash, Fill, FillRule, Gradient, GradientStop, Join, Paint, Path, PathBuilder, Stroke,
+    TexturePaint,
+};
 pub use render_texture::{RenderTexture, RenderTextureOptions};
 pub use shader::Shader;
 pub use sprite::Sprite;

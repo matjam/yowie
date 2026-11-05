@@ -84,13 +84,13 @@ impl Graphics {
     /// Outlines a closed polygon, `thickness` units wide, centred on its
     /// edges with mitred corners.
     pub fn stroke_polygon(&mut self, points: &[Vec2], thickness: f32, color: Color) {
-        self.stroke_path(points, true, thickness, color);
+        self.stroke_points(points, true, thickness, color);
     }
 
     /// Draws connected line segments through `points`, `thickness` units
     /// wide, with mitred joins and square ends.
     pub fn stroke_polyline(&mut self, points: &[Vec2], thickness: f32, color: Color) {
-        self.stroke_path(points, false, thickness, color);
+        self.stroke_points(points, false, thickness, color);
     }
 
     fn circle_segments(&self, radius: f32) -> usize {
@@ -151,7 +151,7 @@ impl Graphics {
         self.push_shape(&pts, &indices, color);
     }
 
-    fn stroke_path(&mut self, points: &[Vec2], closed: bool, thickness: f32, color: Color) {
+    fn stroke_points(&mut self, points: &[Vec2], closed: bool, thickness: f32, color: Color) {
         let n = points.len();
         if n < 2 || thickness <= 0.0 {
             return;
