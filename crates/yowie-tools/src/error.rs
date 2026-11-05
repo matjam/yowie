@@ -20,5 +20,15 @@ pub enum Error {
     Audio(#[from] yowie_audio::Error),
 }
 
+impl From<yowie_ktx2::Error> for Error {
+    fn from(e: yowie_ktx2::Error) -> Self {
+        match e {
+            yowie_ktx2::Error::Io(e) => Error::Io(e),
+            yowie_ktx2::Error::Ktx2(s) => Error::Ktx2(s),
+            yowie_ktx2::Error::Invalid(s) => Error::Invalid(s),
+        }
+    }
+}
+
 /// A result whose error is [`Error`].
 pub type Result<T> = std::result::Result<T, Error>;

@@ -1,0 +1,11 @@
+[package]
+name = "yowie-ktx2"
+description = "KTX2 reader and writer for single 2D block-compressed textures, shared by the Yowie renderer and tools"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+ktx2.workspace = true
+thiserror.workspace = true

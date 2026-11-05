@@ -1,7 +1,11 @@
 //! What the window and loop are when a game starts.
 
-use yowie_core::{Color, UVec2};
+use std::path::PathBuf;
+
+use yowie_core::{Color, IVec2, UVec2};
 use yowie_gfx::{ScaleMode, ViewSettings};
+
+use crate::icon::Icon;
 
 /// How the loop advances game time.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -81,6 +85,37 @@ pub struct Config {
     /// [`Context::quit`](crate::Context::quit) when ready. Otherwise the
     /// loop ends on the request.
     pub handle_close: bool,
+    /// The window icon. See [`Icon`] for which platforms show it.
+    pub icon: Option<Icon>,
+    /// The smallest content size the player can resize the window to, in
+    /// logical points.
+    pub min_size: Option<UVec2>,
+    /// The largest content size the player can resize the window to, in
+    /// logical points.
+    pub max_size: Option<UVec2>,
+    /// The window's initial top-left corner in logical points on the
+    /// desktop. Wayland compositors place windows themselves and ignore
+    /// it.
+    pub position: Option<IVec2>,
+    /// Whether the window stays above other windows. Wayland has no
+    /// protocol for this, so it has no effect there.
+    pub always_on_top: bool,
+    /// Whether windowed runs open the default audio device. When false, or
+    /// when no device opens, [`Context::audio`](crate::Context) is a mixer
+    /// that plays to no device.
+    #[cfg(feature = "audio")]
+    pub audio: bool,
+    /// A directory whose files take priority over the default asset
+    /// locations (the `assets` directory in the working directory and
+    /// beside the executable).
+    pub asset_dir: Option<PathBuf>,
+    /// Pack files to mount behind the asset directories, in priority order.
+    /// `assets.pak` beside the executable and in the working directory is
+    /// mounted without being listed.
+    pub packs: Vec<PathBuf>,
+    /// Whether changed asset files reload live. Defaults to on in debug
+    /// builds.
+    pub hot_reload: bool,
 }
 
 impl Default for Config {
@@ -100,6 +135,16 @@ impl Default for Config {
             pause_when_unfocused: false,
             debug_overlay: false,
             handle_close: false,
+            icon: None,
+            min_size: None,
+            max_size: None,
+            position: None,
+            always_on_top: false,
+            #[cfg(feature = "audio")]
+            audio: true,
+            asset_dir: None,
+            packs: Vec::new(),
+            hot_reload: cfg!(debug_assertions),
         }
     }
 }

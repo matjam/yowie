@@ -8,6 +8,7 @@ repository.workspace = true
 
 [dependencies]
 yowie-core.workspace = true
+yowie-ktx2.workspace = true
 yowie-anim.workspace = true
 yowie-asset.workspace = true
 yowie-tiled.workspace = true
@@ -21,3 +22,6 @@ parking_lot.workspace = true
 thiserror.workspace = true
 log.workspace = true
 raw-window-handle.workspace = true
+
+[dev-dependencies]
+yowie-tools.workspace = true

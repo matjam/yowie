@@ -71,6 +71,7 @@ impl<G: Game> ApplicationHandler<UserEvent> for App<G> {
             }
             other => w.window_event(other),
         };
+        w.apply_requests(el);
         self.fail(el, result);
         self.check_end(el);
     }
@@ -133,6 +134,7 @@ impl<G: Game> ApplicationHandler<UserEvent> for App<G> {
                 deadline.map_or(ControlFlow::Wait, ControlFlow::WaitUntil)
             }
         };
+        w.apply_requests(el);
         el.set_control_flow(flow);
         self.fail(el, result);
         self.check_end(el);
