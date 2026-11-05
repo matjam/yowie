@@ -8,7 +8,7 @@
 //! | `yowie-play` | [`play`] |
 //!
 //! The KTX2 reader and writer live in `yowie-ktx2`, shared with the
-//! renderer, and are re-exported here as [`container`] and [`format`].
+//! renderer, and are re-exported here as [`container`] and [`format`](mod@format).
 #![warn(missing_docs)]
 
 pub mod bundle;

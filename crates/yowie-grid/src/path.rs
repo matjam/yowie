@@ -104,7 +104,7 @@ impl Pathfinder {
     /// Finds the least-cost path from `start` to `goal`.
     ///
     /// `cost(from, to)` is the price of stepping from `from` onto the
-    /// adjacent cell `to`; return [`BLOCKED`] to forbid the step. Returns
+    /// adjacent cell `to`; return [`BLOCKED`](crate::BLOCKED) to forbid the step. Returns
     /// `None` when either end is outside the grid or no path exists.
     pub fn find(
         &mut self,
