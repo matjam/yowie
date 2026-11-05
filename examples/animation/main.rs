@@ -14,6 +14,7 @@ mod arms;
 mod clips;
 #[path = "../common/mod.rs"]
 mod common;
+mod face;
 
 use std::sync::Arc;
 
@@ -111,6 +112,7 @@ struct Anim {
     schedule: Schedule,
     hero: Entity,
     arms: Arms,
+    face: face::Face,
     cube: Mesh,
     ball: Mesh,
     dot: Texture,
@@ -264,13 +266,14 @@ impl Game for Anim {
             schedule,
             hero,
             arms: Arms::new(),
+            face: face::Face::new(&ctx.gfx)?,
             cube: Mesh::new(&ctx.gfx, &MeshData::cube(1.0))?,
             ball: Mesh::new(&ctx.gfx, &MeshData::sphere(1.0, 16, 32))?,
             dot,
             sheet,
             font: ctx.gfx.default_font(),
             orbit,
-            panel: Rect::new(10.0, 180.0, 310.0, 430.0),
+            panel: Rect::new(10.0, 180.0, 310.0, 500.0),
             speed: 1.0,
             clock: 0.0,
             autoplay: std::env::args().any(|a| a == "--autoplay"),
@@ -298,6 +301,7 @@ impl Game for Anim {
         self.world.insert_resource(DeltaTime(dt));
         self.schedule.run(&mut self.world);
         ctx.record_schedule(&self.schedule);
+        self.face.update(dt);
         for line in self.arms.update(dt, self.clock) {
             Log::say(&mut self.world, line);
         }
@@ -345,6 +349,7 @@ impl Game for Anim {
 
         let cam = self.orbit.camera();
         let (world, arms, cube, ball) = (&self.world, &mut self.arms, &self.cube, &self.ball);
+        let face = &self.face;
         ctx.gfx.scene(&cam, |s| {
             s.set_sun(
                 DirectionalLight::new(vec3(-0.4, -1.0, -0.5), Color::rgb(1.0, 0.96, 0.9), 3.0)
@@ -369,6 +374,7 @@ impl Game for Anim {
                 s.draw(cube, &gold, *t);
             }
             arms.draw(s, cube, ball);
+            face.draw(s, vec3(-1.6, 2.1, -4.0), 0.55);
         });
 
         let names = ["event arm", "IK arm", "blend arm"];
@@ -415,6 +421,16 @@ impl Anim {
             _ => "IK off: the clip alone moves the arm".to_owned(),
         };
         let mut want: Option<usize> = None;
+        let morph = format!(
+            "morph: {}",
+            face::TARGETS
+                .iter()
+                .zip(self.face.weights)
+                .map(|(n, w)| format!("{n} {w:.2}"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+        let mut squash = self.face.squash.unwrap_or(0.0);
         let (speed, pace, ik_on, panel) = (
             &mut self.speed,
             &mut self.arms.pace,
@@ -435,12 +451,15 @@ impl Anim {
                 f.slider("Blend arm pace", pace, 0.0..=1.0);
                 f.checkbox("IK arm reaches by IK", ik_on);
                 f.label_dim(&ik);
+                f.slider("Squash morph (0 = clip)", &mut squash, 0.0..=1.0);
+                f.label_dim(&morph);
                 f.separator();
                 for line in &log {
                     f.label_dim(line);
                 }
             });
         });
+        self.face.squash = (squash > 0.0).then_some(squash);
         let pick = want.and_then(|i| match i {
             0 => self.hero_clip(|c| &c.idle).map(|c| (c, 0.3)),
             1 => self.hero_clip(|c| &c.jump).map(|c| (c, 0.15)),

@@ -59,10 +59,13 @@ pub fn labels(
 ) {
     let view = ctx.gfx.view_size();
     for d in bodies {
-        let moon = sim
-            .world
-            .get::<&Parent>(d.entity)
-            .is_ok_and(|p| p.0 != sim.sun);
+        let parent = sim.world.get::<&Parent>(d.entity).ok().map(|p| p.0);
+        let moon = parent.is_some_and(|p| p != sim.sun);
+        // Moons crowd their planet, so a moon is named only while it or its
+        // planet is selected.
+        if moon && d.entity != selected && parent != Some(selected) {
+            continue;
+        }
         let at = d.matrix.w_axis.truncate();
         let Some(p) = cam.world_to_screen(at, view) else {
             continue;
@@ -73,15 +76,14 @@ pub fn labels(
             (false, false) => (14.0, common::TEXT),
         };
         let name = sim.name(d.entity);
-        let offset = d.body.radius * 14.0 + 6.0;
-        common::label(
-            ctx,
-            font,
-            &name,
-            p + vec2(offset.min(24.0), -8.0),
-            size,
-            color,
-        );
+        // Planet names sit below the body and moon names above and beside
+        // their moon, so a planet's name and its moons' never meet.
+        let offset = if moon {
+            vec2(8.0, -20.0)
+        } else {
+            vec2(-12.0, 14.0 + (d.body.radius - 0.5).max(0.0) * 20.0)
+        };
+        common::label(ctx, font, &name, p + offset, size, color);
     }
 }
 
