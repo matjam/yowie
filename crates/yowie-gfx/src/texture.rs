@@ -4,12 +4,14 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use image::RgbaImage;
+use parking_lot::RwLock;
 use yowie_core::{UVec2, uvec2};
 
 use crate::Graphics;
 use crate::error::{GfxError, Result};
 use crate::pixels;
 use crate::shared::Shared;
+pub(crate) use crate::texture_gpu::TextureGpu;
 
 static NEXT_ID: AtomicU64 = AtomicU64::new(1);
 
@@ -51,7 +53,8 @@ pub struct TextureOptions {
     pub wrap: Wrap,
     /// Whether to build a mip chain, which keeps a texture drawn smaller
     /// than its size from shimmering. It is regenerated on every pixel
-    /// update.
+    /// update. Compressed textures carry the chain stored in their file
+    /// and ignore this.
     pub mipmaps: bool,
     /// Whether the supplied pixels are already premultiplied by alpha. When
     /// false the engine premultiplies them on upload.
@@ -75,15 +78,17 @@ impl TextureOptions {
 #[derive(Debug)]
 pub(crate) struct TextureInner {
     pub(crate) id: u64,
-    pub(crate) texture: wgpu::Texture,
-    pub(crate) view: wgpu::TextureView,
-    pub(crate) bind_group: wgpu::BindGroup,
-    pub(crate) size: UVec2,
-    pub(crate) options: TextureOptions,
+    /// The GPU objects, swapped as a whole when the image is replaced.
+    pub(crate) gpu: RwLock<Arc<TextureGpu>>,
 }
 
 /// An image on the GPU. Cloning shares the image; it is freed when the
 /// last clone and every queued draw that uses it are gone.
+///
+/// The image can be replaced without changing the texture's identity:
+/// [`replace_data`](Texture::replace_data) swaps in new pixels (even of
+/// another size) and every clone, sprite and queued draw that refers to the
+/// texture sees them.
 #[derive(Clone, Debug)]
 pub struct Texture {
     pub(crate) inner: Arc<TextureInner>,
@@ -145,71 +150,34 @@ impl Texture {
         options: TextureOptions,
         purpose: Purpose,
     ) -> Result<Texture> {
-        let max = shared.device().limits().max_texture_dimension_2d;
-        if size.x == 0 || size.y == 0 || size.x > max || size.y > max {
-            return Err(GfxError::InvalidSize {
-                width: size.x,
-                height: size.y,
-                max,
-            });
-        }
-        let mip_level_count = if options.mipmaps {
+        let mips = if options.mipmaps {
             32 - size.x.max(size.y).leading_zeros()
         } else {
             1
         };
-        let mut usage = wgpu::TextureUsages::TEXTURE_BINDING
-            | wgpu::TextureUsages::COPY_DST
-            | wgpu::TextureUsages::COPY_SRC;
-        if options.mipmaps || purpose == Purpose::RenderTarget {
-            usage |= wgpu::TextureUsages::RENDER_ATTACHMENT;
-        }
-        let texture = shared.device().create_texture(&wgpu::TextureDescriptor {
-            label: Some("yowie texture"),
-            size: wgpu::Extent3d {
-                width: size.x,
-                height: size.y,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format,
-            usage,
-            view_formats: &[],
-        });
-        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-        let bind_group = shared
-            .device()
-            .create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("yowie texture"),
-                layout: &shared.layouts.texture,
-                entries: &[
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: wgpu::BindingResource::TextureView(&view),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: wgpu::BindingResource::Sampler(shared.samplers.get(&options)),
-                    },
-                ],
-            });
-        Ok(Texture {
+        let gpu = TextureGpu::new(shared, size, format, options, purpose, mips)?;
+        Ok(Texture::from_gpu(gpu))
+    }
+
+    pub(crate) fn from_gpu(gpu: TextureGpu) -> Texture {
+        Texture {
             inner: Arc::new(TextureInner {
                 id: next_id(),
-                texture,
-                view,
-                bind_group,
-                size,
-                options,
+                gpu: RwLock::new(Arc::new(gpu)),
             }),
-        })
+        }
+    }
+
+    /// The current GPU objects. A replaced texture hands out the new ones;
+    /// holders of the old `Arc` keep drawing the old image until they let go.
+    pub(crate) fn gpu(&self) -> Arc<TextureGpu> {
+        self.inner.gpu.read().clone()
     }
 
     /// Replaces a rectangle of texels with `width * height` RGBA8 pixels,
     /// converted the way the texture's options say. The mip chain, if any,
     /// is rebuilt. Draws queued earlier in the frame see the new pixels.
+    /// Fails for compressed and floating-point textures.
     pub fn update_pixels(
         &self,
         gfx: &Graphics,
@@ -219,7 +187,14 @@ impl Texture {
         height: u32,
         rgba: &[u8],
     ) -> Result<()> {
-        let size = self.inner.size;
+        let gpu = self.gpu();
+        let size = gpu.size;
+        if !gpu.is_rgba8() {
+            return Err(GfxError::UnsupportedFormat(format!(
+                "{:?} textures cannot take RGBA8 pixel updates",
+                gpu.texture.format()
+            )));
+        }
         if x.checked_add(width).is_none_or(|r| r > size.x)
             || y.checked_add(height).is_none_or(|b| b > size.y)
             || width == 0
@@ -241,7 +216,7 @@ impl Texture {
                 got: rgba.len(),
             });
         }
-        let opts = self.inner.options;
+        let opts = gpu.options;
         let converted;
         let data = if opts.premultiplied {
             rgba
@@ -255,74 +230,51 @@ impl Texture {
             converted = copy;
             &converted
         };
-        self.write_level0(&gfx.shared, x, y, width, height, data, 4);
+        gpu.write_level(&gfx.shared, 0, [x, y], [width, height], data, 4);
         gfx.shared
             .mipmaps
-            .generate(gfx.shared.device(), gfx.shared.queue(), &self.inner.texture);
+            .generate(gfx.shared.device(), gfx.shared.queue(), &gpu.texture);
         Ok(())
-    }
-
-    /// Writes raw texels into level 0 with no conversion.
-    #[allow(clippy::too_many_arguments)]
-    pub(crate) fn write_level0(
-        &self,
-        shared: &Shared,
-        x: u32,
-        y: u32,
-        width: u32,
-        height: u32,
-        data: &[u8],
-        bytes_per_texel: u32,
-    ) {
-        shared.queue().write_texture(
-            wgpu::TexelCopyTextureInfo {
-                texture: &self.inner.texture,
-                mip_level: 0,
-                origin: wgpu::Origin3d { x, y, z: 0 },
-                aspect: wgpu::TextureAspect::All,
-            },
-            data,
-            wgpu::TexelCopyBufferLayout {
-                offset: 0,
-                bytes_per_row: Some(width * bytes_per_texel),
-                rows_per_image: Some(height),
-            },
-            wgpu::Extent3d {
-                width,
-                height,
-                depth_or_array_layers: 1,
-            },
-        );
     }
 
     /// The size in texels.
     pub fn size(&self) -> UVec2 {
-        self.inner.size
+        self.gpu().size
     }
 
     /// The width in texels.
     pub fn width(&self) -> u32 {
-        self.inner.size.x
+        self.gpu().size.x
     }
 
     /// The height in texels.
     pub fn height(&self) -> u32 {
-        self.inner.size.y
+        self.gpu().size.y
     }
 
     /// The options the texture was created with.
     pub fn options(&self) -> TextureOptions {
-        self.inner.options
+        self.gpu().options
     }
 
-    /// The underlying wgpu texture, for renderer extensions.
-    pub fn wgpu_texture(&self) -> &wgpu::Texture {
-        &self.inner.texture
+    /// The underlying wgpu texture, for renderer extensions. After
+    /// [`replace_data`](Texture::replace_data) this is a different wgpu
+    /// texture, so do not keep it across frames.
+    pub fn wgpu_texture(&self) -> wgpu::Texture {
+        self.gpu().texture.clone()
     }
 
-    /// A view of the whole texture, for renderer extensions.
-    pub fn wgpu_view(&self) -> &wgpu::TextureView {
-        &self.inner.view
+    /// A view of the whole texture, for renderer extensions. See
+    /// [`wgpu_texture`](Texture::wgpu_texture) about replacement.
+    pub fn wgpu_view(&self) -> wgpu::TextureView {
+        self.gpu().view.clone()
+    }
+
+    /// How many clones of this texture exist, itself included. A registry
+    /// that keeps a clone to update it can drop the entry when the count
+    /// falls to one.
+    pub fn share_count(&self) -> usize {
+        Arc::strong_count(&self.inner)
     }
 
     pub(crate) fn id(&self) -> u64 {

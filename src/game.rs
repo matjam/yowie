@@ -1,5 +1,7 @@
 //! The callbacks a game implements, and the events it can observe.
 
+use std::path::PathBuf;
+
 use yowie_input::InputEvent;
 
 use crate::{Context, GameResult};
@@ -25,6 +27,14 @@ pub enum Event {
     /// The window became hidden (true) or visible again (false). A hidden
     /// window does not draw.
     Occluded(bool),
+    /// A file is being dragged over the window. One event arrives for each
+    /// file in the drag.
+    FileHovered(PathBuf),
+    /// The drag that sent [`Event::FileHovered`] left the window without
+    /// dropping.
+    FileHoverCancelled,
+    /// A file was dropped on the window. One event arrives for each file.
+    FileDropped(PathBuf),
     /// The player asked to close the window. Without
     /// [`Config::handle_close`](crate::Config::handle_close) the loop ends
     /// after this event.

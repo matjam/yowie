@@ -202,6 +202,13 @@ impl Shader {
         Ok(())
     }
 
+    /// How many clones of this shader exist, itself included. A registry
+    /// that keeps a clone to reload it can drop the entry when the count
+    /// falls to one.
+    pub fn share_count(&self) -> usize {
+        Arc::strong_count(&self.inner)
+    }
+
     /// The size of the uniform block in bytes; zero for none.
     pub fn uniform_size(&self) -> usize {
         self.inner.uniform_size

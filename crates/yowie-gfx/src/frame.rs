@@ -205,9 +205,13 @@ impl Graphics {
         };
         for (li, calls) in &prepared {
             let list = &self.lists[*li];
+            let target_gpu;
             let (view, format) = match &list.target {
                 ListTarget::Screen => (&frame.view, self.output.format()),
-                ListTarget::Texture(t) => (&t.inner.view, t.inner.texture.format()),
+                ListTarget::Texture(t) => {
+                    target_gpu = t.gpu();
+                    (&target_gpu.view, target_gpu.texture.format())
+                }
             };
             // Pass 1, 3D scene: renderer extensions record their scene
             // passes for the screen here, into their own HDR targets.
@@ -352,7 +356,7 @@ impl Pass2D<'_> {
             }
             if cur_texture != Some(st.texture) {
                 let tex = &self.tables.textures[st.texture as usize];
-                pass.set_bind_group(0, &tex.inner.bind_group, &[]);
+                pass.set_bind_group(0, &tex.gpu().bind_group, &[]);
                 cur_texture = Some(st.texture);
             }
             if cur_view != Some(st.view) {

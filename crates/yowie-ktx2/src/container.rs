@@ -174,6 +174,11 @@ impl Ktx2File {
         Ok(file)
     }
 
+    /// Whether `data` starts with the KTX2 file identifier.
+    pub fn is_ktx2(data: &[u8]) -> bool {
+        data.starts_with(&ktx2::MAGIC)
+    }
+
     /// Reads and parses a KTX2 file from disk.
     pub fn open(path: impl AsRef<std::path::Path>) -> Result<Self> {
         Self::parse(&std::fs::read(path)?)

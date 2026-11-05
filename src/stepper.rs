@@ -93,6 +93,8 @@ impl Stepper {
         };
         ctx.input.set_update_step(step as f32);
 
+        ctx.begin_services();
+        let game_time_before = ctx.time.elapsed;
         let started = Instant::now();
         for _ in 0..updates {
             let delta = match self.mode {
@@ -122,6 +124,7 @@ impl Stepper {
         if self.last_turn.is_none() {
             self.last_turn = Some(now);
         }
+        ctx.end_services(ctx.time.elapsed - game_time_before);
         ctx.time.alpha = match self.mode {
             LoopMode::FixedStep { .. } if !self.fixed_clock => self.clock.alpha(),
             _ => 0.0,

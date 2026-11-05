@@ -16,8 +16,11 @@ use image::RgbaImage;
 /// Examples with a golden image, and the arguments each runs with besides
 /// `--shot`.
 const GOLDEN: &[(&str, &[&str])] = &[
+    ("audio", &["--seconds", "2"]),
     ("clear", &[]),
     ("inputs", &[]),
+    ("pathfinding", &[]),
+    ("roguelike", &["--autoplay", "--seconds", "0.5"]),
     ("shaders", &["--seconds", "1"]),
     ("sprites", &["--seconds", "1"]),
     ("text", &[]),
@@ -204,4 +207,30 @@ fn examples_match_golden_images() {
         std::fs::write(&gpu_file, format!("{}\n", info.name)).expect("write gpu.txt");
     }
     assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+/// The `assets` example rewrites files while it runs, so its frame is only
+/// checked for being more than one flat colour. It works in a private
+/// directory so the test leaves nothing behind.
+#[test]
+fn assets_example_draws_something() {
+    if yowie::gfx::default_adapter_info().is_none() {
+        println!("skipping assets example test: no GPU adapter");
+        return;
+    }
+    if let Err(e) = build_examples() {
+        panic!("{e}");
+    }
+    let out = std::env::temp_dir().join(format!("yowie-assets-test-{}", std::process::id()));
+    std::fs::create_dir_all(&out).expect("temporary directory");
+    let dir = out.join("project").join("assets");
+    let shot = out.join("assets.png");
+    let args = ["--seconds", "1", "--dir", dir.to_str().expect("utf-8 path")];
+    let img = run_example("assets", &args, &shot).unwrap_or_else(|e| panic!("{e}"));
+    let first = img.get_pixel(0, 0);
+    assert!(
+        img.pixels().any(|p| p != first),
+        "assets: frame is one flat colour"
+    );
+    let _ = std::fs::remove_dir_all(out);
 }
