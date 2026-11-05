@@ -98,6 +98,7 @@ pub struct Graphics {
     pub(crate) frame_number: u64,
     /// The 3D renderer, created by the first scene.
     pub(crate) scenes: Option<Box<crate::scene::SceneRenderer>>,
+    pub(crate) lit: crate::lights::LitState,
 }
 
 impl std::fmt::Debug for Graphics {
@@ -187,6 +188,7 @@ impl Graphics {
             stats: FrameStats::default(),
             frame_number: 0,
             scenes: None,
+            lit: Default::default(),
         };
         gfx.begin_frame();
         Ok(gfx)
@@ -240,6 +242,7 @@ impl Graphics {
         if let Some(scenes) = &mut self.scenes {
             scenes.begin_frame();
         }
+        self.lit.begin_frame();
         self.cursor = Cursor::default();
         let m = self.mapping;
         let bars = m.letterboxed();

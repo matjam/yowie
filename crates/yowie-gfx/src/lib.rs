@@ -63,6 +63,7 @@
 mod batch;
 mod blend;
 mod camera;
+mod custom;
 mod device;
 mod engine_shaders;
 mod error;
@@ -71,6 +72,7 @@ mod geometry;
 mod graphics;
 mod half;
 mod image_data;
+mod lights;
 mod mipmap;
 mod nine_slice;
 mod output;
@@ -94,6 +96,8 @@ mod view;
 
 #[cfg(test)]
 mod gpu_tests;
+#[cfg(test)]
+mod gpu_tests_lights;
 #[cfg(test)]
 mod gpu_tests_reload;
 #[cfg(test)]
@@ -125,12 +129,14 @@ pub use tilemap::{
 };
 
 pub use blend::BlendMode;
+pub use custom::{Draw2D, Draw3D, GpuDraw, PrepareContext};
 pub use camera::Camera2D;
 pub use device::{adapter_available, default_adapter_info};
 pub use error::{GfxError, Result};
 pub use geometry::Vertex;
 pub use graphics::{FrameStats, Graphics, GraphicsSettings};
 pub use image_data::ImageData;
+pub use lights::{Light2D, MAX_LIGHTS_2D, Spot2D};
 pub use nine_slice::NineSlice;
 pub use path::{
     Cap, Dash, Fill, FillRule, Gradient, GradientStop, Join, Paint, Path, PathBuilder, Stroke,
