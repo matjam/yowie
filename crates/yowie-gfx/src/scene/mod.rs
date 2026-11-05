@@ -12,7 +12,7 @@
 //! 2. Pass 1 of the frame (`frame.rs`) renders the shadow atlas and then
 //!    the scene into an HDR colour image with depth: opaque and cut-out
 //!    meshes, the sky, blended meshes back to front, debug lines
-//!    (`render.rs`).
+//!    (`render.rs` prepares and uploads, `passes.rs` records).
 //! 3. Pass 2 resolves the HDR image into the output with exposure and a
 //!    tone curve (`resolve.rs`); the 2D pass then draws over it.
 //!
@@ -27,15 +27,17 @@
 //!   writes the output. Everything before it stays the same.
 //! - **New material features** follow the steps in the `material` module
 //!   documentation; the record has spare vectors and flag bits.
-//! - **Render bundles** for static geometry: `render.rs` records every
-//!   batch through `draw_batches`, which only reads the batch list and
-//!   bind groups, so a bundle encoder can replay a cached batch list for
-//!   meshes the game marks static.
+//! - **Render bundles** for static geometry: `passes.rs` records every
+//!   batch through `SceneRenderer::draw_batches`, which only reads the
+//!   batch list and bind groups, so a bundle encoder can replay a cached
+//!   batch list for meshes the game marks static.
 //! - **GPU particles** draw in the HDR pass after the blended meshes, in
-//!   `render.rs` beside the lines, with the frame bind group bound.
+//!   `passes.rs` (`encode_scene`) beside the lines, with the frame bind
+//!   group bound.
 //! - **Order-independent transparency** replaces the sorted blended
-//!   batches in `render.rs` (`Prepared::blend`) with an accumulation pass
-//!   and a composite before the resolve.
+//!   batches (`Prepared::blend`, built in `prepare.rs`, drawn in
+//!   `passes.rs`) with an accumulation pass and a composite before the
+//!   resolve.
 
 mod bounds;
 mod camera;
@@ -67,6 +69,8 @@ mod vertex;
 
 #[cfg(test)]
 mod gpu_tests;
+#[cfg(test)]
+mod gpu_tests_models;
 
 pub use bounds::{Aabb, Frustum, Ray};
 pub use camera::{Camera3D, Projection};

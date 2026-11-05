@@ -19,11 +19,14 @@ const GOLDEN: &[(&str, &[&str])] = &[
     ("audio", &["--seconds", "2"]),
     ("clear", &[]),
     ("inputs", &[]),
+    ("lighting", &["--seconds", "2"]),
     ("pathfinding", &[]),
+    ("physics3d", &["--seconds", "3"]),
     ("roguelike", &["--autoplay", "--seconds", "0.5"]),
     ("shaders", &["--seconds", "1"]),
     ("sprites", &["--seconds", "1"]),
     ("text", &[]),
+    ("viewer", &["--seconds", "1"]),
 ];
 
 /// The mean absolute difference per channel (0 to 255) the whole frame may

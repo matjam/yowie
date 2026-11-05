@@ -24,3 +24,4 @@ exr.workspace = true
 
 [dev-dependencies]
 yowie-tools.workspace = true
+serde_json.workspace = true

@@ -70,6 +70,13 @@ fn atmosphere_scatter(d: vec3<f32>, dist: f32, steps: i32, sun_steps: i32) -> Sc
         let h = max(length(p) - radius, 0.0);
         let d_r = exp(-h / h_r) * ds;
         let d_m = exp(-h / h_m) * ds;
+        // The light a step scatters is dimmed by the air before it and,
+        // on average, by its own air: (1 - e^-x) / x of it survives. That
+        // keeps long steps near the horizon from losing all their blue.
+        let seg = beta_r * d_r + beta_m * 1.1 * d_m;
+        let own = (vec3<f32>(1.0) - exp(-seg)) / max(seg, vec3<f32>(1e-6));
+        let od_r_before = od_r;
+        let od_m_before = od_m;
         od_r += d_r;
         od_m += d_m;
         let shadow = ray_sphere(p, sun, radius);
@@ -85,7 +92,7 @@ fn atmosphere_scatter(d: vec3<f32>, dist: f32, steps: i32, sun_steps: i32) -> Sc
             lod_r += exp(-hj / h_r) * light_step;
             lod_m += exp(-hj / h_m) * light_step;
         }
-        let att = exp(-(beta_r * (od_r + lod_r) + beta_m * 1.1 * (od_m + lod_m)));
+        let att = exp(-(beta_r * (od_r_before + lod_r) + beta_m * 1.1 * (od_m_before + lod_m))) * own;
         sum_r += att * d_r;
         sum_m += att * d_m;
     }
