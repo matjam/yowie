@@ -127,8 +127,8 @@ impl Model {
         self.inner.nodes.len()
     }
 
-    /// A node's unique name: its own, or `node<index>` when it has none or
-    /// shares it.
+    /// A node's unique name: its own, `node<index>` when it has none, or
+    /// `<name>#<index>` when an earlier node already has that name.
     pub fn node_name(&self, node: usize) -> Option<&str> {
         self.inner.node_names.get(node).map(String::as_str)
     }

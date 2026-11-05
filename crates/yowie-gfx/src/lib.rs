@@ -1,5 +1,5 @@
-//! The renderer: 2D sprites, shapes and text today; 3D scenes and
-//! post-processing are added to the same frame by later work.
+//! The renderer: 2D sprites, shapes, text and vector paths, and 3D scenes
+//! with post-processing, drawn into one frame.
 //!
 //! [`Graphics`] owns the wgpu device and the frame's output, a window
 //! surface or a headless image. Drawing calls queue work while the game
@@ -31,11 +31,12 @@
 //! to with [`Graphics::draw_to`], in the order those scopes finished, then
 //! the screen. Each output runs these passes, in this order:
 //!
-//! 1. **3D scene passes** (extension point, none yet). A 3D renderer records
-//!    its shadow, opaque and transparent passes into its own HDR colour and
-//!    depth targets here. Its draws are queued during `draw` like 2D ones
-//!    and resolved in `end_frame`. The place is marked "Pass 1" in
-//!    `Graphics::end_frame` (`crates/yowie-gfx/src/frame.rs`).
+//! 1. **3D scene passes** ([`scene`]). Each scene recorded with
+//!    [`Graphics::scene`] renders its shadow maps, then draws into its own
+//!    HDR colour and depth targets: opaque and cut-out surfaces, the sky,
+//!    refracting surfaces, then blended surfaces. Its draws are queued
+//!    during `draw` like 2D ones and rendered in `end_frame`. Marked
+//!    "Pass 1" in `Graphics::end_frame` (`crates/yowie-gfx/src/frame.rs`).
 //! 2. **Post-processing chain** ([`scene::PostSettings`]). Each scene's
 //!    chain reads its targets and writes its viewport of the output; the
 //!    2D pass then loads the output rather than clearing it. A 2D frame
