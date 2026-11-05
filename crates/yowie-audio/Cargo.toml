@@ -1,0 +1,10 @@
+[package]
+name = "yowie-audio"
+description = "Audio mixer for Yowie: buses, streamed decoding, positional and binaural voices, reverb, capture, synthesis and a MOD/S3M/XM/IT player"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+yowie-core.workspace = true

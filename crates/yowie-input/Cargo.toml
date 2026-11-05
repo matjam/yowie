@@ -1,0 +1,10 @@
+[package]
+name = "yowie-input"
+description = "Keys, mouse buttons, gamepads, per-update input state and rebindable action maps for Yowie"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+yowie-core.workspace = true

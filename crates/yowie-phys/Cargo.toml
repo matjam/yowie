@@ -1,0 +1,10 @@
+[package]
+name = "yowie-phys"
+description = "2D and 3D rigid bodies, joints, queries and character controllers, plus cloth, soft bodies and 2D fluids, for Yowie"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+yowie-core.workspace = true

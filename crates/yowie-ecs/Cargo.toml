@@ -1,0 +1,10 @@
+[package]
+name = "yowie-ecs"
+description = "Entity component system for Yowie: queries, systems, resources, events, hierarchy, saves, prefabs and scene documents"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+yowie-core.workspace = true

@@ -1,0 +1,134 @@
+[package]
+name = "yowie"
+description = "A game library for real-time and turn-based games that put 2D sprites and 3D models on one screen"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+readme = "README.md"
+keywords = ["gamedev", "engine", "wgpu", "2d", "3d"]
+categories = ["game-engines", "graphics", "rendering"]
+
+[workspace]
+members = ["crates/*"]
+resolver = "3"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/matjam/yowie"
+
+[features]
+default = ["audio", "phys", "net", "ui", "console", "particle", "tiled"]
+audio = ["dep:yowie-audio"]
+phys = ["dep:yowie-phys"]
+net = ["dep:yowie-net"]
+ui = ["dep:yowie-ui"]
+console = ["ui", "dep:yowie-console"]
+particle = ["dep:yowie-particle"]
+tiled = ["dep:yowie-tiled"]
+
+[dependencies]
+yowie-core.workspace = true
+yowie-input.workspace = true
+yowie-gfx.workspace = true
+yowie-ecs.workspace = true
+yowie-anim.workspace = true
+yowie-asset.workspace = true
+yowie-save.workspace = true
+yowie-locale.workspace = true
+yowie-rng.workspace = true
+yowie-timer.workspace = true
+yowie-tween.workspace = true
+yowie-grid.workspace = true
+yowie-orbit.workspace = true
+yowie-audio = { workspace = true, optional = true }
+yowie-phys = { workspace = true, optional = true }
+yowie-net = { workspace = true, optional = true }
+yowie-ui = { workspace = true, optional = true }
+yowie-console = { workspace = true, optional = true }
+yowie-particle = { workspace = true, optional = true }
+yowie-tiled = { workspace = true, optional = true }
+thiserror.workspace = true
+log.workspace = true
+
+[workspace.dependencies]
+# Workspace crates
+yowie-core = { path = "crates/yowie-core", version = "0.1.0" }
+yowie-input = { path = "crates/yowie-input", version = "0.1.0" }
+yowie-gfx = { path = "crates/yowie-gfx", version = "0.1.0" }
+yowie-ui = { path = "crates/yowie-ui", version = "0.1.0" }
+yowie-console = { path = "crates/yowie-console", version = "0.1.0" }
+yowie-ecs = { path = "crates/yowie-ecs", version = "0.1.0" }
+yowie-phys = { path = "crates/yowie-phys", version = "0.1.0" }
+yowie-anim = { path = "crates/yowie-anim", version = "0.1.0" }
+yowie-audio = { path = "crates/yowie-audio", version = "0.1.0" }
+yowie-particle = { path = "crates/yowie-particle", version = "0.1.0" }
+yowie-tiled = { path = "crates/yowie-tiled", version = "0.1.0" }
+yowie-asset = { path = "crates/yowie-asset", version = "0.1.0" }
+yowie-save = { path = "crates/yowie-save", version = "0.1.0" }
+yowie-locale = { path = "crates/yowie-locale", version = "0.1.0" }
+yowie-rng = { path = "crates/yowie-rng", version = "0.1.0" }
+yowie-timer = { path = "crates/yowie-timer", version = "0.1.0" }
+yowie-tween = { path = "crates/yowie-tween", version = "0.1.0" }
+yowie-grid = { path = "crates/yowie-grid", version = "0.1.0" }
+yowie-orbit = { path = "crates/yowie-orbit", version = "0.1.0" }
+yowie-net = { path = "crates/yowie-net", version = "0.1.0" }
+
+# Platform, GPU and maths
+winit = "0.30.13"
+wgpu = "30.0.1"
+glam = { version = "0.34.2", features = ["serde", "bytemuck"] }
+bytemuck = { version = "1.25.2", features = ["derive"] }
+raw-window-handle = "0.6.2"
+pollster = "1.0.1"
+gilrs = "0.11.2"
+arboard = { version = "3.7.0", features = ["wayland-data-control"] }
+
+# Media
+image = { version = "0.25.10", default-features = false, features = ["png", "jpeg", "hdr"] }
+exr = "1.74.2"
+ktx2 = "0.5.0"
+gltf = "1.4.1"
+cosmic-text = "0.19.0"
+swash = "0.2.10"
+hyphenation = "0.8.4"
+lyon = "1.0.19"
+asefile = "0.3.8"
+cpal = "0.18.2"
+symphonia = { version = "0.6.1", features = ["wav", "pcm", "vorbis", "ogg", "mp3", "flac"] }
+
+# Simulation
+rapier2d = "0.36.1"
+rapier3d = "0.36.1"
+hecs = "0.11.2"
+
+# Services
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+postcard = { version = "1.1.3", features = ["use-std"] }
+rustls = { version = "0.23.46", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+quick-xml = { version = "0.42.0", features = ["serialize"] }
+flate2 = "1.1.10"
+zstd = "0.14.3"
+base64 = "0.23.1"
+notify = "8.2.1"
+directories = "6.0.0"
+crossbeam-channel = "0.5.17"
+parking_lot = "0.13.0"
+rayon = "1.12.0"
+smallvec = "1.16.4"
+
+# Errors, logging, tools
+thiserror = "2.0.21"
+log = "0.4.35"
+env_logger = "0.11.11"
+clap = { version = "4.6.7", features = ["derive"] }
+
+[profile.dev]
+# Games are unplayable at opt-level 0; optimise dependencies even in debug builds.
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3

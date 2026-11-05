@@ -1,0 +1,1 @@
+//! Eased value animation.

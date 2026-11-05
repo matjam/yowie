@@ -1,0 +1,10 @@
+[package]
+name = "yowie-timer"
+description = "Game-time timers and step sequences for cutscenes for Yowie"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+yowie-core.workspace = true

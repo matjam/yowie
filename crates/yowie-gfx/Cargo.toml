@@ -1,0 +1,10 @@
+[package]
+name = "yowie-gfx"
+description = "wgpu renderer for Yowie: 2D sprites, shapes, text and vector paths, and physically based 3D with post-processing"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+yowie-core.workspace = true

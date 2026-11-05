@@ -1,0 +1,10 @@
+[package]
+name = "yowie-rng"
+description = "Seeded PCG32 random numbers with forks, dice, picks and shuffles for Yowie"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+yowie-core.workspace = true

@@ -1,0 +1,10 @@
+[package]
+name = "yowie-save"
+description = "JSON saves and settings in the platform's data directory for Yowie"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+yowie-core.workspace = true

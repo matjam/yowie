@@ -1,0 +1,10 @@
+[package]
+name = "yowie-ui"
+description = "Immediate-mode widgets, containers, themes, skins, navigation and an accessibility tree for Yowie"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+yowie-core.workspace = true
