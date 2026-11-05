@@ -12,7 +12,9 @@ mod common;
 
 use serde::{Deserialize, Serialize};
 use yowie::gfx::Font;
-use yowie::grid::{BLOCKED, Diagonal, Grid, Neighbourhood, Pathfinder, dijkstra, flood_fill, fov, line};
+use yowie::grid::{
+    BLOCKED, Diagonal, Grid, Neighbourhood, Pathfinder, dijkstra, flood_fill, fov, line,
+};
 use yowie::input::{Key, MouseButton};
 use yowie::rng::Rng;
 use yowie::save::Store;
@@ -73,7 +75,10 @@ impl Paths {
     }
 
     fn cell_at(point: yowie::Vec2) -> IVec2 {
-        ivec2((point.x / CELL).floor() as i32, (point.y / CELL).floor() as i32)
+        ivec2(
+            (point.x / CELL).floor() as i32,
+            (point.y / CELL).floor() as i32,
+        )
     }
 }
 
@@ -153,8 +158,7 @@ impl Game for Paths {
                 self.walls.set(p, false);
             }
         }
-        if ctx.input.mouse_down(MouseButton::Middle)
-            && self.walls.get(p).is_some_and(|wall| !wall)
+        if ctx.input.mouse_down(MouseButton::Middle) && self.walls.get(p).is_some_and(|wall| !wall)
         {
             self.start = p;
         }
@@ -204,18 +208,25 @@ impl Game for Paths {
                 Color::rgb(0.15 + 0.7 * t, 0.35 - 0.2 * t, 0.55 - 0.45 * t)
             };
             if visible.contains(&p) {
-                c = Color::rgb((c.r + 0.25).min(1.0), (c.g + 0.25).min(1.0), (c.b + 0.2).min(1.0));
+                c = Color::rgb(
+                    (c.r + 0.25).min(1.0),
+                    (c.g + 0.25).min(1.0),
+                    (c.b + 0.2).min(1.0),
+                );
             }
             let at = vec2(p.x as f32 * CELL, p.y as f32 * CELL);
-            ctx.gfx.fill_rect(Rect::new(at.x + 1.0, at.y + 1.0, CELL - 2.0, CELL - 2.0), c);
+            ctx.gfx
+                .fill_rect(Rect::new(at.x + 1.0, at.y + 1.0, CELL - 2.0, CELL - 2.0), c);
         }
         let path = self
             .finder
             .find(self.start, goal, rule, step_cost(&self.walls));
         let mark = |ctx: &mut Context, p: IVec2, inset: f32, color: Color| {
             let at = vec2(p.x as f32 * CELL + inset, p.y as f32 * CELL + inset);
-            ctx.gfx
-                .fill_rect(Rect::new(at.x, at.y, CELL - 2.0 * inset, CELL - 2.0 * inset), color);
+            ctx.gfx.fill_rect(
+                Rect::new(at.x, at.y, CELL - 2.0 * inset, CELL - 2.0 * inset),
+                color,
+            );
         };
         if let Some(path) = &path {
             for &p in &path.points {
@@ -224,15 +235,26 @@ impl Game for Paths {
         }
         for p in line(self.start, goal) {
             let at = vec2(p.x as f32 * CELL + 10.0, p.y as f32 * CELL + 10.0);
-            ctx.gfx
-                .fill_rect(Rect::new(at.x, at.y, 4.0, 4.0), Color::rgba8(255, 255, 255, 120));
+            ctx.gfx.fill_rect(
+                Rect::new(at.x, at.y, 4.0, 4.0),
+                Color::rgba8(255, 255, 255, 120),
+            );
         }
         mark(ctx, self.start, 4.0, Color::rgb8(80, 255, 120));
         mark(ctx, goal, 4.0, Color::rgb8(255, 90, 90));
 
         let y = ROWS as f32 * CELL + 8.0;
-        common::label(ctx, &self.font, &self.status, vec2(12.0, y), 15.0, common::TEXT);
-        let steps = path.as_ref().map_or(0, |p| p.points.len().saturating_sub(1));
+        common::label(
+            ctx,
+            &self.font,
+            &self.status,
+            vec2(12.0, y),
+            15.0,
+            common::TEXT,
+        );
+        let steps = path
+            .as_ref()
+            .map_or(0, |p| p.points.len().saturating_sub(1));
         let mut summary = format!(
             "Path {steps} steps ({}); {} cells reachable; {} visible; middle-click moves the start.",
             if self.diagonal { "8-way" } else { "4-way" },
@@ -242,12 +264,20 @@ impl Game for Paths {
         if path.is_none() {
             summary = format!("No path to the goal. {summary}");
         }
-        common::label(ctx, &self.font, &summary, vec2(12.0, y + 22.0), 15.0, common::DIM);
+        common::label(
+            ctx,
+            &self.font,
+            &summary,
+            vec2(12.0, y + 22.0),
+            15.0,
+            common::DIM,
+        );
         Ok(())
     }
 }
 
 fn main() -> Result<(), yowie::Error> {
-    let config = Config::new("Yowie pathfinding").with_size(COLS as u32 * CELL as u32, ROWS as u32 * CELL as u32 + 60);
+    let config = Config::new("Yowie pathfinding")
+        .with_size(COLS as u32 * CELL as u32, ROWS as u32 * CELL as u32 + 60);
     yowie::run::<Paths>(config)
 }

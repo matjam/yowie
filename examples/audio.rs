@@ -72,7 +72,7 @@ const NOTES: [f64; 6] = [261.63, 329.63, 392.0, 523.25, 392.0, 329.63];
 impl Stream for Arpeggio {
     fn read(&mut self, out: &mut [f32]) -> usize {
         let frames = out.len() / 2;
-        for frame in out.chunks_exact_mut(2) {
+        for frame in out.as_chunks_mut::<2>().0 {
             let step = (self.t * 3.0) as usize % NOTES.len();
             let env = 1.0 - (self.t * 3.0).fract();
             self.phase += std::f64::consts::TAU * NOTES[step] / self.rate;
@@ -252,24 +252,62 @@ impl Game for Tour {
             ctx.quit();
         }
         let m = ctx.audio.clone();
-        if nudge(ctx, Key::Digit1, Key::Digit2, &mut self.reverb, 0.05, 0.0, 1.0)
-            | nudge(ctx, Key::Digit3, Key::Digit4, &mut self.room, 0.05, 0.05, 1.0)
-        {
+        if nudge(
+            ctx,
+            Key::Digit1,
+            Key::Digit2,
+            &mut self.reverb,
+            0.05,
+            0.0,
+            1.0,
+        ) | nudge(
+            ctx,
+            Key::Digit3,
+            Key::Digit4,
+            &mut self.room,
+            0.05,
+            0.05,
+            1.0,
+        ) {
             m.set_reverb(ReverbSettings {
                 room_size: self.room,
                 wet: self.reverb,
                 ..Default::default()
             });
         }
-        if nudge(ctx, Key::Digit5, Key::Digit6, &mut self.cutoff, 200.0, 200.0, 8000.0) {
+        if nudge(
+            ctx,
+            Key::Digit5,
+            Key::Digit6,
+            &mut self.cutoff,
+            200.0,
+            200.0,
+            8000.0,
+        ) {
             self.pad.set_low_pass(Some(self.cutoff));
         }
-        if nudge(ctx, Key::Digit7, Key::Digit8, &mut self.occlusion, 0.1, 0.0, 1.0) {
+        if nudge(
+            ctx,
+            Key::Digit7,
+            Key::Digit8,
+            &mut self.occlusion,
+            0.1,
+            0.0,
+            1.0,
+        ) {
             for s in &self.sources {
                 s.voice.set_occlusion(self.occlusion);
             }
         }
-        if nudge(ctx, Key::Digit9, Key::Digit0, &mut self.doppler, 0.25, 0.0, 3.0) {
+        if nudge(
+            ctx,
+            Key::Digit9,
+            Key::Digit0,
+            &mut self.doppler,
+            0.25,
+            0.0,
+            3.0,
+        ) {
             m.set_doppler(self.doppler);
         }
         nudge(ctx, Key::Q, Key::E, &mut self.pitch, 0.1, 0.5, 2.0);
@@ -347,7 +385,8 @@ impl Game for Tour {
             s.voice.set_position(s.pos);
             // The orbit's tangent in pixels per second drives Doppler.
             let v = s.dist * s.speed;
-            s.voice.set_velocity(Vec3::new(-v * a.sin(), v * a.cos(), 0.0));
+            s.voice
+                .set_velocity(Vec3::new(-v * a.sin(), v * a.cos(), 0.0));
         }
         if let Some(c) = &mut self.capture {
             // Drain what the device recorded so its ring never fills, and
@@ -388,7 +427,14 @@ impl Game for Tour {
             );
         }
         ctx.gfx.fill_circle(l, 8.0, Color::rgb8(240, 240, 250));
-        common::label(ctx, &self.font, "listener", l + vec2(-24.0, 12.0), 14.0, common::DIM);
+        common::label(
+            ctx,
+            &self.font,
+            "listener",
+            l + vec2(-24.0, 12.0),
+            14.0,
+            common::DIM,
+        );
 
         let playing = self.sources.iter().filter(|s| s.voice.is_playing()).count()
             + usize::from(self.pad.is_playing())
@@ -396,12 +442,22 @@ impl Game for Tour {
             + self.bursts.iter().filter(|v| v.is_playing()).count();
         let mut lines = vec![
             format!("{playing} voices playing (cap 12)"),
-            format!("1/2 reverb wet {:.2}   3/4 room {:.2}", self.reverb, self.room),
+            format!(
+                "1/2 reverb wet {:.2}   3/4 room {:.2}",
+                self.reverb, self.room
+            ),
             format!("5/6 pad low-pass {:.0} Hz", self.cutoff),
-            format!("7/8 orbit occlusion {:.1}   9/0 doppler {:.2}", self.occlusion, self.doppler),
+            format!(
+                "7/8 orbit occlusion {:.1}   9/0 doppler {:.2}",
+                self.occlusion, self.doppler
+            ),
             format!(
                 "B binaural: {}   Q/E click pitch {:.1}",
-                if self.binaural { "on" } else { "off (stereo pan)" },
+                if self.binaural {
+                    "on"
+                } else {
+                    "off (stereo pan)"
+                },
                 self.pitch
             ),
             "C click   X burst of 40 (watch the cap)".into(),
@@ -416,9 +472,12 @@ impl Game for Tour {
                 Some(e) => format!("{path}: {e}"),
                 None => format!("Streaming {path}"),
             }),
-            None => lines.push("Music is a synthesised Stream; --music file.ogg streams a file".into()),
+            None => {
+                lines.push("Music is a synthesised Stream; --music file.ogg streams a file".into())
+            }
         }
-        let height = 20.0 + lines.len() as f32 * 20.0 + if self.capture.is_some() { 30.0 } else { 0.0 };
+        let height =
+            20.0 + lines.len() as f32 * 20.0 + if self.capture.is_some() { 30.0 } else { 0.0 };
         common::panel(ctx, Rect::new(16.0, 16.0, 420.0, height));
         for (i, line) in lines.iter().enumerate() {
             common::label(

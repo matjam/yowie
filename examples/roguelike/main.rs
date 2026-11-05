@@ -107,7 +107,10 @@ impl Game for Crawl {
         if self.autoplay {
             // Keep the turn-based loop running so the hero keeps walking.
             ctx.request_redraw();
-            let step = self.dungeon.step_toward_nearest_goblin().unwrap_or(ivec2(0, 0));
+            let step = self
+                .dungeon
+                .step_toward_nearest_goblin()
+                .unwrap_or(ivec2(0, 0));
             self.take_turn(step);
             return Ok(());
         }
@@ -140,7 +143,12 @@ impl Game for Crawl {
                 self.glyph(ctx, m.pos, "g", Color::rgb8(120, 220, 90));
             }
         }
-        self.glyph(ctx, self.dungeon.player.pos, "@", Color::rgb8(255, 240, 160));
+        self.glyph(
+            ctx,
+            self.dungeon.player.pos,
+            "@",
+            Color::rgb8(255, 240, 160),
+        );
 
         let top = MAP_H as f32 * CELL + 8.0;
         let p = &self.dungeon.player;
@@ -163,14 +171,22 @@ impl Game for Crawl {
                 Color::rgba8(0, 0, 0, 150),
             );
             let at = vec2(size.x as f32 / 2.0 - 120.0, size.y as f32 / 2.0);
-            common::label(ctx, &self.font, "You died. Escape to quit.", at, 20.0, Color::rgb8(255, 80, 80));
+            common::label(
+                ctx,
+                &self.font,
+                "You died. Escape to quit.",
+                at,
+                20.0,
+                Color::rgb8(255, 80, 80),
+            );
         }
         Ok(())
     }
 }
 
 fn main() -> Result<(), yowie::Error> {
-    let mut config = Config::new("Yowie roguelike").with_size(MAP_W as u32 * CELL as u32, MAP_H as u32 * CELL as u32 + 120);
+    let mut config = Config::new("Yowie roguelike")
+        .with_size(MAP_W as u32 * CELL as u32, MAP_H as u32 * CELL as u32 + 120);
     config.loop_mode = LoopMode::TurnBased;
     yowie::run::<Crawl>(config)
 }

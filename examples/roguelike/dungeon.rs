@@ -52,7 +52,10 @@ impl Room {
     }
 
     fn overlaps(&self, o: &Room) -> bool {
-        self.x <= o.x + o.w && o.x <= self.x + self.w && self.y <= o.y + o.h && o.y <= self.y + self.h
+        self.x <= o.x + o.w
+            && o.x <= self.x + self.w
+            && self.y <= o.y + o.h
+            && o.y <= self.y + self.h
     }
 }
 
@@ -164,13 +167,15 @@ impl Dungeon {
                 .map(|(_, m)| m.pos)
                 .collect();
             let (tiles, player) = (&self.tiles, self.player.pos);
-            let path = self.finder.find(pos, player, Diagonal::IfBothClear, |_, to| {
-                if tiles.get(to).is_none_or(|t| t.wall) || others.contains(&to) {
-                    BLOCKED
-                } else {
-                    1.0
-                }
-            });
+            let path = self
+                .finder
+                .find(pos, player, Diagonal::IfBothClear, |_, to| {
+                    if tiles.get(to).is_none_or(|t| t.wall) || others.contains(&to) {
+                        BLOCKED
+                    } else {
+                        1.0
+                    }
+                });
             if let Some(next) = path.and_then(|p| p.points.get(1).copied())
                 && next != player
             {

@@ -28,7 +28,11 @@ pub enum Wire {
     Pointer { name: String, x: f32, y: f32 },
     /// A chat line sent over the reliable channel (`--reliable`); `seq`
     /// counts the sender's lines so the receiver can check their order.
-    Chat { from: String, text: String, seq: u32 },
+    Chat {
+        from: String,
+        text: String,
+        seq: u32,
+    },
 }
 
 /// Turns `:7777` into `0.0.0.0:7777`; other addresses stay as given.

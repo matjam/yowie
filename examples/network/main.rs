@@ -93,7 +93,9 @@ impl Chat {
         let result = match (&self.role, self.reliable) {
             (Role::Alone, _) => Ok(()),
             (Role::Guest { tcp, .. }, false) => tcp.send(&Up::Chat { from, text }),
-            (Role::Host { tcp, .. }, false) => tcp.broadcast(&Down::Chat { from, text }).map(|_| ()),
+            (Role::Host { tcp, .. }, false) => {
+                tcp.broadcast(&Down::Chat { from, text }).map(|_| ())
+            }
             (Role::Guest { udp: Some(udp), .. }, true) => {
                 udp.send(Channel::Reliable, &Wire::Chat { from, text, seq })
             }
@@ -125,7 +127,12 @@ impl Chat {
         while let Some(ev) = tcp.poll() {
             match ev {
                 ServerEvent::Connected { id, addr } => {
-                    let _ = tcp.send(id, &Down::Welcome { udp_port: udp.local_addr().port() });
+                    let _ = tcp.send(
+                        id,
+                        &Down::Welcome {
+                            udp_port: udp.local_addr().port(),
+                        },
+                    );
                     said.push(format!("Peer {id} connected from {addr}"));
                 }
                 ServerEvent::Disconnected { id, reason } => {
@@ -135,7 +142,10 @@ impl Chat {
                 ServerEvent::Message { id, message } => match message {
                     Up::Join(name) => {
                         said.push(format!("{name} joined"));
-                        let hello = Down::Chat { from: "host".into(), text: format!("{name} joined") };
+                        let hello = Down::Chat {
+                            from: "host".into(),
+                            text: format!("{name} joined"),
+                        };
                         let _ = tcp.broadcast(&hello);
                         names.insert(id, name);
                     }
@@ -177,7 +187,9 @@ impl Chat {
         while let Some(ev) = tcp.poll() {
             match ev {
                 ClientEvent::Connected => said.push(format!("Connected to {addr}")),
-                ClientEvent::Disconnected(reason) => said.push(format!("Disconnected ({reason:?})")),
+                ClientEvent::Disconnected(reason) => {
+                    said.push(format!("Disconnected ({reason:?})"))
+                }
                 ClientEvent::Message(Down::Welcome { udp_port }) => {
                     match UdpClient::connect((host_of(addr), udp_port), UdpConfig::default()) {
                         Ok(client) => {
@@ -188,7 +200,9 @@ impl Chat {
                         Err(e) => said.push(format!("UDP link failed: {e}")),
                     }
                 }
-                ClientEvent::Message(Down::Chat { from, text }) => said.push(format!("{from}: {text}")),
+                ClientEvent::Message(Down::Chat { from, text }) => {
+                    said.push(format!("{from}: {text}"))
+                }
             }
         }
         if let Some(client) = udp {
@@ -201,7 +215,9 @@ impl Chat {
                         reliable.push((from, text, seq));
                     }
                     ClientEvent::Connected => said.push("UDP link up".into()),
-                    ClientEvent::Disconnected(reason) => said.push(format!("UDP link down ({reason:?})")),
+                    ClientEvent::Disconnected(reason) => {
+                        said.push(format!("UDP link down ({reason:?})"))
+                    }
                 }
             }
         }
@@ -230,7 +246,11 @@ impl Chat {
         }
         self.mouse = mouse;
         self.points.insert(self.name.clone(), mouse);
-        let msg = Wire::Pointer { name: self.name.clone(), x: mouse.x, y: mouse.y };
+        let msg = Wire::Pointer {
+            name: self.name.clone(),
+            x: mouse.x,
+            y: mouse.y,
+        };
         match &self.role {
             Role::Host { udp, .. } => {
                 let _ = udp.broadcast(Channel::Sequenced, &msg);
@@ -271,16 +291,26 @@ impl Game for Chat {
                     udp.local_addr().port(),
                     tcp.local_addr()
                 ));
-                Role::Host { tcp, udp, names: HashMap::new() }
+                Role::Host {
+                    tcp,
+                    udp,
+                    names: HashMap::new(),
+                }
             }
             (None, Some(addr)) => {
                 let tcp = TcpClient::connect(&addr, TcpConfig::default())?;
                 tcp.set_waker(waker);
                 tcp.send(&Up::Join(name.clone()))?;
-                Role::Guest { tcp, udp: None, addr }
+                Role::Guest {
+                    tcp,
+                    udp: None,
+                    addr,
+                }
             }
             (None, None) => {
-                lines.push("Run with --listen :7777 to host, or --join host:7777 to connect.".into());
+                lines.push(
+                    "Run with --listen :7777 to host, or --join host:7777 to connect.".into(),
+                );
                 Role::Alone
             }
         };
@@ -332,12 +362,29 @@ impl Game for Chat {
 
     fn draw(&mut self, ctx: &mut Context) -> GameResult {
         for (name, p) in &self.points {
-            ctx.gfx.fill_rect(Rect::new(p.x - 5.0, p.y - 5.0, 10.0, 10.0), Color::rgb8(255, 200, 80));
-            common::label(ctx, &self.font, name, *p + vec2(8.0, -8.0), 14.0, Color::rgb8(255, 220, 140));
+            ctx.gfx.fill_rect(
+                Rect::new(p.x - 5.0, p.y - 5.0, 10.0, 10.0),
+                Color::rgb8(255, 200, 80),
+            );
+            common::label(
+                ctx,
+                &self.font,
+                name,
+                *p + vec2(8.0, -8.0),
+                14.0,
+                Color::rgb8(255, 220, 140),
+            );
         }
         common::panel(ctx, Rect::new(16.0, 16.0, 480.0, 380.0));
         for (i, line) in self.lines.iter().enumerate() {
-            common::label(ctx, &self.font, line, vec2(28.0, 24.0 + i as f32 * 24.0), 15.0, common::TEXT);
+            common::label(
+                ctx,
+                &self.font,
+                line,
+                vec2(28.0, 24.0 + i as f32 * 24.0),
+                15.0,
+                common::TEXT,
+            );
         }
         common::panel(ctx, Rect::new(16.0, 404.0, 480.0, 52.0));
         let prompt = if self.draft.is_empty() {
@@ -345,10 +392,21 @@ impl Game for Chat {
         } else {
             (format!("{}|", self.draft), common::TEXT)
         };
-        common::label(ctx, &self.font, &prompt.0, vec2(28.0, 421.0), 15.0, prompt.1);
+        common::label(
+            ctx,
+            &self.font,
+            &prompt.0,
+            vec2(28.0, 421.0),
+            15.0,
+            prompt.1,
+        );
         if self.reliable {
             common::panel(ctx, Rect::new(512.0, 16.0, 192.0, 120.0));
-            let order = if self.in_order { "in order" } else { "OUT OF ORDER" };
+            let order = if self.in_order {
+                "in order"
+            } else {
+                "OUT OF ORDER"
+            };
             let mut rows = vec![
                 "Reliable UDP".to_owned(),
                 format!("Sent {}", self.sent),
@@ -356,10 +414,21 @@ impl Game for Chat {
                 order.to_owned(),
             ];
             if let Some((rtt, loss)) = self.link_stats() {
-                rows.push(format!("rtt {:.1} ms loss {:.0}%", rtt.as_secs_f64() * 1000.0, loss * 100.0));
+                rows.push(format!(
+                    "rtt {:.1} ms loss {:.0}%",
+                    rtt.as_secs_f64() * 1000.0,
+                    loss * 100.0
+                ));
             }
             for (i, row) in rows.iter().enumerate() {
-                common::label(ctx, &self.font, row, vec2(524.0, 24.0 + i as f32 * 20.0), 14.0, common::TEXT);
+                common::label(
+                    ctx,
+                    &self.font,
+                    row,
+                    vec2(524.0, 24.0 + i as f32 * 20.0),
+                    14.0,
+                    common::TEXT,
+                );
             }
         }
         Ok(())

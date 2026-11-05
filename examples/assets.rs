@@ -72,10 +72,7 @@ fn shape_png(rng: &mut Rng) -> Vec<u8> {
     }
     let mut out = Vec::new();
     // Encoding into memory cannot fail.
-    let _ = img.write_to(
-        &mut std::io::Cursor::new(&mut out),
-        image::ImageFormat::Png,
-    );
+    let _ = img.write_to(&mut std::io::Cursor::new(&mut out), image::ImageFormat::Png);
     out
 }
 
@@ -118,9 +115,11 @@ fn arg_value(name: &str) -> Option<String> {
 }
 
 fn asset_dir() -> PathBuf {
-    arg_value("--dir")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| std::env::temp_dir().join("yowie-assets-example").join("assets"))
+    arg_value("--dir").map(PathBuf::from).unwrap_or_else(|| {
+        std::env::temp_dir()
+            .join("yowie-assets-example")
+            .join("assets")
+    })
 }
 
 /// The pack file the example seeds with the badge image.
@@ -164,7 +163,10 @@ impl Game for Assets {
             font: ctx.gfx.default_font(),
             items,
             badge,
-            status: format!("Run {} of this example; assets in {}", settings.runs, settings.dir),
+            status: format!(
+                "Run {} of this example; assets in {}",
+                settings.runs, settings.dir
+            ),
             dir,
             random: Rng::new(5),
             next_rewrite: 2.0,
@@ -231,7 +233,14 @@ impl Game for Assets {
         }
         if let Some(tex) = self.badge.texture() {
             draw_image(ctx, tex, 760.0, 16.0);
-            common::label(ctx, &self.font, "from pack", vec2(760.0, 116.0), 12.0, common::DIM);
+            common::label(
+                ctx,
+                &self.font,
+                "from pack",
+                vec2(760.0, 116.0),
+                12.0,
+                common::DIM,
+            );
         }
         common::panel(ctx, Rect::new(16.0, 16.0, 720.0, 110.0));
         let p = ctx.assets.progress();
@@ -243,8 +252,20 @@ impl Game for Assets {
             15.0,
             common::TEXT,
         );
-        common::bar(ctx, Rect::new(28.0, 46.0, 696.0, 14.0), p.fraction(), common::ACCENT);
-        common::label(ctx, &self.font, &self.status, vec2(28.0, 70.0), 14.0, common::TEXT);
+        common::bar(
+            ctx,
+            Rect::new(28.0, 46.0, 696.0, 14.0),
+            p.fraction(),
+            common::ACCENT,
+        );
+        common::label(
+            ctx,
+            &self.font,
+            &self.status,
+            vec2(28.0, 70.0),
+            14.0,
+            common::TEXT,
+        );
         let hint = if self.packed.is_empty() {
             "P packs the directory into assets.pak, mounted behind the loose files on the next run."
                 .to_string()
@@ -263,7 +284,8 @@ fn draw_image(ctx: &mut Context, tex: &Texture, x: f32, y: f32) {
 
 fn main() -> Result<(), yowie::Error> {
     let dir = asset_dir();
-    seed(&dir).map_err(|e| yowie::Error::Window(format!("cannot prepare {}: {e}", dir.display())))?;
+    seed(&dir)
+        .map_err(|e| yowie::Error::Window(format!("cannot prepare {}: {e}", dir.display())))?;
     let mut config = Config::new("Yowie assets")
         .with_size(870, 440)
         .with_asset_dir(&dir)

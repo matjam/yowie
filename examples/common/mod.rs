@@ -29,7 +29,8 @@ pub fn label(ctx: &mut Context, font: &Font, text: &str, at: Vec2, size: f32, co
 pub fn bar(ctx: &mut Context, rect: Rect, fraction: f32, color: Color) {
     ctx.gfx.fill_rect(rect, Color::rgb(0.14, 0.15, 0.2));
     let w = rect.w * fraction.clamp(0.0, 1.0);
-    ctx.gfx.fill_rect(Rect::new(rect.x, rect.y, w, rect.h), color);
+    ctx.gfx
+        .fill_rect(Rect::new(rect.x, rect.y, w, rect.h), color);
     ctx.gfx.stroke_rect(rect, 1.0, EDGE);
 }
 
