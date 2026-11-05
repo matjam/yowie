@@ -77,8 +77,8 @@ fn cell_and_region_match_apply() {
     let m = Mapper::new(Rules::blob47(1, frames));
     let (w, h) = (8, 8);
     let mut terrain = vec![0i32; (w * h) as usize];
-    for i in 0..terrain.len() {
-        terrain[i] = i32::from((i * 7 + i / 3) % 3 != 0);
+    for (i, t) in terrain.iter_mut().enumerate() {
+        *t = i32::from((i * 7 + i / 3) % 3 != 0);
     }
     let read = |t: &Vec<i32>| {
         let t = t.clone();
@@ -233,4 +233,37 @@ fn iso_diamond_north_is_up_and_left() {
     });
     assert_eq!(got[&(1, 1)], Some(1), "(0,0) lies screen-north of (1,1)");
     assert_eq!(got[&(0, 0)], Some(4), "(1,1) lies screen-south of (0,0)");
+}
+
+#[test]
+fn tiled_wang_sets_convert_with_weights() {
+    use yowie_tiled::{WangColor, WangKind, WangSet, WangTile as TiledTile};
+    let color = |p| WangColor {
+        name: String::new(),
+        class: String::new(),
+        color: yowie_core::Color::WHITE,
+        tile: -1,
+        probability: p,
+        properties: Default::default(),
+    };
+    let set = WangSet {
+        kind: WangKind::Edge,
+        colors: vec![color(2.0), color(1.0)],
+        tiles: vec![TiledTile {
+            tile_id: 9,
+            wang_id: [1, 0, 2, 0, 1, 0, 2, 0],
+        }],
+        ..Default::default()
+    };
+    let (kind, tiles) = wang_from_tiled(&set);
+    assert_eq!(kind, WangType::Edges);
+    assert_eq!(tiles.len(), 1);
+    assert_eq!(
+        (tiles[0].frame, tiles[0].colors),
+        (9, [1, 0, 2, 0, 1, 0, 2, 0])
+    );
+    assert_eq!(tiles[0].weight, 2.0);
+    // The converted tiles work as rules: a lone cell of colour 1 gets it.
+    let m = Mapper::new(Rules::wang(kind, tiles)).outside(1);
+    assert_eq!(collect(&m, 1, 1, |_, _| 1)[&(0, 0)], Some(9));
 }

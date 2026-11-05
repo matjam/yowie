@@ -357,7 +357,7 @@ mod tests {
                     let cell = ivec2(x, y);
                     let c = l.cell_center(cell);
                     for k in 0..8 {
-                        let dir = Vec2::from_angle(k as f32 * 0.7853982);
+                        let dir = Vec2::from_angle(k as f32 * std::f32::consts::FRAC_PI_4);
                         assert_eq!(l.cell_at(c + dir * r), cell, "{l:?} {cell} dir {k}");
                     }
                 }

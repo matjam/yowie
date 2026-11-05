@@ -96,7 +96,11 @@ pub fn blob_masks() -> [u8; 47] {
 /// `tile` must be a positive even number and `template` at least two tiles
 /// wide and three tall; otherwise `None`.
 pub fn expand_blob(template: &RgbaImage, tile: u32) -> Option<RgbaImage> {
-    if tile == 0 || tile % 2 != 0 || template.width() < 2 * tile || template.height() < 3 * tile {
+    if tile == 0
+        || !tile.is_multiple_of(2)
+        || template.width() < 2 * tile
+        || template.height() < 3 * tile
+    {
         return None;
     }
     const COLUMNS: u32 = 8;

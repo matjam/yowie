@@ -80,8 +80,7 @@ fn world_sheet() -> Canvas {
     });
     for f in 0..3 {
         c.paint((4 + f) * 16, 0, 16, |x, y| {
-            let wave =
-                (((x + f as i32 * 5) as f32 / 16.0 * TAU).sin() * 1.5 + y as f32).round() as i32;
+            let wave = (((x + f * 5) as f32 / 16.0 * TAU).sin() * 1.5 + y as f32).round() as i32;
             let light = wave % 6 == 0;
             Some(if light {
                 [120, 180, 235, 255]

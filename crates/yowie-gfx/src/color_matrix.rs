@@ -123,10 +123,10 @@ impl ColorMatrix {
             [0.272, 0.534, 0.131],
         ];
         let mut m = Self::IDENTITY;
-        for r in 0..3 {
-            for c in 0..3 {
+        for (r, row) in full.iter().enumerate() {
+            for (c, v) in row.iter().enumerate() {
                 let id = if r == c { 1.0 } else { 0.0 };
-                m.rows[r][c] = id + (full[r][c] - id) * a;
+                m.rows[r][c] = id + (v - id) * a;
             }
         }
         m

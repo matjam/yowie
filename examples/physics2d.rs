@@ -94,7 +94,7 @@ impl Physics {
             }
         };
         let collider = ColliderDesc2D::new(shape)
-            .with_restitution(if kind % 3 == 0 { 0.45 } else { 0.1 })
+            .with_restitution(if kind.is_multiple_of(3) { 0.45 } else { 0.1 })
             .with_friction(0.6);
         if self.world.add_collider(body, &collider).is_ok() {
             self.items.push(Item { body, look, color });
