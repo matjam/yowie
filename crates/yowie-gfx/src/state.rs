@@ -34,6 +34,8 @@ pub(crate) struct Cursor {
     pub(crate) clip: Option<Rect>,
     /// The view slot for the current list, camera and clip, once computed.
     pub(crate) view: Option<u32>,
+    /// The visible area matching `view`; valid while `view` is `Some`.
+    pub(crate) visible: Rect,
     /// The last texture looked up and its slot.
     pub(crate) last_texture: Option<(u64, u32)>,
 }
@@ -154,10 +156,18 @@ impl Graphics {
         }
     }
 
+    /// The drawing-space rectangle on screen for the current output and
+    /// camera, cached with the view slot.
+    pub(crate) fn cached_visible_area(&mut self) -> Rect {
+        self.view_slot();
+        self.cursor.visible
+    }
+
     fn view_slot(&mut self) -> u32 {
         if let Some(v) = self.cursor.view {
             return v;
         }
+        self.cursor.visible = self.visible_area();
         let m = self.current_list().mapping;
         let full = Rect::new(0.0, 0.0, m.view_size.x, m.view_size.y);
         let (area, view) = match &self.cursor.camera {

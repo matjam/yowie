@@ -169,7 +169,7 @@ impl Graphics {
         let ts = texture.size().as_vec2();
         let corners = sprite.corners(ts);
         if let Some(bounds) = Rect::bounding(corners)
-            && !bounds.intersects(&self.visible_area())
+            && !bounds.intersects(&self.cached_visible_area())
         {
             return;
         }

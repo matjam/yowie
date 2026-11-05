@@ -247,6 +247,29 @@ fn shapes_cover_their_area() {
 }
 
 #[test]
+fn nine_slice_keeps_corners_and_stretches_the_centre() {
+    let Some(mut gfx) = headless(uvec2(40, 20)) else {
+        return;
+    };
+    // A 3x3 texture: red corners, green edges, blue centre.
+    let (r, g, b) = ([255, 0, 0, 255], [0, 255, 0, 255], [0, 0, 255, 255]);
+    let grid = [r, g, r, g, b, g, r, g, r];
+    let px: Vec<u8> = grid.iter().flatten().copied().collect();
+    let Ok(tex) = Texture::from_pixels(&gfx, 3, 3, &px, TextureOptions::default()) else {
+        panic!("texture");
+    };
+    let slice = crate::NineSlice::uniform(tex, 1.0);
+    gfx.draw_nine_slice(&slice, Rect::new(0.0, 0.0, 40.0, 20.0), Color::WHITE);
+    let img = render(&mut gfx);
+    assert_px(&img, 0, 0, r, 0);
+    assert_px(&img, 39, 19, r, 0);
+    assert_px(&img, 20, 0, g, 0);
+    assert_px(&img, 0, 10, g, 0);
+    assert_px(&img, 20, 10, b, 0);
+    assert_px(&img, 1, 1, b, 0);
+}
+
+#[test]
 fn render_texture_draws_then_samples_in_one_frame() {
     let Some(mut gfx) = headless(uvec2(16, 16)) else {
         return;
