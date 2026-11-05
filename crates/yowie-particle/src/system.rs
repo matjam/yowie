@@ -4,7 +4,8 @@ use yowie_core::Vec2;
 use yowie_gfx::{SpriteSheet, Texture};
 use yowie_rng::Rng;
 
-use crate::emitter::{Burst, Emitter};
+use crate::emitter::Emitter;
+use crate::schedule::Schedule;
 use crate::spawn::{Particle, birth};
 
 /// Runs one [`Emitter`] on the CPU: births particles, moves them and
@@ -33,10 +34,7 @@ pub struct System {
     position: Vec2,
     pub(crate) live: Vec<Particle>,
     rng: Rng,
-    carry: f64,
-    running: bool,
-    time: f32,
-    pending: Vec<Burst>,
+    schedule: Schedule,
     pub(crate) texture: Option<Texture>,
     pub(crate) sheet: Option<SpriteSheet>,
 }
@@ -58,10 +56,7 @@ impl System {
             rng: Rng::new(emitter.seed),
             emitter,
             position,
-            carry: 0.0,
-            running: false,
-            time: 0.0,
-            pending: Vec::new(),
+            schedule: Schedule::default(),
             texture: None,
             sheet: None,
         };
@@ -111,11 +106,7 @@ impl System {
     /// runs its `prewarm`. [`new`](Self::new) calls it; call it again to
     /// restart a stopped system.
     pub fn start(&mut self) {
-        self.running = true;
-        self.time = 0.0;
-        self.carry = 0.0;
-        self.pending = self.emitter.bursts.clone();
-        self.pending.sort_by(|a, b| b.time.total_cmp(&a.time));
+        self.schedule.start(&self.emitter);
         self.burst(self.emitter.burst as usize);
         let step = 1.0 / 60.0;
         let mut t = 0.0;
@@ -128,7 +119,7 @@ impl System {
     /// Ends emission over time. Live particles die out on their own;
     /// [`finished`](Self::finished) says when they have.
     pub fn stop(&mut self) {
-        self.running = false;
+        self.schedule.stop();
     }
 
     /// Kills every live particle.
@@ -154,7 +145,7 @@ impl System {
     /// Whether the system still births particles over time: it is running
     /// and has a rate or a burst left.
     pub fn emitting(&self) -> bool {
-        self.running && (self.emitter.rate > 0.0 || !self.pending.is_empty())
+        self.schedule.emitting(&self.emitter)
     }
 
     /// Whether the system has stopped emitting and every particle has
@@ -177,29 +168,12 @@ impl System {
             return;
         }
         self.step_particles(dt);
-        if !self.running {
-            return;
-        }
-        self.time += dt;
-        while self.pending.last().is_some_and(|b| b.time <= self.time) {
-            if let Some(b) = self.pending.pop() {
-                self.burst(b.count as usize);
+        let due = self.schedule.advance(&self.emitter, dt);
+        for _ in 0..due {
+            if !self.emit() {
+                self.schedule.drop_carry();
+                break;
             }
-        }
-        let ending = self.emitter.duration.is_some_and(|d| self.time >= d);
-        if !ending && self.emitter.rate > 0.0 {
-            self.carry += f64::from(self.emitter.rate) * f64::from(dt);
-            let n = self.carry as usize;
-            self.carry -= n as f64;
-            for _ in 0..n {
-                if !self.emit() {
-                    self.carry = 0.0;
-                    break;
-                }
-            }
-        }
-        if ending {
-            self.running = false;
         }
     }
 

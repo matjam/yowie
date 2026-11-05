@@ -13,6 +13,7 @@ use std::collections::HashMap;
 use yowie_core::{Color, Rect};
 
 use crate::blend::BlendMode;
+use crate::custom::CustomEntry;
 use crate::pipelines::{Vertex2D, ViewUniform};
 use crate::shader::Shader;
 use crate::texture::Texture;
@@ -46,6 +47,7 @@ pub(crate) struct FrameTables {
     pub(crate) shaders: Vec<ShaderUse>,
     shader_slots: HashMap<(u64, u32, u32), u32>,
     pub(crate) views: Vec<ViewEntry>,
+    pub(crate) customs: Vec<CustomEntry>,
 }
 
 impl FrameTables {
@@ -55,6 +57,12 @@ impl FrameTables {
         self.shaders.clear();
         self.shader_slots.clear();
         self.views.clear();
+        self.customs.clear();
+    }
+
+    pub(crate) fn push_custom(&mut self, draw: std::sync::Arc<dyn crate::GpuDraw>) -> u32 {
+        self.customs.push(CustomEntry(draw));
+        (self.customs.len() - 1) as u32
     }
 
     pub(crate) fn texture_slot(&mut self, texture: &Texture) -> u32 {
@@ -94,6 +102,13 @@ pub(crate) const DEFAULT_SHADER: u32 = u32::MAX;
 pub(crate) const SDF_SHADER: u32 = u32::MAX - 1;
 /// The engine's radial-gradient shader in a [`DrawState`].
 pub(crate) const RADIAL_SHADER: u32 = u32::MAX - 2;
+
+/// A custom draw queued with `Graphics::draw_gpu`; the state's texture
+/// slot indexes the frame's custom table.
+pub(crate) const CUSTOM_SHADER: u32 = u32::MAX - 3;
+/// A run of lit sprites; the state's texture slot indexes the frame's lit
+/// runs.
+pub(crate) const LIT_SHADER: u32 = u32::MAX - 4;
 
 /// Whether `slot` names one of the engine's own shaders rather than an
 /// entry of the frame's game shader table.
@@ -196,6 +211,18 @@ impl DrawList {
             state,
             first,
             count,
+        });
+    }
+
+    /// Appends an item with no triangles, drawn by code the renderer calls
+    /// out to. Its state must be unique to the item so it never merges.
+    pub(crate) fn push_marker(&mut self, state: DrawState, layer: i32, key: f32) {
+        self.items.push(Item {
+            layer,
+            key,
+            state,
+            first: self.indices.len() as u32,
+            count: 0,
         });
     }
 

@@ -99,7 +99,7 @@ fn fs_ssr(in: FullOut) -> @location(0) vec4<f32> {
     let r = reflect(-v, n);
     let dist = max(post.ssr.z, 1e-3);
     // Start a little off the surface so the ray does not find it again.
-    let start = p + n * max(-p.z, 1.0) * 0.002;
+    let start = p + n * max(-p.z, 1.0) * 0.01;
     let c0 = post.proj * vec4<f32>(start, 1.0);
     var c1 = post.proj * vec4<f32>(start + r * dist, 1.0);
     // Cut the ray at the near plane (clip z = w with reversed depth).
@@ -119,14 +119,22 @@ fn fs_ssr(in: FullOut) -> @location(0) vec4<f32> {
     }
     let huv = hit.xy;
     let hd = nearest_depth(huv * post.size.xy, 0);
-    if hd <= 0.0 {
+    // A hit on the sky, or within a few pixels of the start (the surface
+    // finding itself), is a miss.
+    if hd <= 0.0 || length((huv - uv) * post.size.xy) < 3.0 {
         return vec4<f32>(0.0);
     }
-    // The ray must not have passed far behind what it hit.
+    // The ray must not have passed far behind what it hit, nor hit a
+    // surface from behind.
     let ray_z = view_distance(huv, hit.z);
     let scene_z = view_distance(huv, hd);
-    let thickness = dist / max(post.ssr.w, 1.0) * 2.0 + 0.05 + scene_z * 0.02;
+    let thickness = 0.1 + scene_z * 0.03;
     if ray_z - scene_z > thickness {
+        return vec4<f32>(0.0);
+    }
+    let hit_px = vec2<i32>(huv * post.size.xy);
+    let hit_n = to_view(oct_decode(textureLoad(surface_tex, hit_px, 0).xy));
+    if dot(hit_n, r) > 0.0 {
         return vec4<f32>(0.0);
     }
     let travelled = distance(start, view_pos(huv, hd));

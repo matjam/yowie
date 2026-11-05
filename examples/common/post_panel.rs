@@ -93,7 +93,7 @@ pub fn picture_panel(
                 &mut post.reflection_distance,
                 1.0..=100.0,
             );
-            slider_u32(f, "Reflection steps", &mut post.reflection_steps, 4, 128);
+            slider_u32(f, "Reflection steps", &mut post.reflection_steps, 16, 256);
         });
     });
 }

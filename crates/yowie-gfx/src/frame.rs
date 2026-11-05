@@ -10,7 +10,10 @@ use std::collections::HashMap;
 use std::num::NonZeroU64;
 
 use crate::Graphics;
-use crate::batch::{DEFAULT_SHADER, DrawCall, FrameTables, ListTarget, is_engine_shader};
+use crate::batch::{
+    CUSTOM_SHADER, DEFAULT_SHADER, DrawCall, FrameTables, LIT_SHADER, ListTarget, is_engine_shader,
+};
+use crate::custom::{Draw2D, PrepareContext};
 use crate::engine_shaders::EngineShaders;
 use crate::error::Result;
 use crate::graphics::FrameStats;
@@ -197,6 +200,12 @@ impl Graphics {
         }
         let uniforms = layout_uniforms(&self.tables, self.buffers.align);
         let shared = &self.shared;
+        if !self.lit.runs.is_empty() {
+            let mut renderer = (self.lit.renderer.take())
+                .unwrap_or_else(|| crate::lights::LitRenderer::new(shared));
+            renderer.upload(shared, &self.lit);
+            self.lit.renderer = Some(renderer);
+        }
         let b = &mut self.buffers;
         FrameBuffers::upload(
             shared,
@@ -293,6 +302,7 @@ impl Graphics {
                 default_module: &self.default_module,
                 engine: &self.engine_shaders,
                 uniforms: &uniforms,
+                lit: &mut self.lit,
             };
             let (below, above) = calls.split_at(*split);
             // An output that is not cleared keeps its last picture, but a
@@ -365,6 +375,7 @@ struct Pass2D<'a> {
     default_module: &'a wgpu::ShaderModule,
     engine: &'a EngineShaders,
     uniforms: &'a UniformLayout,
+    lit: &'a mut crate::lights::LitState,
 }
 
 impl Pass2D<'_> {
@@ -405,6 +416,17 @@ impl Pass2D<'_> {
                 }
             }
         }
+        for call in calls {
+            if call.state.shader == CUSTOM_SHADER {
+                self.tables.customs[call.state.texture as usize]
+                    .0
+                    .prepare(&mut PrepareContext {
+                        device: self.shared.device(),
+                        queue: self.shared.queue(),
+                        encoder,
+                    });
+            }
+        }
         let span = self.shared.span(crate::gpu_timer::Timed::Overlay);
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("yowie 2d"),
@@ -433,6 +455,52 @@ impl Pass2D<'_> {
         let mut cur_user = None;
         for call in calls {
             let st = call.state;
+            if st.shader == CUSTOM_SHADER || st.shader == LIT_SHADER {
+                let v = &self.tables.views[st.view as usize];
+                pass.set_viewport(
+                    v.viewport.x,
+                    v.viewport.y,
+                    v.viewport.w,
+                    v.viewport.h,
+                    0.0,
+                    1.0,
+                );
+                let [x, y, w, h] = v.scissor;
+                pass.set_scissor_rect(x, y, w, h);
+                let offset = self.uniforms.views[st.view as usize];
+                if st.shader == CUSTOM_SHADER {
+                    self.tables.customs[st.texture as usize].0.draw_2d(
+                        &mut pass,
+                        &Draw2D {
+                            format,
+                            view_layout: &self.shared.layouts.view,
+                            view_group: &self.buffers.view_group,
+                            view_offset: offset,
+                            pixel_scale: v.uniform.pixel_scale,
+                        },
+                    );
+                } else if let (Some(r), Some(run)) = (
+                    self.lit.renderer.as_mut(),
+                    self.lit.runs.get(st.texture as usize),
+                ) {
+                    r.draw(
+                        self.shared,
+                        &mut pass,
+                        run,
+                        (&self.buffers.view_group, offset),
+                        format,
+                    );
+                }
+                // The draw set its own state; the next ordinary draw sets
+                // everything again.
+                cur_key = None;
+                cur_texture = None;
+                cur_view = None;
+                cur_user = None;
+                pass.set_vertex_buffer(0, self.buffers.vertex.slice(..));
+                pass.set_index_buffer(self.buffers.index.slice(..), wgpu::IndexFormat::Uint32);
+                continue;
+            }
             let (shader, generation, module, user_size) = if st.shader == DEFAULT_SHADER {
                 (0, 0, self.default_module, 0)
             } else if is_engine_shader(st.shader) {

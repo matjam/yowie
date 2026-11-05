@@ -2,8 +2,10 @@
 //!
 //! - Group 0 is the scene: the frame block, lights, clusters, materials,
 //!   joint matrices, morph weights, the shadow atlas and the environment
-//!   maps. The shadow pass binds a smaller group 0 without the atlas,
-//!   with the same binding numbers.
+//!   maps; bindings 20 to 22 are the reflection probe and light probe grid
+//!   block, the probe cubes and the grid texture (`probes/`). The shadow
+//!   pass binds a smaller group 0 without the atlas, with the same binding
+//!   numbers.
 //! - Group 1 is a material's five textures and their samplers.
 //! - Group 2 is a mesh's morph target deltas.
 
@@ -79,8 +81,16 @@ pub(crate) struct SceneLayouts {
 }
 
 impl SceneLayouts {
-    pub(crate) fn new(device: &wgpu::Device) -> Self {
+    /// The layouts; `cube_array` says whether reflection probes are bound
+    /// as a cube array (see `probes::cube_arrays`).
+    pub(crate) fn new(device: &wgpu::Device, cube_array: bool) -> Self {
         let frame_size = std::mem::size_of::<super::frame_data::FrameUniform>() as u64;
+        let probe_size = std::mem::size_of::<super::probes::ProbeBlock>() as u64;
+        let probe_dim = if cube_array {
+            wgpu::TextureViewDimension::CubeArray
+        } else {
+            wgpu::TextureViewDimension::Cube
+        };
         let vf = S::VERTEX_FRAGMENT;
         let frame = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("yowie scene frame"),
@@ -111,6 +121,9 @@ impl SceneLayouts {
                 texture(9, wgpu::TextureViewDimension::Cube),
                 texture(10, wgpu::TextureViewDimension::Cube),
                 sampler(11),
+                uniform(20, S::FRAGMENT, probe_size),
+                texture(21, probe_dim),
+                texture(22, wgpu::TextureViewDimension::D3),
             ],
         });
         let shadow_frame = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {

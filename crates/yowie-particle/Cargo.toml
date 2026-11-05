@@ -13,3 +13,6 @@ yowie-rng.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
+wgpu.workspace = true
+bytemuck.workspace = true
+log.workspace = true

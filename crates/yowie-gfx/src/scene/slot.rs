@@ -59,10 +59,22 @@ impl GrowBuffer {
     }
 }
 
+/// Names a slot: one of the frame's scenes, or one of the slots probe
+/// captures render cube faces with.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub(crate) enum SlotId {
+    /// The slot of the frame's scene with this record index.
+    Scene(usize),
+    /// A capture slot; a probe bake uses one per cube face.
+    Capture(usize),
+}
+
 /// Everything one scene slot owns on the GPU.
 #[derive(Debug)]
 pub(crate) struct SceneSlot {
     pub(crate) frame: wgpu::Buffer,
+    /// The reflection probe and light probe grid block (`ProbeBlock`).
+    pub(crate) probes: wgpu::Buffer,
     pub(crate) lights: GrowBuffer,
     pub(crate) clusters: GrowBuffer,
     pub(crate) indices: GrowBuffer,
@@ -97,13 +109,15 @@ fn halton(mut i: u32, base: u32) -> f32 {
     r
 }
 
-/// What a slot's bind groups name besides its own buffers: the atlas and
-/// environment ids, and a counter bumped when a buffer is replaced.
+/// What a slot's bind groups name besides its own buffers: the atlas,
+/// environment and light probe grid ids, and a counter bumped when a
+/// buffer is replaced.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct GroupKey {
     pub(crate) atlas: u64,
     pub(crate) env: u64,
     pub(crate) buffers: u64,
+    pub(crate) grid: u64,
 }
 
 impl SceneSlot {
@@ -113,6 +127,12 @@ impl SceneSlot {
             frame: device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("yowie scene frame"),
                 size: std::mem::size_of::<FrameUniform>() as u64,
+                usage: U::UNIFORM | U::COPY_DST,
+                mapped_at_creation: false,
+            }),
+            probes: device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("yowie scene probes"),
+                size: std::mem::size_of::<super::probes::ProbeBlock>() as u64,
                 usage: U::UNIFORM | U::COPY_DST,
                 mapped_at_creation: false,
             }),

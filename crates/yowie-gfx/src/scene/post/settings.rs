@@ -104,8 +104,9 @@ pub struct PostSettings {
     pub reflection_roughness: f32,
     /// How far a reflection ray travels in world units; 30 by default.
     pub reflection_distance: f32,
-    /// The most steps a reflection ray takes through the depth pyramid;
-    /// 32 by default.
+    /// The most steps a reflection ray takes through the depth pyramid,
+    /// each one cell of the level it is on; 128 by default. Fewer cost
+    /// less and lose long grazing reflections.
     pub reflection_steps: u32,
 
     /// Multisampling of the scene pass: 1 (off, the default), 2 or 4,
@@ -199,7 +200,7 @@ impl Default for PostSettings {
             reflections: 0.0,
             reflection_roughness: 0.35,
             reflection_distance: 30.0,
-            reflection_steps: 32,
+            reflection_steps: 128,
             samples: 1,
             fxaa: false,
             temporal_aa: false,

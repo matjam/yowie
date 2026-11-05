@@ -74,6 +74,20 @@ impl Span {
         }
     }
 
+    /// Timestamp writes for a pass that begins the span (`begin`), ends
+    /// it (`end`), or both; `None` when neither.
+    pub(crate) fn part(
+        &self,
+        begin: bool,
+        end: bool,
+    ) -> Option<wgpu::RenderPassTimestampWrites<'_>> {
+        (begin || end).then(|| wgpu::RenderPassTimestampWrites {
+            query_set: &self.set,
+            beginning_of_pass_write_index: begin.then_some(self.begin),
+            end_of_pass_write_index: end.then_some(self.end),
+        })
+    }
+
     /// Writes the span's first timestamp (`begin`) or its last with an
     /// empty compute pass, for a span over passes that a variable number
     /// of steps record.

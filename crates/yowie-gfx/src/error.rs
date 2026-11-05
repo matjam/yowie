@@ -107,6 +107,10 @@ pub enum GfxError {
     /// A colour lookup table image had the wrong layout.
     #[error("colour lookup table: {0}")]
     Lut(String),
+    /// A light probe grid was malformed, or saved probe data could not be
+    /// read.
+    #[error("light probes: {0}")]
+    Probes(String),
 }
 
 /// Results from the renderer.

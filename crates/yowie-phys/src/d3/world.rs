@@ -186,6 +186,15 @@ impl World3D {
                 );
             }
         }
+        self.events.clear();
+        self.run_pipeline(dt);
+    }
+
+    /// Runs rapier's pipeline for `dt` seconds and appends the events it
+    /// produced. A zero `dt` applies the changes made since the last run
+    /// (added and removed bodies and colliders, moved bodies) and updates
+    /// collision detection without simulating.
+    fn run_pipeline(&mut self, dt: f32) {
         self.pw.integration_parameters.dt = dt;
         let (ctx, crx) = mpsc::channel();
         let (ftx, frx) = mpsc::channel();
@@ -193,7 +202,6 @@ impl World3D {
         let collector = ChannelEventCollector::new(ctx, ftx, stx);
         self.pw.step_with_events(&(), &collector);
         drop(collector);
-        self.events.clear();
         for ev in crx.try_iter() {
             self.push_collision_event(ev);
         }
@@ -234,10 +242,13 @@ impl World3D {
         self.events.push(event);
     }
 
-    /// Brings the query structures up to date with colliders added or moved
-    /// since the last step, without simulating.
+    /// Brings the query structures up to date with bodies and colliders
+    /// added, removed or moved since the last step, without simulating.
+    /// Any order of adding, removing, refreshing, querying and stepping is
+    /// valid. Events from the refresh are added to
+    /// [`events`](Self::events).
     pub fn refresh_queries(&mut self) {
-        self.pw.detect_collisions(&(), &());
+        self.run_pipeline(0.0);
     }
 
     /// Events produced by the last [`step`](Self::step).

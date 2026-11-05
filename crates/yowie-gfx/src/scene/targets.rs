@@ -255,6 +255,22 @@ impl Targets {
         }
     }
 
+    /// Targets over images made elsewhere (a probe capture's cube face and
+    /// depth): colour and depth alone, single-sample, so the pass draws
+    /// with the default format and no post chain reads it.
+    pub(crate) fn wrap(size: UVec2, color: wgpu::TextureView, depth: wgpu::TextureView) -> Self {
+        Self {
+            id: crate::texture::next_id(),
+            size,
+            format: SceneFormat::default(),
+            color,
+            depth,
+            surface: None,
+            specular: None,
+            msaa: None,
+        }
+    }
+
     /// The pass's colour attachments: cleared when `first`, otherwise
     /// loaded (a pass split in two); multisampled images resolve into the
     /// single-sample ones, and are kept only when `keep` (another pass

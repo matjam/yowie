@@ -1,5 +1,7 @@
 //! The drawing context: device, output, and the frame being recorded.
 
+use std::sync::Arc;
+
 use image::RgbaImage;
 use yowie_core::{Color, Rect, UVec2, Vec2};
 
@@ -63,6 +65,15 @@ pub struct FrameStats {
     pub lights_dropped: u32,
     /// Instances drawn into shadow maps.
     pub shadow_instances: u32,
+    /// 3D draw calls replayed from render bundles (static groups); they
+    /// are also counted in `draw_calls_3d`.
+    pub bundle_draws: u32,
+    /// Static group instances inside the view but hidden behind nearer
+    /// geometry, so not drawn. The GPU counts them, so the number arrives
+    /// one or two frames late.
+    pub occluded_3d: u32,
+    /// Cube faces rendered this frame to capture reflection probes.
+    pub probe_faces: u32,
     /// GPU time per group of passes of a recent frame (two or three frames
     /// back, read without waiting), while
     /// [`Graphics::set_gpu_timing`] is on and the GPU has timestamp
@@ -80,10 +91,10 @@ pub struct FrameStats {
 pub struct Graphics {
     pub(crate) shared: Shared,
     pub(crate) output: Output,
-    view_settings: ViewSettings,
-    scale_factor: f32,
-    mapping: ViewMapping,
-    clear_color: Color,
+    pub(crate) view_settings: ViewSettings,
+    pub(crate) scale_factor: f32,
+    pub(crate) mapping: ViewMapping,
+    pub(crate) clear_color: Color,
     pub(crate) time: f32,
     pub(crate) lists: Vec<DrawList>,
     pub(crate) list_stack: Vec<usize>,
@@ -106,6 +117,12 @@ pub struct Graphics {
     /// The post-processing passes, created by the first scene or 2D frame
     /// that needs them.
     pub(crate) post: Option<Box<crate::scene::PostRenderer>>,
+    /// Extra window outputs.
+    pub(crate) extras: crate::windows::ExtraOutputs,
+    pub(crate) lit: crate::lights::LitState,
+    pub(crate) extensions: parking_lot::Mutex<
+        std::collections::HashMap<std::any::TypeId, Arc<dyn std::any::Any + Send + Sync>>,
+    >,
 }
 
 impl std::fmt::Debug for Graphics {
@@ -196,6 +213,9 @@ impl Graphics {
             frame_number: 0,
             scenes: None,
             post: None,
+            extras: Default::default(),
+            lit: Default::default(),
+            extensions: Default::default(),
         };
         gfx.begin_frame();
         Ok(gfx)
@@ -249,6 +269,7 @@ impl Graphics {
         if let Some(scenes) = &mut self.scenes {
             scenes.begin_frame();
         }
+        self.lit.begin_frame();
         self.cursor = Cursor::default();
         let m = self.mapping;
         let bars = m.letterboxed();
