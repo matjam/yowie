@@ -38,4 +38,10 @@ jobs:
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Test
+        if: runner.os != 'Linux'
         run: cargo test --workspace
+      # The console's GPU tests crashed (SIGSEGV) under Mesa's software Vulkan
+      # driver when the test harness ran them on several threads.
+      - name: Test on one thread
+        if: runner.os == 'Linux'
+        run: cargo test --workspace -- --test-threads=1
