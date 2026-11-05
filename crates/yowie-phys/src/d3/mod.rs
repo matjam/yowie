@@ -2,6 +2,7 @@
 
 mod body;
 mod character;
+mod collider;
 mod convert;
 mod debug;
 mod desc;

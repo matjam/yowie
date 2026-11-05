@@ -6,19 +6,17 @@ use std::sync::mpsc;
 use rapier3d::dynamics::{
     ImpulseJointHandle, RigidBody, RigidBodyBuilder, RigidBodyHandle, RigidBodyType,
 };
-use rapier3d::geometry::{
-    Collider, ColliderBuilder, ColliderHandle, CollisionEvent, CollisionEventFlags,
-};
-use rapier3d::math::Vector;
-use rapier3d::pipeline::{ActiveEvents, ChannelEventCollector, DebugRenderPipeline, PhysicsWorld};
+use rapier3d::geometry::{ColliderHandle, CollisionEvent, CollisionEventFlags};
+use rapier3d::pipeline::{ChannelEventCollector, DebugRenderPipeline, PhysicsWorld};
 use yowie_core::Vec3;
 
+use super::collider::build_collider;
 use super::convert::*;
 use super::desc::{BodyDesc3D, ColliderDesc3D};
 use super::joint::JointDesc3D;
 use crate::error::{PhysError, Result};
 use crate::event::Event;
-use crate::ids::{BodyId, BodyKind, ColliderId, CombineRule, JointId};
+use crate::ids::{BodyId, BodyKind, ColliderId, JointId};
 use crate::stepper::Pose3;
 
 /// A 3D rigid-body simulation backed by rapier.
@@ -299,42 +297,3 @@ impl World3D {
         }
     }
 }
-
-fn rule(r: CombineRule) -> rapier3d::dynamics::CoefficientCombineRule {
-    use rapier3d::dynamics::CoefficientCombineRule as C;
-    match r {
-        CombineRule::Average => C::Average,
-        CombineRule::Min => C::Min,
-        CombineRule::Multiply => C::Multiply,
-        CombineRule::Max => C::Max,
-    }
-}
-
-fn build_collider(desc: &ColliderDesc3D) -> Result<Collider> {
-    if !(desc.density.is_finite() && desc.density >= 0.0) {
-        return Err(PhysError::InvalidParameter("density must be at least 0"));
-    }
-    let shape = desc.shape.to_shared()?;
-    let mut events = ActiveEvents::empty();
-    if desc.events {
-        events |= ActiveEvents::COLLISION_EVENTS;
-    }
-    if desc.contact_events {
-        events |= ActiveEvents::CONTACT_FORCE_EVENTS;
-    }
-    Ok(ColliderBuilder::new(shape)
-        .position(transform_pose(&desc.offset))
-        .friction(desc.friction.max(0.0))
-        .friction_combine_rule(rule(desc.friction_rule))
-        .restitution(desc.restitution.max(0.0))
-        .restitution_combine_rule(rule(desc.restitution_rule))
-        .density(desc.density)
-        .sensor(desc.sensor)
-        .collision_groups(groups(desc.layers))
-        .active_events(events)
-        .contact_force_event_threshold(0.0)
-        .build())
-}
-
-#[allow(dead_code)]
-fn _assert_vector(_: Vector) {}

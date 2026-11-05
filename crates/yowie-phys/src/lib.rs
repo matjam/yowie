@@ -40,6 +40,10 @@ mod ids;
 mod joint;
 mod stepper;
 
+pub use d2::{
+    BodyDesc2D, CharacterController2D, CharacterMove2D, ColliderDesc2D, JointDesc2D, JointKind2D,
+    Shape2D, World2D, signed_distance_2d,
+};
 pub use d3::{
     BodyDesc3D, CharacterController3D, CharacterMove3D, ColliderDesc3D, JointDesc3D, JointKind3D,
     RAGDOLL_PARTS, Ragdoll3D, RagdollBone, RagdollSpec, Shape3D, World3D, signed_distance_3d,
