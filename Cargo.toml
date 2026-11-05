@@ -118,6 +118,8 @@ directories = "6.0.0"
 crossbeam-channel = "0.5.17"
 rustls-native-certs = "0.8.5"
 rcgen = { version = "0.14.10", default-features = false, features = ["ring", "pem"] }
+sys-locale = "0.3.2"
+tempfile = "3.27.0"
 parking_lot = "0.13.0"
 rayon = "1.12.0"
 smallvec = "1.16.4"
