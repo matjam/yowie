@@ -1,0 +1,37 @@
+[package]
+name = "yowie-tools"
+description = "Command-line tools for Yowie: texture compression to KTX2, GPU info, app bundling and audio playback"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "yowie-tex"
+path = "src/bin/yowie-tex.rs"
+
+[[bin]]
+name = "yowie-info"
+path = "src/bin/yowie-info.rs"
+
+[[bin]]
+name = "yowie-bundle"
+path = "src/bin/yowie-bundle.rs"
+
+[[bin]]
+name = "yowie-play"
+path = "src/bin/yowie-play.rs"
+
+[dependencies]
+yowie-audio.workspace = true
+ktx2.workspace = true
+intel_tex_2.workspace = true
+image.workspace = true
+wgpu.workspace = true
+pollster.workspace = true
+clap.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+texture2ddecoder.workspace = true
+tempfile.workspace = true
