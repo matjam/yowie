@@ -67,6 +67,15 @@ Every example accepts `--shot <file.png>` (render, save the frame, exit),
 `YOWIE_FIXED_CLOCK=1` (advance time by exactly one fixed step per frame), so
 it can verify itself headless. The engine parses these; examples do not.
 
+The library is not finished until every one of these exists, each the
+counterpart of the Bunyip example of the same name (see Bunyip's README
+table for what each shows): animation, assets, audio, autotile, clear,
+gallery, inputs, lighting, materials, network, particles, pathfinding,
+physics_lab, physics2d, physics3d, probes, roguelike, shaders, softbody,
+solar, space, sprites, terrain, tetris, text, tiled, tiles, vector, viewer,
+window. Whoever builds a feature writes the examples that show it, with a
+golden image in `examples/testdata/` when the output is deterministic.
+
 ## Prose
 
 Documentation and comments state facts and instructions in plain technical
