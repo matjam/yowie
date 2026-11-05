@@ -21,6 +21,8 @@ pub(crate) struct PathCache {
 
 /// Texels in a gradient's colour ramp.
 const RAMP_SIZE: u32 = 256;
+/// Maps a position to a texture coordinate.
+type UvFn = Box<dyn Fn(Vec2) -> Vec2>;
 /// Most ramps kept before the cache starts over.
 const MAX_RAMPS: usize = 64;
 /// Width of the anti-aliasing fringe in output pixels.
@@ -31,7 +33,7 @@ const TOLERANCE_PIXELS: f32 = 0.2;
 impl Graphics {
     /// Output pixels per drawing unit under the current camera and
     /// transform; used to size curve flattening and the fringe.
-    fn draw_scale(&self) -> f32 {
+    pub(crate) fn draw_scale(&self) -> f32 {
         let zoom = self.cursor.camera.map_or(1.0, |c| c.zoom.max(1e-3));
         (self.pixels_per_unit() * zoom * self.transform_scale()).max(1e-4)
     }
@@ -102,62 +104,61 @@ impl Graphics {
             return;
         }
         let white = self.white.clone();
-        let (texture, base, uv, engine): (Texture, [f32; 4], Box<dyn Fn(Vec2) -> Vec2>, _) =
-            match paint {
-                Paint::Solid(c) => (
-                    white,
-                    self.vertex_color(*c),
-                    Box::new(|_| vec2(0.5, 0.5)),
+        let (texture, base, uv, engine): (Texture, [f32; 4], UvFn, _) = match paint {
+            Paint::Solid(c) => (
+                white,
+                self.vertex_color(*c),
+                Box::new(|_| vec2(0.5, 0.5)),
+                None,
+            ),
+            Paint::Linear {
+                start,
+                end,
+                gradient,
+            } => {
+                let dir = *end - *start;
+                let denom = dir.length_squared();
+                let Some(ramp) = self.ramp_texture(gradient) else {
+                    return;
+                };
+                let (start, inv) = (*start, if denom > 1e-12 { 1.0 / denom } else { 0.0 });
+                (
+                    ramp,
+                    self.vertex_color(Color::WHITE),
+                    Box::new(move |p| vec2((p - start).dot(dir) * inv, 0.5)),
                     None,
-                ),
-                Paint::Linear {
-                    start,
-                    end,
-                    gradient,
-                } => {
-                    let dir = *end - *start;
-                    let denom = dir.length_squared();
-                    let Some(ramp) = self.ramp_texture(gradient) else {
-                        return;
-                    };
-                    let (start, inv) = (*start, if denom > 1e-12 { 1.0 / denom } else { 0.0 });
-                    (
-                        ramp,
-                        self.vertex_color(Color::WHITE),
-                        Box::new(move |p| vec2((p - start).dot(dir) * inv, 0.5)),
-                        None,
-                    )
+                )
+            }
+            Paint::Radial {
+                center,
+                radius,
+                gradient,
+            } => {
+                if *radius <= 0.0 {
+                    return;
                 }
-                Paint::Radial {
-                    center,
-                    radius,
-                    gradient,
-                } => {
-                    if *radius <= 0.0 {
-                        return;
-                    }
-                    let Some(ramp) = self.ramp_texture(gradient) else {
-                        return;
-                    };
-                    let (center, inv) = (*center, 1.0 / *radius);
-                    (
-                        ramp,
-                        self.vertex_color(Color::WHITE),
-                        Box::new(move |p| (p - center) * inv),
-                        Some(RADIAL_SHADER),
-                    )
-                }
-                Paint::Texture(tp) => {
-                    let size = tp.texture.size().as_vec2() * tp.scale;
-                    let origin = tp.origin;
-                    (
-                        tp.texture.clone(),
-                        self.vertex_color(tp.tint),
-                        Box::new(move |p| (p - origin) / size),
-                        None,
-                    )
-                }
-            };
+                let Some(ramp) = self.ramp_texture(gradient) else {
+                    return;
+                };
+                let (center, inv) = (*center, 1.0 / *radius);
+                (
+                    ramp,
+                    self.vertex_color(Color::WHITE),
+                    Box::new(move |p| (p - center) * inv),
+                    Some(RADIAL_SHADER),
+                )
+            }
+            Paint::Texture(tp) => {
+                let size = tp.texture.size().as_vec2() * tp.scale;
+                let origin = tp.origin;
+                (
+                    tp.texture.clone(),
+                    self.vertex_color(tp.tint),
+                    Box::new(move |p| (p - origin) / size),
+                    None,
+                )
+            }
+        };
         let vertices: Vec<Vertex2D> = mesh
             .points
             .iter()

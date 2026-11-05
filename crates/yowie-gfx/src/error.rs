@@ -72,6 +72,9 @@ pub enum GfxError {
     /// Font bytes held no font face.
     #[error("font data holds no usable face")]
     NoFontFace,
+    /// A font file could not be read.
+    #[error("cannot read font file: {0}")]
+    FontFile(String),
     /// The call is not allowed while a frame is being recorded, or needs
     /// one.
     #[error("{0}")]

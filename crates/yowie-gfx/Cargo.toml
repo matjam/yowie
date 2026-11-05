@@ -15,7 +15,7 @@ image.workspace = true
 cosmic-text.workspace = true
 swash.workspace = true
 lyon.workspace = true
-hyphenation.workspace = true
+hyphenation = { workspace = true, features = ["embed_all"] }
 parking_lot.workspace = true
 thiserror.workspace = true
 log.workspace = true

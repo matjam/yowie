@@ -288,12 +288,26 @@ impl Graphics {
         color: [f32; 4],
         mode: u32,
     ) {
+        self.push_quad_with(texture, corners, uvs, color, mode, None);
+    }
+
+    /// Like `push_quad`, through an engine shader variant when `engine` is
+    /// set.
+    pub(crate) fn push_quad_with(
+        &mut self,
+        texture: &Texture,
+        corners: [Vec2; 4],
+        uvs: [Vec2; 4],
+        color: [f32; 4],
+        mode: u32,
+        engine: Option<u32>,
+    ) {
         let v = std::array::from_fn::<Vertex2D, 4, _>(|i| Vertex2D {
             position: corners[i].to_array(),
             uv: uvs[i].to_array(),
             color,
             mode,
         });
-        self.push_triangles(texture, &v, &[0, 1, 2, 0, 2, 3]);
+        self.push_triangles_with(texture, &v, &[0, 1, 2, 0, 2, 3], engine);
     }
 }

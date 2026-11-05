@@ -206,7 +206,7 @@ pub(crate) fn add_fringe(mesh: &mut Mesh, width: f32) {
         .collect();
     // Undirected edge -> (uses, vertex a, vertex b, the triangle's third point).
     let mut edges: HashMap<(u32, u32), (u32, u32, u32, Vec2)> = HashMap::new();
-    for tri in mesh.indices.chunks_exact(3) {
+    for tri in mesh.indices.as_chunks::<3>().0.iter() {
         for k in 0..3 {
             let (a, b, c) = (tri[k], tri[(k + 1) % 3], tri[(k + 2) % 3]);
             let (wa, wb) = (weld[a as usize], weld[b as usize]);
@@ -271,7 +271,9 @@ mod tests {
 
     fn area(mesh: &Mesh) -> f32 {
         mesh.indices
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .map(|t| {
                 let (a, b, c) = (
                     mesh.points[t[0] as usize],
@@ -322,6 +324,6 @@ mod tests {
         add_fringe(&mut mesh, 1.0);
         let total = area(&mesh);
         assert!(total > inner + 35.0 && total < inner + 45.0, "{total}");
-        assert!(mesh.alpha.iter().any(|a| *a == 0.0));
+        assert!(mesh.alpha.contains(&0.0));
     }
 }

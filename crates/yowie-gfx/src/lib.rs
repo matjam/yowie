@@ -92,6 +92,8 @@ mod gpu_tests;
 #[cfg(test)]
 mod gpu_tests_text;
 #[cfg(test)]
+mod gpu_tests_textfx;
+#[cfg(test)]
 mod gpu_tests_vector;
 
 pub use blend::BlendMode;
@@ -108,7 +110,9 @@ pub use path::{
 pub use render_texture::{RenderTexture, RenderTextureOptions};
 pub use shader::Shader;
 pub use sprite::Sprite;
-pub use text::{Font, TextAlign, TextStyle};
+pub use text::{
+    Caret, Font, Language, Orientation, RichText, SpanStyle, TextAlign, TextLayout, TextStyle,
+};
 pub use texture::{Filter, Texture, TextureOptions, Wrap};
 pub use view::{ScaleMode, ViewMapping, ViewSettings};
 
