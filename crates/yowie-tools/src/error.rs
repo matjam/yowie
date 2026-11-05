@@ -30,5 +30,5 @@ impl From<yowie_ktx2::Error> for Error {
     }
 }
 
-/// A result whose error is [`Error`].
+/// A result whose error is [`Error`](enum@Error).
 pub type Result<T> = std::result::Result<T, Error>;
