@@ -16,6 +16,7 @@ use image::RgbaImage;
 /// Examples with a golden image, and the arguments each runs with besides
 /// `--shot`.
 const GOLDEN: &[(&str, &[&str])] = &[
+    ("animation", &["--autoplay", "--seconds", "2"]),
     ("audio", &["--seconds", "2"]),
     ("autotile", &[]),
     ("clear", &[]),
@@ -28,6 +29,8 @@ const GOLDEN: &[(&str, &[&str])] = &[
     ("physics3d", &["--seconds", "3"]),
     ("roguelike", &["--autoplay", "--seconds", "0.5"]),
     ("shaders", &["--seconds", "1"]),
+    ("solar", &["--seconds", "3", "--select", "Halcyon"]),
+    ("space", &["--autoplay", "--warp", "20", "--seconds", "2"]),
     ("sprites", &["--seconds", "1"]),
     ("text", &[]),
     ("tiled", &["--seconds", "2"]),
