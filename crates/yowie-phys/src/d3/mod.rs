@@ -6,6 +6,7 @@ mod collider;
 mod convert;
 mod debug;
 mod desc;
+mod heightfield;
 mod joint;
 mod query;
 mod ragdoll;

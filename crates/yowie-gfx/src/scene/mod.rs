@@ -83,6 +83,8 @@ mod water;
 #[cfg(test)]
 mod gpu_tests;
 #[cfg(test)]
+mod gpu_tests_air;
+#[cfg(test)]
 mod gpu_tests_large;
 #[cfg(test)]
 mod gpu_tests_models;
