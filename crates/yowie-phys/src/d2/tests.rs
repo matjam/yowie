@@ -325,3 +325,19 @@ fn ball_rolls_down_a_heightfield_slope() {
     let surface = 5.0 - (p.x + 10.0) / 20.0 * 5.0;
     assert!(p.y > surface - 0.05, "ball is under the surface: {p:?}");
 }
+
+#[test]
+fn refresh_queries_then_add_then_step_does_not_panic() {
+    let mut world = World2D::default();
+    ground(&mut world);
+    world.refresh_queries();
+    let a = ball(&mut world, 3.0, 0.5, 0.0);
+    world.refresh_queries();
+    world.step(DT);
+    let b = ball(&mut world, 5.0, 0.5, 0.0);
+    world.refresh_queries();
+    world.remove_body(a).unwrap();
+    world.refresh_queries();
+    run(&mut world, 120);
+    assert!(world.position(b).unwrap().y < 5.0);
+}

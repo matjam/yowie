@@ -147,9 +147,9 @@ impl Lab {
             },
             rng: Rng::new(5),
         };
-        // The character moves before the first update's step, so one step
-        // now puts the scenery into the query structures.
-        lab.world.step(1.0 / 60.0);
+        // The character moves before the first update's step, so the
+        // scenery must already be in the query structures.
+        lab.world.refresh_queries();
         lab.reset()?;
         Ok(lab)
     }

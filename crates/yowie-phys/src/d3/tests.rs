@@ -412,3 +412,48 @@ fn debug_contacts_draw_extra_lines() {
         off.0
     );
 }
+
+#[test]
+fn refresh_queries_then_add_then_step_does_not_panic() {
+    let mut world = World3D::default();
+    ground(&mut world);
+    world.refresh_queries();
+    let a = ball3(&mut world, 3.0);
+    world.refresh_queries();
+    world.step(DT);
+    let b = ball3(&mut world, 5.0);
+    world.refresh_queries();
+    world.remove_body(a).unwrap();
+    world.refresh_queries();
+    let _ = world.ray_cast(
+        Vec3::new(0.0, 9.0, 0.0),
+        -Vec3::Y,
+        20.0,
+        &QueryFilter::new(),
+    );
+    run(&mut world, 120);
+    assert!(world.position(b).unwrap().y < 5.0);
+}
+
+fn ball3(world: &mut World3D, y: f32) -> crate::BodyId {
+    let id = world.add_body(&BodyDesc3D::dynamic().at(Vec3::new(0.0, y, 0.0)));
+    world
+        .add_collider(id, &ColliderDesc3D::new(Shape3D::sphere(0.5)))
+        .unwrap();
+    id
+}
+
+#[test]
+fn queries_after_removal_without_refresh_do_not_panic() {
+    let mut world = World3D::default();
+    ground(&mut world);
+    let a = ball3(&mut world, 3.0);
+    world.step(DT);
+    world.remove_body(a).unwrap();
+    let f = QueryFilter::new();
+    let _ = world.ray_cast(Vec3::new(0.0, 9.0, 0.0), -Vec3::Y, 20.0, &f);
+    let _ = world.overlap_point(Vec3::new(0.0, 3.0, 0.0), &f);
+    let b = ball3(&mut world, 4.0);
+    world.step(DT);
+    assert!(world.position(b).is_some());
+}
