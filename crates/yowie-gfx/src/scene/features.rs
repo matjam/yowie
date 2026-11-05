@@ -7,7 +7,7 @@ use super::decals::DecalAtlases;
 use super::layouts::HDR_FORMAT;
 use super::prepare::Prepared;
 use super::render::SceneRenderer;
-use super::slot::GrowBuffer;
+use super::slot::{GrowBuffer, SlotId};
 use super::transmission::{CopyPipelines, SceneCopy};
 use super::transparency::{OitTargets, composite_pipeline};
 use crate::shared::Shared;
@@ -114,11 +114,19 @@ impl Features {
 }
 
 impl SceneRenderer {
-    /// Makes what slot `ri`'s features need this frame: the decal records
-    /// (placing their images in the atlases), the transmission copy and
-    /// OIT targets at the slot's size, and the surface shaders' uniform
-    /// blocks.
-    pub(super) fn prepare_features(&mut self, shared: &Shared, ri: usize, p: &mut Prepared) {
+    /// Makes what record `ri` drawn into `slot_id` needs this frame: the
+    /// decal records (placing their images in the atlases), the
+    /// transmission copy and OIT targets at the slot's size, and the
+    /// surface shaders' uniform blocks. Probe captures get no transmission
+    /// copy (`encode_scene` draws their glass without one) and prepare no
+    /// OIT draws.
+    pub(super) fn prepare_features(
+        &mut self,
+        shared: &Shared,
+        ri: usize,
+        slot_id: SlotId,
+        p: &mut Prepared,
+    ) {
         let device = shared.device();
         let frame = self.frame_number();
         let rec = &self.records[ri];
@@ -132,11 +140,11 @@ impl SceneRenderer {
             p.decals.clear();
         }
         p.frame.counts[2] = p.decals.len() as u32;
-        let Some(targets) = self.slots[ri].targets.as_ref() else {
+        let Some(targets) = self.slot(slot_id).targets.as_ref() else {
             return;
         };
         let size = targets.size;
-        if !p.transmit.is_empty() {
+        if !p.transmit.is_empty() && matches!(slot_id, SlotId::Scene(_)) {
             if self.features.copy.is_none() {
                 self.features.copy = Some(CopyPipelines::new(device, &self.layouts));
             }
@@ -158,24 +166,28 @@ impl SceneRenderer {
             if self.features.composite.is_none() {
                 self.features.composite = Some(composite_pipeline(device, &self.layouts));
             }
-            let slot = &mut self.slots[ri];
-            if slot.features.oit.as_ref().is_none_or(|o| o.size != size) {
-                slot.features.oit = Some(OitTargets::new(
-                    device,
-                    &self.layouts,
-                    &self.linear_sampler,
-                    size,
-                ));
+            let stale = self
+                .slot(slot_id)
+                .features
+                .oit
+                .as_ref()
+                .is_none_or(|o| o.size != size);
+            if stale {
+                let oit = OitTargets::new(device, &self.layouts, &self.linear_sampler, size);
+                self.slot_mut(slot_id).features.oit = Some(oit);
             }
         }
-        self.upload_features(shared, ri, p);
+        self.upload_features(shared, ri, slot_id, p);
     }
 
     /// Writes the decal records and surface shader uniform blocks.
-    fn upload_features(&mut self, shared: &Shared, ri: usize, p: &Prepared) {
+    fn upload_features(&mut self, shared: &Shared, ri: usize, slot_id: SlotId, p: &Prepared) {
         let (device, queue) = (shared.device(), shared.queue());
         let rec = &self.records[ri];
-        let slot = &mut self.slots[ri].features;
+        let slot = match slot_id {
+            SlotId::Scene(i) => &mut self.slots[i].features,
+            SlotId::Capture(i) => &mut self.captures[i].features,
+        };
         let decals: &[u8] = if p.decals.is_empty() {
             &[0; 112]
         } else {

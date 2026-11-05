@@ -236,25 +236,11 @@ fn layer_reflect(s: Surface, n: vec3<f32>) -> vec3<f32> {
     return reflect(-s.view, bent);
 }
 
-// Ambient specular light along `dir` at `roughness`.
-fn ambient_specular(dir: vec3<f32>, roughness: f32) -> vec3<f32> {
-    if frame.env.z > 0.5 {
-        let lod = roughness * (frame.env.y - 1.0);
-        return textureSampleLevel(env_specular, env_sampler, dir, lod).rgb * frame.env.x;
-    }
-    return frame.ambient.rgb;
-}
-
-// Ambient irradiance from around `dir`.
-fn ambient_irradiance(dir: vec3<f32>) -> vec3<f32> {
-    if frame.env.z > 0.5 {
-        return textureSampleLevel(env_irradiance, env_sampler, dir, 0.0).rgb * frame.env.x;
-    }
-    return frame.ambient.rgb;
-}
-
 // The layers' share of the ambient light, given the base lobes' `base`
-// and the irradiance `irr` around the normal.
+// and the irradiance `irr` around the normal. The clearcoat reflects and
+// subsurface scattering gathers through `ambient_specular` and
+// `ambient_diffuse` (`probes.wgsl`), so both see reflection probes and
+// the light probe grid where they reach.
 fn layer_ambient(s: Surface, base: vec3<f32>, irr: vec3<f32>) -> vec3<f32> {
     let ly = s.layers;
     var color = base;
@@ -271,11 +257,11 @@ fn layer_ambient(s: Surface, base: vec3<f32>, irr: vec3<f32>) -> vec3<f32> {
         let cnv = max(dot(cn, s.view), 1e-4);
         let fc = (0.04 + 0.96 * pow(1.0 - cnv, 5.0)) * ly.clearcoat;
         let r = reflect(-s.view, cn);
-        color = color * (1.0 - fc) + ambient_specular(r, ly.clearcoat_roughness) * fc * s.occlusion;
+        color = color * (1.0 - fc) + ambient_specular(s.world, r, ly.clearcoat_roughness) * fc * s.occlusion;
     }
     if ly.subsurface > 0.0 {
         let k = ly.subsurface * (1.0 - ly.thickness) * 0.5;
-        color += s.base * ambient_irradiance(-s.normal) * k * s.occlusion;
+        color += s.base * ambient_diffuse(s.world, -s.normal) * k * s.occlusion;
     }
     return color;
 }

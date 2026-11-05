@@ -10,9 +10,11 @@ use super::ibl::{EnvMaps, IblBaker, cube_view};
 use super::layouts::{HDR_FORMAT, SceneLayouts};
 use super::pipelines::ScenePipelines;
 use super::prepare::{Prepared, View, prepare};
+use super::probes::ProbeState;
 use super::record::SceneRecord;
 use super::shadow::ShadowAtlas;
-use super::slot::SceneSlot;
+use super::slot::{SceneSlot, SlotId};
+use super::statics::StaticState;
 use super::textures::MaterialTextures;
 use crate::batch::{DrawList, ListTarget};
 use crate::graphics::FrameStats;
@@ -48,7 +50,7 @@ pub(crate) struct SceneRenderer {
     pub(super) layouts: SceneLayouts,
     pub(super) pipelines: ScenePipelines,
     pub(super) textures: MaterialTextures,
-    baker: Option<IblBaker>,
+    pub(super) baker: Option<IblBaker>,
     skies: Vec<SkyMaps>,
     no_env: EnvMaps,
     pub(super) atlas: Option<ShadowAtlas>,
@@ -59,8 +61,16 @@ pub(crate) struct SceneRenderer {
     free: Vec<SceneRecord>,
     pub(super) records: Vec<SceneRecord>,
     pub(super) slots: Vec<SceneSlot>,
+    /// The slots probe captures render cube faces with.
+    pub(super) captures: Vec<SceneSlot>,
+    /// Reflection probe maps in use and the light probe grid stand-in.
+    pub(super) probes: ProbeState,
+    /// Static groups' GPU data, culling pipelines and depth pyramids.
+    pub(super) statics: StaticState,
     prepared: Prepared,
-    frame: u64,
+    pub(super) frame: u64,
+    /// The last frame whose due probes were captured.
+    refreshed: u64,
     /// Bumped whenever a slot buffer is replaced, so bind groups rebuild.
     pub(super) generation: u64,
     /// Transmission, transparency, decal and surface shader state.
@@ -88,7 +98,8 @@ fn black_cube(device: &wgpu::Device) -> wgpu::TextureView {
 impl SceneRenderer {
     pub(crate) fn new(shared: &Shared) -> Self {
         let device = shared.device();
-        let layouts = SceneLayouts::new(device);
+        let cube_array = super::probes::cube_arrays(shared);
+        let layouts = SceneLayouts::new(device, cube_array);
         let mut encoder = device.create_command_encoder(&Default::default());
         let empty_atlas = ShadowAtlas::empty(device, &mut encoder);
         shared.queue().submit([encoder.finish()]);
@@ -111,8 +122,13 @@ impl SceneRenderer {
             // The stand-ins are 1x1 textures, which every device can make.
             Err(e) => unreachable!("1x1 material textures: {e}"),
         };
+        let probes = ProbeState::new(shared, cube_array);
         Self {
-            pipelines: ScenePipelines::new(device),
+            pipelines: ScenePipelines::new(device, cube_array),
+            probes,
+            statics: StaticState::new(shared),
+            captures: Vec::new(),
+            refreshed: u64::MAX,
             textures,
             baker: None,
             skies: Vec::new(),
@@ -155,6 +171,11 @@ impl SceneRenderer {
     }
 
     pub(crate) fn begin_frame(&mut self) {
+        for rec in &mut self.records {
+            // Let go of shared group data so games can edit it in place.
+            rec.statics.clear();
+        }
+        self.statics.begin_frame(self.frame);
         self.free.append(&mut self.records);
         self.textures.begin_frame();
         self.frame += 1;
@@ -169,7 +190,14 @@ impl SceneRenderer {
     }
 
     pub(crate) fn take_record(&mut self) -> SceneRecord {
-        self.free.pop().unwrap_or_default()
+        let mut rec = self.free.pop().unwrap_or_default();
+        rec.gpu_statics = self.statics.gpu_culling();
+        rec
+    }
+
+    /// Takes back a record that never joined the frame (a bake's).
+    pub(super) fn recycle(&mut self, rec: SceneRecord) {
+        self.free.push(rec);
     }
 
     pub(crate) fn push_record(&mut self, rec: SceneRecord) {
@@ -228,6 +256,12 @@ impl SceneRenderer {
         mapping: &ViewMapping,
         stats: &mut FrameStats,
     ) -> Vec<Rendered> {
+        if self.refreshed != self.frame {
+            // Probe captures submit their own work, so they run before the
+            // frame records anything they could read.
+            self.refreshed = self.frame;
+            self.refresh_probes(shared, stats);
+        }
         let mut out = Vec::new();
         for ri in 0..self.records.len() {
             if self.records[ri].list != li {
@@ -268,18 +302,19 @@ impl SceneRenderer {
         }
         let size = UVec2::new(vp.w as u32, vp.h as u32);
         let v = View::new(&rec.camera, size.as_vec2());
-        let mut prepared = std::mem::take(&mut self.prepared);
-        prepare(rec, &v, &mut prepared);
-        fill_frame(rec, &v, &mut prepared.frame);
-        let env = self.choose_env(shared, encoder, ri, &mut prepared.frame);
+        let draws = rec.draws.len() as u32 + rec.static_draws();
         self.slots[ri].ensure_targets(device, size, self.layouts.depth_format);
-        self.prepare_features(shared, ri, &mut prepared);
-        self.upload(shared, ri, &prepared);
-        let any_shadows = !prepared.shadows.is_empty();
-        if any_shadows && self.atlas.is_none() {
-            self.atlas = Some(ShadowAtlas::new(device));
-        }
-        self.bind_groups(shared, ri, env, any_shadows);
+        self.prepare_resources(shared, ri);
+        let calls = self.render_view(shared, encoder, ri, SlotId::Scene(ri), &v, stats);
+        stats.draw_calls_3d += calls;
+        stats.draws_3d += draws;
+        Some(vp)
+    }
+
+    /// Makes the material texture groups and morph groups record `ri`'s
+    /// draws bind.
+    pub(super) fn prepare_resources(&mut self, shared: &Shared, ri: usize) {
+        let device = shared.device();
         let rec = &self.records[ri];
         for m in &rec.materials {
             self.textures.prepare(shared, &self.layouts, m);
@@ -298,16 +333,56 @@ impl SceneRenderer {
                 });
             }
         }
-        let draws = rec.draws.len() as u32;
-        let calls = super::passes::encode_scene(self, shared, encoder, ri, &prepared);
-        stats.draw_calls_3d += calls;
-        stats.draws_3d += draws;
+    }
+
+    /// Renders record `ri` seen through `v` into the targets of `slot`:
+    /// culls and batches the draws, uploads them, and records the shadow
+    /// and HDR passes. Returns the draw calls recorded.
+    pub(super) fn render_view(
+        &mut self,
+        shared: &Shared,
+        encoder: &mut wgpu::CommandEncoder,
+        ri: usize,
+        slot: SlotId,
+        v: &View,
+        stats: &mut FrameStats,
+    ) -> u32 {
+        let device = shared.device();
+        let mut prepared = std::mem::take(&mut self.prepared);
+        prepare(&self.records[ri], v, &mut prepared);
+        fill_frame(&self.records[ri], v, &mut prepared.frame);
+        let env = self.choose_env(shared, encoder, ri, slot, &mut prepared.frame);
+        let grid = self.write_probes(shared, encoder, ri, slot, v.capture);
+        self.prepare_features(shared, ri, slot, &mut prepared);
+        self.upload(shared, ri, slot, &prepared);
+        let any_shadows = !prepared.shadows.is_empty();
+        if any_shadows && self.atlas.is_none() {
+            self.atlas = Some(ShadowAtlas::new(device));
+        }
+        self.bind_groups(shared, ri, slot, env, grid, any_shadows);
+        let calls = super::passes::encode_scene(self, shared, encoder, ri, slot, &prepared, stats);
         stats.culled_3d += prepared.culled;
         stats.lights += prepared.lights.len() as u32;
         stats.lights_dropped += prepared.lights_dropped;
         stats.shadow_instances += prepared.shadow_instances;
         self.prepared = prepared;
-        Some(vp)
+        calls
+    }
+
+    /// The slot `id` names.
+    pub(super) fn slot(&self, id: SlotId) -> &SceneSlot {
+        match id {
+            SlotId::Scene(i) => &self.slots[i],
+            SlotId::Capture(i) => &self.captures[i],
+        }
+    }
+
+    /// The slot `id` names, to change.
+    pub(super) fn slot_mut(&mut self, id: SlotId) -> &mut SceneSlot {
+        match id {
+            SlotId::Scene(i) => &mut self.slots[i],
+            SlotId::Capture(i) => &mut self.captures[i],
+        }
     }
 
     /// Picks the maps the scene lights with and records a sky bake when
@@ -317,6 +392,7 @@ impl SceneRenderer {
         shared: &Shared,
         encoder: &mut wgpu::CommandEncoder,
         ri: usize,
+        slot: SlotId,
         f: &mut FrameUniform,
     ) -> u64 {
         let rec = &self.records[ri];
@@ -344,11 +420,10 @@ impl SceneRenderer {
             return s.id;
         }
         // The bake reads the slot's frame block, so write it first.
-        self.ensure_slot(shared, ri);
-        let slot = &self.slots[ri];
+        let frame_block = self.slot(slot).frame.clone();
         shared
             .queue()
-            .write_buffer(&slot.frame, 0, bytemuck::bytes_of(f));
+            .write_buffer(&frame_block, 0, bytemuck::bytes_of(f));
         let baker = self
             .baker
             .get_or_insert_with(|| IblBaker::new(shared.device()));
@@ -356,7 +431,7 @@ impl SceneRenderer {
             shared.device(),
             shared.queue(),
             encoder,
-            &slot.frame,
+            &frame_block,
             None,
             SKY_BAKE_SIZE,
         );

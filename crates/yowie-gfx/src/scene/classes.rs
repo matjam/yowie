@@ -70,6 +70,22 @@ pub(crate) fn classify(m: &Material, transparency: Transparency) -> DrawClass {
     }
 }
 
+/// Whether a static group's render bundles can draw `m`. Bundles draw in
+/// the opaque pass with the engine's surface program, no stencil writes
+/// and no uniform block, so a material that blends, refracts, uses the
+/// stencil, adds fur, outline or x-ray passes, or has a surface shader
+/// draws as an ordinary draw instead. Layered lobes such as clearcoat and
+/// sheen, and decals, need nothing more and draw from the bundles.
+pub(crate) fn bundles_can_draw(m: &Material) -> bool {
+    let c = classify(m, Transparency::Sorted);
+    matches!(c.pass, MeshPass::Opaque | MeshPass::Mask)
+        && c.stencil == StencilKey::None
+        && c.shader.0 == 0
+        && c.fur.is_none()
+        && !c.outline
+        && !c.xray
+}
+
 /// The draws of the feature passes, collected while the lit draws are
 /// sorted into their own lists.
 #[derive(Debug, Default)]

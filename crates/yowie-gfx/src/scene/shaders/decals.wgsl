@@ -20,9 +20,9 @@ struct Decal {
     params: vec4<f32>,
 }
 
-@group(0) @binding(21) var<storage, read> decals: array<Decal>;
-@group(0) @binding(22) var decal_color: texture_2d<f32>;
-@group(0) @binding(23) var decal_normal: texture_2d<f32>;
+@group(0) @binding(24) var<storage, read> decals: array<Decal>;
+@group(0) @binding(25) var decal_color: texture_2d<f32>;
+@group(0) @binding(26) var decal_normal: texture_2d<f32>;
 
 // How far a decal's coordinates stay from its atlas cell's edge, so the
 // lower mips do not blend in the neighbouring cell.

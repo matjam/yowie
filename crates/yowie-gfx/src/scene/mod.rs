@@ -34,14 +34,25 @@
 //! - **Game surface shaders** ([`SurfaceShader`]) are WGSL appended to the
 //!   engine's mesh program (`pipelines::mesh_source`); the engine's own
 //!   hook is the identity `material` function.
-//! - **Render bundles** for static geometry: `passes.rs` records every
-//!   batch through `SceneRenderer::draw_batches`, which only reads the
-//!   batch list and bind groups, so a bundle encoder can replay a cached
-//!   batch list for meshes the game marks static.
+//! - **Static geometry** ([`StaticGroup`], `statics/`) is culled on the GPU
+//!   and replayed from render bundles; with static groups the HDR pass of
+//!   `passes.rs` splits in two around the depth pyramid build. Items whose
+//!   material needs a pass of its own (blending, glass, stencil, outlines,
+//!   x-ray, fur, a surface shader) draw as ordinary draws
+//!   (`classes::bundles_can_draw`).
+//! - **Reflection probes and the light probe grid** (`probes/`) capture
+//!   the scene through these same passes into cube faces
+//!   (`SceneRenderer::render_view` with a capture slot) and are read by
+//!   `ambient_specular` and `ambient_diffuse` in `probes/probes.wgsl`,
+//!   which the base, clearcoat and glass reflections all go through.
+//!   Captures composite blended surfaces sorted rather than through OIT,
+//!   and glass in a capture has no scene copy: it blends its reflection
+//!   over what lies behind it without refraction.
 //! - **GPU particles** and other extensions queue a [`GpuDraw`](crate::GpuDraw)
 //!   with [`Scene::draw_gpu`]; `passes.rs` (`encode_scene`) runs their
 //!   compute work before the HDR pass and their draws after the blended
-//!   meshes, beside the lines, with the frame bind group bound.
+//!   meshes, beside the lines, with the frame bind group bound. Probe
+//!   captures leave them out.
 
 mod bounds;
 mod camera;
@@ -64,12 +75,14 @@ mod passes;
 mod pipelines;
 mod prepare;
 mod primitives;
+mod probes;
 mod record;
 mod render;
 mod resolve;
 mod shadow;
 mod sky;
 mod slot;
+mod statics;
 mod stencil;
 mod submit;
 mod surface_shader;
@@ -104,8 +117,12 @@ pub use mesh::{Mesh, RayHit};
 pub use model::{Model, ModelInstance, ModelPart};
 pub use morph::{MAX_MORPH_WEIGHTS, MorphTarget};
 pub use panorama::Panorama;
+pub use probes::{
+    LightProbeGrid, MAX_LIGHT_PROBES, MAX_REFLECTION_PROBES, ProbeUpdate, ReflectionProbe,
+};
 pub use shadow::{MAX_POINT_SHADOWS, MAX_SPOT_SHADOWS};
 pub use sky::{Atmosphere, Fog, Sky, Tonemap};
+pub use statics::StaticGroup;
 pub use stencil::{Stencil, StencilOp, StencilTest};
 pub use submit::{DrawId, Placement, Scene, ScenePick, pick};
 pub use surface_shader::SurfaceShader;

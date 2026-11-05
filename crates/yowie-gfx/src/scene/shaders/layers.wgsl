@@ -15,7 +15,7 @@
 @group(1) @binding(19) var s_layers: sampler;
 
 // The opaque scene, copied with blurred mips before transmissive draws.
-@group(0) @binding(20) var scene_copy: texture_2d<f32>;
+@group(0) @binding(23) var scene_copy: texture_2d<f32>;
 
 // Which layered feature textures a material has, in `flags.w`.
 const LT_CLEARCOAT: u32 = 1u;

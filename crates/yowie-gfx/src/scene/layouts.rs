@@ -2,9 +2,11 @@
 //!
 //! - Group 0 is the scene: the frame block, lights, clusters, materials,
 //!   joint matrices, morph weights, the shadow atlas and the environment
-//!   maps, then (from binding 20) the opaque scene copy transmission reads
-//!   and the decal records and atlases. The shadow pass binds a smaller
-//!   group 0 without the atlas, with the same binding numbers.
+//!   maps; bindings 20 to 22 are the reflection probe and light probe grid
+//!   block, the probe cubes and the grid texture (`probes/`); bindings 23
+//!   to 26 are the opaque scene copy transmission reads and the decal
+//!   records and atlases. The shadow pass binds a smaller group 0 without
+//!   the atlas, with the same binding numbers.
 //! - Group 1 is a material's textures and their samplers: the five core
 //!   textures at 0 to 4 with their samplers at 5 to 9, then the layered
 //!   feature textures at 10 to 18 sharing the sampler at 19.
@@ -33,11 +35,11 @@ pub(crate) const LAYER_BINDING: u32 = 2 * CORE_TEXTURES;
 /// The binding of the sampler the layered feature textures share.
 pub(crate) const LAYER_SAMPLER_BINDING: u32 = LAYER_BINDING + LAYER_TEXTURES;
 
-/// Group 0 bindings added for the material features.
-pub(crate) const SCENE_COPY_BINDING: u32 = 20;
-pub(crate) const DECALS_BINDING: u32 = 21;
-pub(crate) const DECAL_COLOR_BINDING: u32 = 22;
-pub(crate) const DECAL_NORMAL_BINDING: u32 = 23;
+/// Group 0 bindings of the material features, after the probes' 20 to 22.
+pub(crate) const SCENE_COPY_BINDING: u32 = 23;
+pub(crate) const DECALS_BINDING: u32 = 24;
+pub(crate) const DECAL_COLOR_BINDING: u32 = 25;
+pub(crate) const DECAL_NORMAL_BINDING: u32 = 26;
 
 /// The scene's depth format: 32-bit float depth with 8 bits of stencil
 /// where the device has it, otherwise 24-bit depth with stencil. The
@@ -127,8 +129,16 @@ pub(crate) struct SceneLayouts {
 }
 
 impl SceneLayouts {
-    pub(crate) fn new(device: &wgpu::Device) -> Self {
+    /// The layouts; `cube_array` says whether reflection probes are bound
+    /// as a cube array (see `probes::cube_arrays`).
+    pub(crate) fn new(device: &wgpu::Device, cube_array: bool) -> Self {
         let frame_size = std::mem::size_of::<super::frame_data::FrameUniform>() as u64;
+        let probe_size = std::mem::size_of::<super::probes::ProbeBlock>() as u64;
+        let probe_dim = if cube_array {
+            wgpu::TextureViewDimension::CubeArray
+        } else {
+            wgpu::TextureViewDimension::Cube
+        };
         let vf = S::VERTEX_FRAGMENT;
         let frame = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("yowie scene frame"),
@@ -159,6 +169,9 @@ impl SceneLayouts {
                 texture(9, wgpu::TextureViewDimension::Cube),
                 texture(10, wgpu::TextureViewDimension::Cube),
                 sampler(11),
+                uniform(20, S::FRAGMENT, probe_size),
+                texture(21, probe_dim),
+                texture(22, wgpu::TextureViewDimension::D3),
                 texture(SCENE_COPY_BINDING, wgpu::TextureViewDimension::D2),
                 storage(DECALS_BINDING, S::FRAGMENT),
                 texture(DECAL_COLOR_BINDING, wgpu::TextureViewDimension::D2),

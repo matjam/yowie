@@ -140,13 +140,13 @@ impl SurfaceShader {
 }
 
 /// The number of engine lines before the game's first line.
-fn engine_lines() -> u32 {
-    mesh_source("").lines().count() as u32
+fn engine_lines(cube_array: bool) -> u32 {
+    mesh_source("", cube_array).lines().count() as u32
 }
 
-/// Formats a compiler message with its line counted in the game's source.
-fn describe(m: &wgpu::CompilationMessage) -> String {
-    let base = engine_lines();
+/// Formats a compiler message with its line counted in the game's source,
+/// which starts after `base` engine lines.
+fn describe(m: &wgpu::CompilationMessage, base: u32) -> String {
     match &m.location {
         Some(loc) if loc.line_number > base => format!(
             "line {}, column {}: {}",
@@ -164,20 +164,22 @@ fn describe(m: &wgpu::CompilationMessage) -> String {
 /// as an error.
 fn compile(shared: &Shared, source: &str, has_uniforms: bool) -> Result<wgpu::ShaderModule> {
     let device = shared.device();
+    let cube_array = super::probes::cube_arrays(shared);
     let scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
     let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some("yowie surface shader"),
-        source: wgpu::ShaderSource::Wgsl(mesh_source(source).into()),
+        source: wgpu::ShaderSource::Wgsl(mesh_source(source, cube_array).into()),
     });
     let info = pollster::block_on(module.get_compilation_info());
+    let base = engine_lines(cube_array);
     let messages: Vec<String> = info
         .messages
         .iter()
         .filter(|m| m.message_type == wgpu::CompilationMessageType::Error)
-        .map(describe)
+        .map(|m| describe(m, base))
         .collect();
     if messages.is_empty() {
-        let layouts = SceneLayouts::new(device);
+        let layouts = SceneLayouts::new(device, cube_array);
         let key = MeshKey {
             pass: MeshPass::Opaque,
             shader: (1, has_uniforms),
@@ -236,10 +238,12 @@ mod tests {
     #[test]
     fn game_lines_follow_the_engine() {
         let game = "fn material(s: Surface) -> Surface {\n    return s;\n}\n";
-        let composed = mesh_source(game);
-        assert_eq!(
-            composed.lines().nth(engine_lines() as usize),
-            game.lines().next()
-        );
+        for cube_array in [false, true] {
+            let composed = mesh_source(game, cube_array);
+            assert_eq!(
+                composed.lines().nth(engine_lines(cube_array) as usize),
+                game.lines().next()
+            );
+        }
     }
 }

@@ -36,6 +36,24 @@ pub(crate) fn f32_to_f16(value: f32) -> u16 {
     sign | (half + round) as u16
 }
 
+/// Converts a half-precision value to `f32` exactly.
+pub(crate) fn f16_to_f32(h: u16) -> f32 {
+    let sign = u32::from(h & 0x8000) << 16;
+    let exp = u32::from((h >> 10) & 0x1f);
+    let man = u32::from(h & 0x03ff);
+    let bits = match (exp, man) {
+        (0, 0) => sign,
+        (0, m) => {
+            // Subnormal: normalise the mantissa.
+            let shift = m.leading_zeros() - 21;
+            sign | ((113 - shift) << 23) | ((m << shift) & 0x03ff) << 13
+        }
+        (0x1f, m) => sign | 0x7f80_0000 | (m << 13),
+        (e, m) => sign | ((e + 112) << 23) | (m << 13),
+    };
+    f32::from_bits(bits)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -59,5 +77,17 @@ mod tests {
         }
         assert_eq!(f32_to_f16(f32::NAN) & 0x7c00, 0x7c00);
         assert_ne!(f32_to_f16(f32::NAN) & 0x03ff, 0);
+    }
+
+    #[test]
+    fn every_half_survives_the_round_trip() {
+        for h in 0..=u16::MAX {
+            let f = f16_to_f32(h);
+            if f.is_nan() {
+                assert!((h & 0x7c00) == 0x7c00 && (h & 0x03ff) != 0, "{h:#06x}");
+                continue;
+            }
+            assert_eq!(f32_to_f16(f), h, "{h:#06x} -> {f}");
+        }
     }
 }

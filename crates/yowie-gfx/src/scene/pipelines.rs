@@ -28,11 +28,13 @@ pub(crate) const OIT_ACCUM_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rg
 pub(crate) const OIT_REVEAL_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::R16Float;
 
 /// The engine's mesh program followed by `hook`, the source defining
-/// `fn material`. The engine part ends with a newline, so the hook's first
-/// line is the line after the engine's last.
-pub(crate) fn mesh_source(hook: &str) -> String {
+/// `fn material`. `cube_array` picks how the reflection probe cubes are
+/// bound (see `probes::cube_arrays`). The engine part ends with a newline,
+/// so the hook's first line is the line after the engine's last.
+pub(crate) fn mesh_source(hook: &str, cube_array: bool) -> String {
+    let probes = super::probes::shader_source(cube_array);
     let mut s = [
-        COMMON, ATMOSPHERE, VERTEX, LAYERS, LOBES, DECALS, PASSES, SURFACE,
+        COMMON, ATMOSPHERE, VERTEX, &probes, LAYERS, LOBES, DECALS, PASSES, SURFACE,
     ]
     .join("\n");
     if !s.ends_with('\n') {
@@ -130,10 +132,13 @@ pub(crate) fn depth(
 pub(crate) const PREMULTIPLIED: wgpu::BlendState = wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING;
 
 impl ScenePipelines {
-    pub(crate) fn new(device: &wgpu::Device) -> Self {
+    /// Builds the shader modules; `cube_array` picks how the reflection
+    /// probe cubes are bound (see `probes::cube_arrays`).
+    pub(crate) fn new(device: &wgpu::Device, cube_array: bool) -> Self {
         let sky_src = [COMMON, ATMOSPHERE, SKY].join("\n");
+        let mesh_src = mesh_source(DEFAULT_HOOK, cube_array);
         Self {
-            mesh_module: trusted_module(device, "yowie mesh", &mesh_source(DEFAULT_HOOK)),
+            mesh_module: trusted_module(device, "yowie mesh", &mesh_src),
             sky_module: trusted_module(device, "yowie sky", &sky_src),
             resolve_module: trusted_module(device, "yowie resolve", RESOLVE),
             mesh: HashMap::new(),

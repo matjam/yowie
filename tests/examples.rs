@@ -29,6 +29,7 @@ const GOLDEN: &[(&str, &[&str])] = &[
     ("physics2d", &["--seconds", "6"]),
     ("physics3d", &["--seconds", "3"]),
     ("physics_lab", &["--seconds", "6"]),
+    ("probes", &["--seconds", "1"]),
     ("roguelike", &["--autoplay", "--seconds", "0.5"]),
     ("shaders", &["--seconds", "1"]),
     ("softbody", &["--seconds", "0.7"]),

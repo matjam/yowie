@@ -68,7 +68,7 @@ pub(crate) fn cube_view(t: &wgpu::Texture, base_mip: u32, mips: Option<u32>) -> 
     })
 }
 
-fn face_view(t: &wgpu::Texture, face: u32, mip: u32) -> wgpu::TextureView {
+pub(crate) fn face_view(t: &wgpu::Texture, face: u32, mip: u32) -> wgpu::TextureView {
     t.create_view(&wgpu::TextureViewDescriptor {
         dimension: Some(wgpu::TextureViewDimension::D2),
         base_mip_level: mip,
@@ -219,28 +219,8 @@ impl IblBaker {
                 params: [face as f32, 1.0, 0.0, s],
             });
         }
-        for mip in 1..mips {
-            for face in 0..6 {
-                passes.push(Pass {
-                    pipeline: &self.downsample,
-                    target: face_view(&radiance, face, mip),
-                    cube: Some(cube_view(&radiance, mip - 1, Some(1))),
-                    params: [face as f32, 1.0, 0.0, s],
-                });
-            }
-        }
+        self.filter_passes(&radiance, &specular, &mut passes);
         let full = cube_view(&radiance, 0, None);
-        for mip in 0..spec_mips {
-            let roughness = mip as f32 / (spec_mips - 1).max(1) as f32;
-            for face in 0..6 {
-                passes.push(Pass {
-                    pipeline: &self.prefilter,
-                    target: face_view(&specular, face, mip),
-                    cube: Some(full.clone()),
-                    params: [face as f32, mips as f32, roughness, s],
-                });
-            }
-        }
         for face in 0..6 {
             passes.push(Pass {
                 pipeline: &self.irradiance,
@@ -249,6 +229,77 @@ impl IblBaker {
                 params: [face as f32, mips as f32, 1.0, s],
             });
         }
+        self.run(device, queue, encoder, frame, pano, &passes);
+        EnvMaps {
+            specular: cube_view(&specular, 0, None),
+            irradiance: cube_view(&irradiance, 0, None),
+            specular_mips: spec_mips,
+        }
+    }
+
+    /// Records the mip chain of `radiance` (a cube whose mip 0 is filled)
+    /// and its prefiltering into every mip of `specular`, roughness 0 at
+    /// mip 0 to 1 at the last. Reflection probes filter their captures
+    /// with it.
+    pub(crate) fn filter(
+        &self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        encoder: &mut wgpu::CommandEncoder,
+        frame: &wgpu::Buffer,
+        radiance: &wgpu::Texture,
+        specular: &wgpu::Texture,
+    ) {
+        let mut passes = Vec::new();
+        self.filter_passes(radiance, specular, &mut passes);
+        self.run(device, queue, encoder, frame, None, &passes);
+    }
+
+    /// The downsample passes of `radiance`'s mips and the prefilter passes
+    /// of `specular`'s.
+    fn filter_passes<'a>(
+        &'a self,
+        radiance: &wgpu::Texture,
+        specular: &wgpu::Texture,
+        passes: &mut Vec<Pass<'a>>,
+    ) {
+        let mips = radiance.mip_level_count();
+        let spec_mips = specular.mip_level_count();
+        let s = radiance.width() as f32;
+        for mip in 1..mips {
+            for face in 0..6 {
+                passes.push(Pass {
+                    pipeline: &self.downsample,
+                    target: face_view(radiance, face, mip),
+                    cube: Some(cube_view(radiance, mip - 1, Some(1))),
+                    params: [face as f32, 1.0, 0.0, s],
+                });
+            }
+        }
+        let full = cube_view(radiance, 0, None);
+        for mip in 0..spec_mips {
+            let roughness = mip as f32 / (spec_mips - 1).max(1) as f32;
+            for face in 0..6 {
+                passes.push(Pass {
+                    pipeline: &self.prefilter,
+                    target: face_view(specular, face, mip),
+                    cube: Some(full.clone()),
+                    params: [face as f32, mips as f32, roughness, s],
+                });
+            }
+        }
+    }
+
+    /// Records `passes`, each a full-screen triangle into its target.
+    fn run(
+        &self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        encoder: &mut wgpu::CommandEncoder,
+        frame: &wgpu::Buffer,
+        pano: Option<&wgpu::TextureView>,
+        passes: &[Pass],
+    ) {
         let params = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("yowie bake params"),
             size: PARAM_STRIDE * passes.len() as u64,
@@ -320,11 +371,6 @@ impl IblBaker {
             pass.set_bind_group(0, &frame_group, &[]);
             pass.set_bind_group(1, &group, &[]);
             pass.draw(0..3, 0..1);
-        }
-        EnvMaps {
-            specular: cube_view(&specular, 0, None),
-            irradiance: cube_view(&irradiance, 0, None),
-            specular_mips: spec_mips,
         }
     }
 }

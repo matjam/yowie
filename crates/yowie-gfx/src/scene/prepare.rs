@@ -19,6 +19,7 @@ use super::light::{GpuLight, LocalLight};
 use super::pipelines::{MeshKey, MeshPass};
 use super::record::{DrawRecord, SceneRecord};
 use super::shadow::{self, MAX_POINT_SHADOWS, MAX_SPOT_SHADOWS, POINT_BASE, SPOT_BASE, ShadowView};
+use super::transparency::Transparency;
 use super::vertex::{GpuInstance, affine_rows};
 
 /// A run of instances drawn with one pipeline, mesh and material.
@@ -153,6 +154,9 @@ pub(crate) struct View {
     pub(crate) far: f32,
     pub(crate) ortho: bool,
     pub(crate) size: yowie_core::Vec2,
+    /// Set when the view captures a probe face rather than showing the
+    /// scene: draws hidden in probes are skipped.
+    pub(crate) capture: Option<super::probes::Capture>,
 }
 
 impl View {
@@ -170,6 +174,7 @@ impl View {
             far: cam.far.max(cam.near * 1.001),
             ortho: matches!(cam.projection, Projection::Orthographic { .. }),
             size,
+            capture: None,
         }
     }
 }
@@ -200,11 +205,22 @@ pub(crate) fn prepare(rec: &SceneRecord, v: &View, out: &mut Prepared) {
     let mut casters: Vec<Resolved> = Vec::new();
     let sun_shadows = rec.sun.is_some_and(|s| s.shadows);
     let any_shadows = sun_shadows || rec.lights.iter().any(LocalLight::shadows);
+    let hidden = super::probes::hidden_mask(rec, v);
+    // Probe captures have no transparency targets; they draw blended
+    // surfaces sorted.
+    let transparency = if v.capture.is_some() {
+        Transparency::Sorted
+    } else {
+        rec.transparency
+    };
     for (i, d) in rec.draws.iter().enumerate() {
+        if hidden.get(i).copied().unwrap_or(false) {
+            continue;
+        }
         let info = &infos[d.mesh as usize];
         let skinned = info.skinned && d.joints != u32::MAX;
         let material = &rec.materials[d.material as usize];
-        let class = classify(material, rec.transparency);
+        let class = classify(material, transparency);
         let pass = class.pass;
         let mesh_key = MeshKey {
             pass,
@@ -349,7 +365,7 @@ fn prepare_shadows(rec: &SceneRecord, v: &View, casters: &[Resolved], out: &mut 
         let reach = casters
             .iter()
             .map(|c| c.sphere.truncate().dot(to_sun) + c.sphere.w)
-            .fold(f32::NEG_INFINITY, f32::max);
+            .fold(super::statics::caster_reach(rec, to_sun), f32::max);
         let distance = sun.shadow_distance.min(v.far);
         let splits = shadow::cascade_splits(v.near, if distance > 0.0 { distance } else { 60.0 });
         let inv = v.view_proj.inverse();
@@ -393,6 +409,13 @@ fn prepare_shadows(rec: &SceneRecord, v: &View, casters: &[Resolved], out: &mut 
             &mut batches,
         );
         out.shadow_instances += pass.len() as u32;
+        out.shadow_instances += super::statics::emit_casters(
+            rec,
+            &view.frustum,
+            view.index as u32,
+            &mut out.instances,
+            &mut batches,
+        );
         out.shadows.push((view.index, batches));
     }
 }

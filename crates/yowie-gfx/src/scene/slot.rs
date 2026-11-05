@@ -62,51 +62,83 @@ impl GrowBuffer {
 pub(crate) struct Targets {
     pub(crate) size: UVec2,
     pub(crate) color: wgpu::TextureView,
-    /// The depth aspect alone, for sampling the scene's depth. A view of
-    /// both aspects cannot be bound for sampling.
-    #[allow(dead_code, reason = "kept for post-processing passes that read depth")]
+    /// The depth aspect alone, for sampling the scene's depth (the static
+    /// groups' depth pyramid reads it). A view of both aspects cannot be
+    /// bound for sampling.
     pub(crate) depth: wgpu::TextureView,
     /// Depth and stencil together, for attaching to a render pass.
     pub(crate) depth_stencil: wgpu::TextureView,
 }
 
+/// A 2D image `size` texels that passes render into and sample.
+fn target(
+    device: &wgpu::Device,
+    size: UVec2,
+    format: wgpu::TextureFormat,
+    label: &'static str,
+) -> wgpu::Texture {
+    device.create_texture(&wgpu::TextureDescriptor {
+        label: Some(label),
+        size: wgpu::Extent3d {
+            width: size.x,
+            height: size.y,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format,
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+        view_formats: &[],
+    })
+}
+
+/// A depth and stencil image of `format`, `size` texels: its depth-only
+/// view for sampling and its view of both aspects for attaching.
+pub(crate) fn depth_views(
+    device: &wgpu::Device,
+    size: UVec2,
+    format: wgpu::TextureFormat,
+    label: &'static str,
+) -> (wgpu::TextureView, wgpu::TextureView) {
+    let depth = target(device, size, format, label);
+    let sampled = depth.create_view(&wgpu::TextureViewDescriptor {
+        label: Some(label),
+        aspect: wgpu::TextureAspect::DepthOnly,
+        ..Default::default()
+    });
+    (sampled, depth.create_view(&Default::default()))
+}
+
 impl Targets {
     fn new(device: &wgpu::Device, size: UVec2, depth_format: wgpu::TextureFormat) -> Self {
-        let make = |format, label| {
-            device.create_texture(&wgpu::TextureDescriptor {
-                label: Some(label),
-                size: wgpu::Extent3d {
-                    width: size.x,
-                    height: size.y,
-                    depth_or_array_layers: 1,
-                },
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: wgpu::TextureDimension::D2,
-                format,
-                usage: wgpu::TextureUsages::RENDER_ATTACHMENT
-                    | wgpu::TextureUsages::TEXTURE_BINDING,
-                view_formats: &[],
-            })
-        };
-        let depth = make(depth_format, "yowie scene depth");
+        let (depth, depth_stencil) = depth_views(device, size, depth_format, "yowie scene depth");
         Self {
             size,
-            color: make(HDR_FORMAT, "yowie scene colour").create_view(&Default::default()),
-            depth: depth.create_view(&wgpu::TextureViewDescriptor {
-                label: Some("yowie scene depth sampled"),
-                aspect: wgpu::TextureAspect::DepthOnly,
-                ..Default::default()
-            }),
-            depth_stencil: depth.create_view(&Default::default()),
+            color: target(device, size, HDR_FORMAT, "yowie scene colour")
+                .create_view(&Default::default()),
+            depth,
+            depth_stencil,
         }
     }
+}
+
+/// Names a slot: one of the frame's scenes, or one of the slots probe
+/// captures render cube faces with.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub(crate) enum SlotId {
+    /// The slot of the frame's scene with this record index.
+    Scene(usize),
+    /// A capture slot; a probe bake uses one per cube face.
+    Capture(usize),
 }
 
 /// Everything one scene slot owns on the GPU.
 #[derive(Debug)]
 pub(crate) struct SceneSlot {
     pub(crate) frame: wgpu::Buffer,
+    /// The reflection probe and light probe grid block (`ProbeBlock`).
+    pub(crate) probes: wgpu::Buffer,
     pub(crate) lights: GrowBuffer,
     pub(crate) clusters: GrowBuffer,
     pub(crate) indices: GrowBuffer,
@@ -124,13 +156,15 @@ pub(crate) struct SceneSlot {
     pub(crate) features: super::features::SlotFeatures,
 }
 
-/// What a slot's bind groups name besides its own buffers: the atlas and
-/// environment ids, and a counter bumped when a buffer is replaced.
+/// What a slot's bind groups name besides its own buffers: the atlas,
+/// environment and light probe grid ids, and a counter bumped when a
+/// buffer is replaced.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct GroupKey {
     pub(crate) atlas: u64,
     pub(crate) env: u64,
     pub(crate) buffers: u64,
+    pub(crate) grid: u64,
     /// The transmission copy and decal atlases (`Features::group_key`).
     pub(crate) features: u64,
 }
@@ -142,6 +176,12 @@ impl SceneSlot {
             frame: device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("yowie scene frame"),
                 size: std::mem::size_of::<FrameUniform>() as u64,
+                usage: U::UNIFORM | U::COPY_DST,
+                mapped_at_creation: false,
+            }),
+            probes: device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("yowie scene probes"),
+                size: std::mem::size_of::<super::probes::ProbeBlock>() as u64,
                 usage: U::UNIFORM | U::COPY_DST,
                 mapped_at_creation: false,
             }),

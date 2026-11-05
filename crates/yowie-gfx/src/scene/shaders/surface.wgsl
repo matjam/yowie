@@ -177,33 +177,19 @@ fn shade_light(s: Surface, l: vec3<f32>, radiance: vec3<f32>) -> vec3<f32> {
     return layer_light(s, l, radiance, (diffuse + spec) * radiance * nl);
 }
 
-fn env_brdf(f0: vec3<f32>, roughness: f32, nv: f32) -> vec3<f32> {
-    let c0 = vec4<f32>(-1.0, -0.0275, -0.572, 0.022);
-    let c1 = vec4<f32>(1.0, 0.0425, 1.04, -0.04);
-    let r = roughness * c0 + c1;
-    let a004 = min(r.x * r.x, exp2(-9.28 * nv)) * r.x + r.y;
-    let ab = vec2<f32>(-1.04, 1.04) * a004 + r.zw;
-    return f0 * ab.x + ab.y;
-}
-
-// Ambient light: the environment or sky maps when bound, otherwise the
-// flat ambient colour.
+// Ambient light: reflection probes and the light probe grid where they
+// reach, then the environment or sky maps when bound, otherwise the flat
+// ambient colour (`probes.wgsl`).
 fn shade_ambient(s: Surface) -> vec3<f32> {
     let n = s.normal;
     let nv = max(dot(n, s.view), 1e-4);
     let f0 = base_f0(s);
     let spec_weight = env_weight(s, f0, nv);
     let diffuse_weight = (1.0 - spec_weight) * (1.0 - s.metallic) * (1.0 - s.layers.transmission) * s.base;
-    if frame.env.z > 0.5 {
-        let r = layer_reflect(s, n);
-        let lod = s.roughness * (frame.env.y - 1.0);
-        let spec = textureSampleLevel(env_specular, env_sampler, r, lod).rgb;
-        let irr = textureSampleLevel(env_irradiance, env_sampler, n, 0.0).rgb;
-        let c = (irr * diffuse_weight + spec * spec_weight) * frame.env.x * s.occlusion;
-        return layer_ambient(s, c, irr * frame.env.x);
-    }
-    let c = frame.ambient.rgb * (diffuse_weight + spec_weight) * s.occlusion;
-    return layer_ambient(s, c, frame.ambient.rgb);
+    let spec = ambient_specular(s.world, layer_reflect(s, n), s.roughness);
+    let irr = ambient_diffuse(s.world, n);
+    let c = (irr * diffuse_weight + spec * spec_weight) * s.occlusion;
+    return layer_ambient(s, c, irr);
 }
 
 fn cluster_index(frag: vec4<f32>, view_depth: f32) -> u32 {
