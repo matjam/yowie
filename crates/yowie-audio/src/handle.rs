@@ -58,7 +58,7 @@ impl Voice {
 
     /// Registers `f` to run when the voice ends, whether it played out, was stopped or
     /// lost its slot. It runs on the thread that calls [`Mixer::update`](crate::Mixer::update).
-    /// Registering again replaces nothing: every callback runs once.
+    /// Every registered callback runs once.
     pub fn on_done(&self, f: impl FnOnce() + Send + 'static) {
         self.inner.watch(self.shared.clone(), Box::new(f));
     }

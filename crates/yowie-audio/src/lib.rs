@@ -60,6 +60,7 @@ mod handle;
 mod mix;
 mod mixer;
 mod music;
+mod music_worker;
 mod output;
 mod reverb;
 mod sound;
@@ -68,6 +69,8 @@ mod stream;
 pub mod synth;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_spatial;
 pub mod tracker;
 mod voice;
 mod wav;
