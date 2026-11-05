@@ -39,9 +39,10 @@ pub struct GltfSkeleton {
 /// Everything imported from a glTF file.
 #[derive(Clone, Debug, Default)]
 pub struct GltfImport {
-    /// A unique name for every node, by node index: the node's own name, or
-    /// `node<index>` when it has none or shares it. Track targets in the
-    /// imported clips use these names.
+    /// A unique name for every node, by node index: the node's own name,
+    /// `node<index>` when it has none, or `<name>#<index>` when an earlier
+    /// node already has that name. Track targets in the imported clips use
+    /// these names.
     pub node_names: Vec<String>,
     /// One skeleton per skin.
     pub skeletons: Vec<GltfSkeleton>,

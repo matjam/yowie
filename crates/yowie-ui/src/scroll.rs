@@ -45,8 +45,9 @@ impl Frame<'_> {
         r
     }
 
-    /// The scroll offset of the area `label` in the current container, in
-    /// view units from the top-left of its contents.
+    /// The scroll offset of the scroll area `id`, in view units from the
+    /// top-left of its contents. To get the id of an area by its label,
+    /// call [`peek_id`](Frame::peek_id) before adding the area.
     pub fn scroll_offset(&mut self, id: WidgetId) -> Vec2 {
         let frame = self.ui.frame_no;
         self.ui.scrolls.get(id, frame).offset

@@ -1,20 +1,6 @@
 //! Custom GPU work inside the frame: compute dispatches before the passes
 //! and draws recorded into the 2D pass or a 3D scene's HDR pass.
-//!
-//! GPU particles use this hook. A renderer extension implements
-//! [`GpuDraw`] and queues it with [`Graphics::draw_gpu`] (2D, ordered by
-//! layer and sort key like a sprite) or `Scene::draw_gpu` (3D, after the
-//! blended meshes). When the frame ends the renderer calls
-//! [`prepare`](GpuDraw::prepare) on the command encoder before any pass is
-//! open, then [`draw_2d`](GpuDraw::draw_2d) or
-//! [`draw_3d`](GpuDraw::draw_3d) inside the pass. Queueing the same draw
-//! twice in a frame (to a render texture and to the screen) calls `prepare`
-//! twice and `draw_*` once for each queueing, so an implementation advances
-//! its simulation only on the first `prepare` of a frame.
-//!
-//! The renderer forgets its bound pipeline and bind groups after a draw,
-//! so a draw may set whatever it needs, including a different bind group
-//! at any index.
+//! [`GpuDraw`] documents the contract.
 
 use std::any::{Any, TypeId};
 use std::fmt;
@@ -85,8 +71,22 @@ pub struct Draw3D<'a> {
     pub extra_targets: &'a [Option<wgpu::ColorTargetState>],
 }
 
-/// A renderer extension that records its own GPU work in the frame. See
-/// the [module documentation](self).
+/// A renderer extension that records its own GPU work in the frame.
+///
+/// GPU particles use this hook. A renderer extension implements
+/// `GpuDraw` and queues it with [`Graphics::draw_gpu`] (2D, ordered by
+/// layer and sort key like a sprite) or `Scene::draw_gpu` (3D, after the
+/// blended meshes). When the frame ends the renderer calls
+/// [`prepare`](GpuDraw::prepare) on the command encoder before any pass is
+/// open, then [`draw_2d`](GpuDraw::draw_2d) or
+/// [`draw_3d`](GpuDraw::draw_3d) inside the pass. Queueing the same draw
+/// twice in a frame (to a render texture and to the screen) calls `prepare`
+/// twice and `draw_*` once for each queueing, so an implementation advances
+/// its simulation only on the first `prepare` of a frame.
+///
+/// The renderer forgets its bound pipeline and bind groups after a draw,
+/// so a draw may set whatever it needs, including a different bind group
+/// at any index.
 pub trait GpuDraw: Send + Sync {
     /// Records compute work before the frame's render passes. The default
     /// does nothing.

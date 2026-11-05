@@ -9,7 +9,7 @@
 //! - [`Grid`] stores cells and finds [4 or 8 neighbours](Neighbourhood).
 //! - [`Pathfinder`] and [`astar`] find least-cost paths; [`dijkstra`],
 //!   [`flee_map`] and [`downhill`] build and follow distance maps.
-//! - [`line`] and [`supercover_line`] trace lines between cells.
+//! - [`line`](fn@line) and [`supercover_line`] trace lines between cells.
 //! - [`fov`] computes what an observer sees with symmetric shadowcasting.
 //! - [`flood_fill`] collects a connected region.
 //!
