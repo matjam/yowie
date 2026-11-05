@@ -47,6 +47,7 @@
 
 mod binaural;
 mod bus;
+mod capture;
 mod command;
 mod core;
 pub mod decode;
@@ -54,20 +55,26 @@ mod dsp;
 mod error;
 mod handle;
 mod mix;
+mod music;
+mod output;
 mod mixer;
 mod reverb;
 mod sound;
 mod spatial;
 mod stream;
+pub mod synth;
 #[cfg(test)]
 mod tests;
 mod voice;
 mod wav;
 
 pub use bus::{Bus, MAX_BUSES};
+pub use capture::{Capture, Level, Recorder, list_inputs};
 pub use error::{Error, Result};
 pub use handle::Voice;
 pub use mixer::{Mixer, Renderer};
+pub use output::{DeviceInfo, Output, list_outputs};
+pub use music::{Music, MusicControl, MusicOptions};
 pub use reverb::{ReverbSettings, ReverbZone};
 pub use sound::{Pcm, Sound};
 pub use spatial::{Attenuation, AttenuationModel, Cone, Listener, SpatialSettings};
